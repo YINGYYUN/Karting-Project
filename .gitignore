@@ -1,0 +1,47 @@
+# ===== IAR 编译输出目录（整个忽略）=====
+project/iar/Debug_m7_0/
+project/iar/Debug_m7_1/
+project/iar/project_config/Debug_m7_0/
+project/iar/project_config/Debug_m7_1/
+project/iar/project_config/settings/
+project/iar/settings/
+
+# ===== IAR 中间 / 输出文件 =====
+*.pbi
+*.pbd
+*.pbw
+*.pbd.browse
+*.xcl
+*.rsp
+*.dep
+*.hex
+*.out
+*.sim
+*.cspy.bat
+*.cspy.ps1
+*.crun
+*.dbgdt
+*.dnx
+*.wsdt
+build.ninja
+.ninja_log
+.ninja_deps
+.ninja_*
+
+# ===== 通用编译产物 =====
+*.o
+*.obj
+*.d
+*.map
+*.elf
+*.exe
+*.ilk
+*.exp
+*.pch
+*.gch
+
+# ===== 调试 / 临时文件 =====
+*.dSYM/
+*.su
+*.idb
+*.pdb
