@@ -23,6 +23,7 @@ void Debug_Page_Menu_UI(void)
     ips200_show_string(10 ,48 , "MOTOR");
     ips200_show_string(10 ,64 , "MOTOR-PID");
     ips200_show_string(10 ,80 , "IMU");
+    ips200_show_string(10 ,96 , "MENC15A");
 }
 
 // [三级界面]电机调试界面
@@ -83,6 +84,16 @@ void Debug_IMU_UI(void)
     ips200_show_string(10 ,112, "Yaw Reset");
 }
 
+// [三级界面]磁编码器调试界面
+// MENC15A 15位磁编码器（硬件 SPI2, P15.0/15.1/15.2/15.3）
+void Debug_MENC15A_UI(void)
+{
+    ips200_show_string(8  ,0  , "[DEBUG]-MENC15A");
+    ips200_show_string(0  ,16 , "==============================");
+    ips200_show_string(10 ,32 , "ABS:#####  OFF:#####");
+    ips200_show_string(10 ,48 , "SPD:#####");
+}
+
 /**********************************************************/
 /*----------------------------------------[E] 界面样式 [E]*/
 /**********************************************************/
@@ -97,6 +108,7 @@ int Debug_WiFi_SPI      (void);
 int Debug_Motor         (void);
 int Debug_Motor_PID     (void);
 int Debug_IMU           (void);
+int Debug_MENC15A       (void);
 
 // [二级界面]Debug模式界面
 int Debug_Page_Menu(void)
@@ -125,14 +137,14 @@ int Debug_Page_Menu(void)
             key_clear_state(KEY_UP);
             key_pressed = 1;
             Debug_Page_flag --;
-            if (Debug_Page_flag < 1)Debug_Page_flag = 6;
+            if (Debug_Page_flag < 1)Debug_Page_flag = 5;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
         {
             key_clear_state(KEY_DOWN); 
             key_pressed = 1;
             Debug_Page_flag ++;
-            if (Debug_Page_flag > 6)Debug_Page_flag = 1;
+            if (Debug_Page_flag > 5)Debug_Page_flag = 1;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
@@ -182,6 +194,16 @@ int Debug_Page_Menu(void)
         {
             ips200_clear();
             Debug_IMU();
+
+            // 从子界面返回后
+            ips200_clear();
+            Debug_Page_Menu_UI();
+            key_pressed = 1;
+        }
+        else if (Debug_Page_flag_temp == 5)
+        {
+            ips200_clear();
+            Debug_MENC15A();
 
             // 从子界面返回后
             ips200_clear();
@@ -726,6 +748,64 @@ int Debug_IMU (void)
             ips200_show_string(0 ,96 , " ");
             ips200_show_string(0 ,112, " ");
             ips200_show_string(0 ,80 + 16*Debug_IMU_f , ">");
+        }
+    }
+}
+
+//  #####  #   #  #####   ###   #   #    #   #  
+//    #    #   #    #    #   #  #   #    #   #  
+//    #    # # #    #    #   #  #   #    #   #  
+//    #    #   #    #    #   #  #   #    #   #  
+//  #####  #   #  #####   ###   #   #     ###   
+//
+// [三级界面]磁编码器调试
+int Debug_MENC15A(void)
+{
+    Debug_MENC15A_UI();
+
+    // 参考计时值重置
+    Time_Count1 = 0;
+    Time_Count2 = 0;
+
+    int32_t Sum_114514 = 0;
+
+    while(1)
+    {
+        if (KEY_SHORT_PRESS == key_get_state(KEY_BACK))
+        {
+            key_clear_state(KEY_BACK);
+            // 返回上一级界面
+            return 0;
+        }
+
+        /* 数据读取 + WiFi 发送（10ms 周期，与屏幕显示错峰） */
+        if (Time_Count2 >= 2)   // 10ms * 2 发送周期
+        {
+            Time_Count2 = 0;
+
+            // 读取磁编码器的绝对值 / 转速数据
+            menc15a_get_absolute_data(menc15a_1_module);
+            menc15a_get_speed_data   (menc15a_1_module);
+            // 速度积分（替代直接累加增量）：角速度(rad/s) × 采样周期(20ms)
+            // Sum_114514 单位：毫弧度(mrad)，一圈 = 2π×1000 ≈ 6283 mrad；符号随转向，不受跨零误判影响
+            Sum_114514 += (int32_t)(menc15a_speed_data[0] * 20);
+
+            if(wifi_spi_inited)
+            {
+                char buf[64];
+                sprintf(buf, "%d,%d,%d,%d\n", (int)menc15a_absolute_data[0], (int)menc15a_absolute_offset_data[0], (int)menc15a_speed_data[0], Sum_114514);
+                wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
+            }
+        }
+
+        /* 屏幕显示更新（100ms 周期） */
+        if (Time_Count1 >= 10)  // 10ms * 10 显示周期
+        {
+            Time_Count1 = 0;
+
+            // ips200_printf(42 ,32 , "%d    ", (int)menc15a_absolute_data[0]);
+            // ips200_printf(130,32 , "%d    ", (int)menc15a_absolute_offset_data[0]);
+            // ips200_printf(42 ,48 , "%d    ", (int)menc15a_speed_data[0]);
         }
     }
 }

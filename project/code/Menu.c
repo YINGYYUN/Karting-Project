@@ -22,6 +22,8 @@ void Peripheral_Init(void)
 
     Motor_init();
 
+    menc15a_init();     // 磁编码器初始化（硬件 SPI2, P15.0/15.1/15.2/15.3）
+
     Param_Init();
 }
 

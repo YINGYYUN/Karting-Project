@@ -174,10 +174,10 @@ int16 menc15a_get_speed_data(menc15a_module_enum menc15a_module)
 //-------------------------------------------------------------------------------------------------------------------
 uint8 menc15a_init(void)
 {
-    spi_init(MENC15A_1_SPI, SPI_MODE0, MENC15A_1_SPI_SPEED, MENC15A_1_CLK_PIN, MENC15A_1_MOSI_PIN, MENC15A_1_MISO_PIN, SPI_CS_NULL);    // 配置 MENC15A-1 的 SPI端口
+    spi_init(MENC15A_1_SPI, SPI_MODE2, MENC15A_1_SPI_SPEED, MENC15A_1_CLK_PIN, MENC15A_1_MOSI_PIN, MENC15A_1_MISO_PIN, SPI_CS_NULL);    // 配置 MENC15A-1 的 SPI端口 (TLE5012B: CPOL=0, CPHA=1)
     gpio_init(MENC15A_1_CS_PIN, GPO, GPIO_HIGH, GPO_PUSH_PULL);                                                                         // 配置 MENC15A-1 的 CS端口
     
-    spi_init(MENC15A_2_SPI, SPI_MODE0, MENC15A_2_SPI_SPEED, MENC15A_2_CLK_PIN, MENC15A_2_MOSI_PIN, MENC15A_2_MISO_PIN, SPI_CS_NULL);    // 配置 MENC15A-2 的 SPI端口
+    spi_init(MENC15A_2_SPI, SPI_MODE2, MENC15A_2_SPI_SPEED, MENC15A_2_CLK_PIN, MENC15A_2_MOSI_PIN, MENC15A_2_MISO_PIN, SPI_CS_NULL);    // 配置 MENC15A-2 的 SPI端口 (TLE5012B: CPOL=0, CPHA=1)
     gpio_init(MENC15A_2_CS_PIN, GPO, GPIO_HIGH, GPO_PUSH_PULL);                                                                         // 配置 MENC15A-2 的 CS端口
     
     return 0;

@@ -43,8 +43,10 @@ int main(void)
     debug_info_init();                  // 调试串口信息初始化
 
     // 外设初始化
-    uint8 imu_ret = imu963ra_init();    // IMU963RA 初始化（硬件 SPI2, P15.x）
-    printf("[CM7_1] imu963ra_init ret=%d\n", imu_ret);
+    // 当DEFINE_IMU_ANALYSIS_MODE == 0时，IMU初始化和解算函数将不调用实际内容
+    // 0 - 初始化成功; 1 - 初始化失败; 4 - imu被禁用 
+    uint8 imu_ret = IMU_init();    // IMU963RA 初始化（硬件 SPI2, P15.x）
+    printf("[CM7_1] imu_init ret=%d\n", imu_ret);
     pit_ms_init(PIT_CH2, 10);           // 10ms 定时，IMU 解算（pit0_ch2_isr）
 
     while(true)

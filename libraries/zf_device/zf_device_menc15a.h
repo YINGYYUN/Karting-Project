@@ -56,7 +56,7 @@
 //================================================定义 MENC15A 基本配置================================================
 
 //====================================================硬件 SPI 驱动====================================================
-#define MENC15A_1_SPI_SPEED            (20 * 1000 * 1000)                        // 磁编码器1 硬件 SPI 速率
+#define MENC15A_1_SPI_SPEED            (8 * 1000 * 1000)                         // 磁编码器1 硬件 SPI 速率
 #define MENC15A_1_SPI                  (SPI_2           )                        // 磁编码器1 硬件 SPI 号
 #define MENC15A_1_CLK_PIN              (SPI2_CLK_P15_2  )                        // 磁编码器1 硬件 SPI SCK 引脚
 #define MENC15A_1_MOSI_PIN             (SPI2_MOSI_P15_1 )                        // 磁编码器1 硬件 SPI MOSI 引脚
@@ -65,7 +65,7 @@
 #define MENC15A_1_CS(x)                ((x) ? (gpio_high(MENC15A_1_CS_PIN)) : (gpio_low(MENC15A_1_CS_PIN)))
 
 
-#define MENC15A_2_SPI_SPEED            (20 * 1000 * 1000)                        // 磁编码器2 硬件 SPI 速率
+#define MENC15A_2_SPI_SPEED            (8 * 1000 * 1000)                         // 磁编码器2 硬件 SPI 速率
 #define MENC15A_2_SPI                  (SPI_2           )                        // 磁编码器2 硬件 SPI 号
 #define MENC15A_2_CLK_PIN              (SPI2_CLK_P15_2  )                        // 磁编码器2 硬件 SPI SCK 引脚
 #define MENC15A_2_MOSI_PIN             (SPI2_MOSI_P15_1 )                        // 磁编码器2 硬件 SPI MOSI 引脚
