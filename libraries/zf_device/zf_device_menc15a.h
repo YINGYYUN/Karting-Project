@@ -91,9 +91,12 @@ extern int16 menc15a_absolute_offset_data[2];
 
 extern int16  menc15a_speed_data[2];
 
+extern int16  menc15a_revolution_data[2];
+
 
 uint16 menc15a_get_absolute_data(menc15a_module_enum menc15a_module);
 int16  menc15a_get_speed_data(menc15a_module_enum menc15a_module);
+int16  menc15a_get_revolution_data(menc15a_module_enum menc15a_module);
 
 uint8  menc15a_init(void);
 

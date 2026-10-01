@@ -44,6 +44,9 @@
 uint16 Time_Count1 = 0;
 uint16 Time_Count2 = 0;
 
+// 全局毫秒计时（由 1ms 中断 pit0_ch10_isr 自增，永不复位，用于测量真实时间间隔）
+volatile uint32 Sys_Tick_Ms = 0;
+
 // 从 CM7_1 共享内存读到的 yaw（定义在 main_cm7_0.c）
 extern volatile int16 Yaw_Receive;
 
@@ -104,6 +107,8 @@ void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务
 {
     pit_isr_flag_clear(PIT_CH10);
     
+    // 1ms 全局毫秒计时（供编码器速度积分等需要真实时间间隔的地方使用）
+    Sys_Tick_Ms ++;
 }
 
 void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数      

@@ -62,6 +62,8 @@ int16 menc15a_absolute_offset_data[2] = {0};
 
 int16  menc15a_speed_data[2] = {0};
 
+int16  menc15a_revolution_data[2] = {0};
+
 //-------------------------------------------------------------------------------------------------------------------
 // 函数简介     计算编码器旋转偏差 
 // 参数说明     encoder_max     编码器精度  填写十进制数据
@@ -131,6 +133,9 @@ uint16 menc15a_get_absolute_data(menc15a_module_enum menc15a_module)
 // 返回参数     int16               转速数据(每秒旋转弧度 rad/s)       
 // 使用示例     menc15a_1_get_speed_data();                                  
 // 备注信息     执行该函数后，可直接使用返回值 也可以通过查询对应变量获取结果
+//              读命令 0x8031 = 读(bit15=1) + 默认访问(bits14:11=0) + 地址0x03(ASPD, bits9:4) + 1 个数据字(bits3:0=1)
+//              原库用 0x8032（2 个数据字），与角度用的 0x8021（1 个字）不一致，且驱动只消费 1 个字，
+//              多出的字疑为偶发错读的来源，故改为 1 个字
 //-------------------------------------------------------------------------------------------------------------------
 int16 menc15a_get_speed_data(menc15a_module_enum menc15a_module)
 {
@@ -140,7 +145,7 @@ int16 menc15a_get_speed_data(menc15a_module_enum menc15a_module)
     {
         MENC15A_1_CS(0);
       
-        read_data = spi_read_16bit_register(MENC15A_1_SPI, 0x8032);
+        read_data = spi_read_16bit_register(MENC15A_1_SPI, 0x8031);
         
         MENC15A_1_CS(1);
     }
@@ -148,7 +153,7 @@ int16 menc15a_get_speed_data(menc15a_module_enum menc15a_module)
     {
         MENC15A_2_CS(0);
       
-        read_data = spi_read_16bit_register(MENC15A_2_SPI, 0x8032);
+        read_data = spi_read_16bit_register(MENC15A_2_SPI, 0x8031);
         
         MENC15A_2_CS(1);
     }
@@ -160,9 +165,52 @@ int16 menc15a_get_speed_data(menc15a_module_enum menc15a_module)
         read_data = read_data - 32768;
     }
     
-    menc15a_speed_data[menc15a_module] = (int16)((float)read_data * 1.917476f);
+    // 速度标定系数：由实测标定得到
+    // 标定方法：转输出轴约 1 圈，比较 (AREV整圈数 × 6283.19) 与 速度积分 sum，两者之比即修正量
+    // 迭代过程：原库值 1.917476 → 2.273 → 2.36
+    menc15a_speed_data[menc15a_module] = (int16)((float)read_data * 2.36f);
     
     return menc15a_speed_data[menc15a_module];
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介     获取 MENC15A 磁编码器 的 圈数数据
+// 参数说明     menc15a_module      磁编码器 模块号
+// 返回参数     int16               圈数(编码器轴每转一整圈 ±1，9 位有符号)
+// 使用示例     menc15a_get_revolution_data(menc15a_1_module);
+// 备注信息     对应寄存器 AREV(0x04)；掉电清零，仅在通电期间有效（不可当上电绝对位置用）
+//-------------------------------------------------------------------------------------------------------------------
+int16 menc15a_get_revolution_data(menc15a_module_enum menc15a_module)
+{
+    int16 read_data = 0;
+    
+    if(menc15a_module == menc15a_1_module)
+    {
+        MENC15A_1_CS(0);
+        
+        read_data = (int16)spi_read_16bit_register(MENC15A_1_SPI, 0x8041);
+        
+        MENC15A_1_CS(1);
+    }
+    else
+    {
+        MENC15A_2_CS(0);
+        
+        read_data = (int16)spi_read_16bit_register(MENC15A_2_SPI, 0x8041);
+        
+        MENC15A_2_CS(1);
+    }
+    
+    // REVOL: bits[8:0] 9 位有符号圈数，bit8 为符号位
+    read_data = (int16)(read_data & 0x01ff);
+    if(read_data & 0x0100)
+    {
+        read_data = read_data - 0x0200;
+    }
+    
+    menc15a_revolution_data[menc15a_module] = read_data;
+    
+    return menc15a_revolution_data[menc15a_module];
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -174,11 +222,28 @@ int16 menc15a_get_speed_data(menc15a_module_enum menc15a_module)
 //-------------------------------------------------------------------------------------------------------------------
 uint8 menc15a_init(void)
 {
-    spi_init(MENC15A_1_SPI, SPI_MODE2, MENC15A_1_SPI_SPEED, MENC15A_1_CLK_PIN, MENC15A_1_MOSI_PIN, MENC15A_1_MISO_PIN, SPI_CS_NULL);    // 配置 MENC15A-1 的 SPI端口 (TLE5012B: CPOL=0, CPHA=1)
+    // 必须先配置 CS 并置高（未选中），再初始化 SPI
+    // 否则 spi_init 切换 CLK/MOSI 引脚复用时的电平毛刺会被 TLE5012B 误判为一次通信帧，导致其 SSC 状态机卡死、后续读取失败
     gpio_init(MENC15A_1_CS_PIN, GPO, GPIO_HIGH, GPO_PUSH_PULL);                                                                         // 配置 MENC15A-1 的 CS端口
-    
-    spi_init(MENC15A_2_SPI, SPI_MODE2, MENC15A_2_SPI_SPEED, MENC15A_2_CLK_PIN, MENC15A_2_MOSI_PIN, MENC15A_2_MISO_PIN, SPI_CS_NULL);    // 配置 MENC15A-2 的 SPI端口 (TLE5012B: CPOL=0, CPHA=1)
+    spi_init(MENC15A_1_SPI, SPI_MODE2, MENC15A_1_SPI_SPEED, MENC15A_1_CLK_PIN, MENC15A_1_MOSI_PIN, MENC15A_1_MISO_PIN, SPI_CS_NULL);    // 配置 MENC15A-1 的 SPI端口 (TLE5012B: CPOL=0, CPHA=1)
+
     gpio_init(MENC15A_2_CS_PIN, GPO, GPIO_HIGH, GPO_PUSH_PULL);                                                                         // 配置 MENC15A-2 的 CS端口
+    spi_init(MENC15A_2_SPI, SPI_MODE2, MENC15A_2_SPI_SPEED, MENC15A_2_CLK_PIN, MENC15A_2_MOSI_PIN, MENC15A_2_MISO_PIN, SPI_CS_NULL);    // 配置 MENC15A-2 的 SPI端口 (TLE5012B: CPOL=0, CPHA=1)
+
+    // 软复位 TLE5012B：向其 ACSTAT 寄存器(地址 0x01)的 ASRST 位(bit0)写 1
+    // 目的：MCU 复位瞬间 SPI 引脚(CLK/MOSI/CS)会释放并可能产生毛刺，被 TLE5012B 误判为通信帧后
+    //       其 SSC 状态机会错位且不会自恢复。这里在初始化时强制芯片做一次硬复位，回到干净状态。
+    // 写命令字 0x0011 = 写(bit15=0) + 默认访问(bits14:11=0) + 地址 0x01(bits9:4) + 1 个数据字(bits3:0=1)
+    MENC15A_1_CS(0);
+    spi_write_16bit_register(MENC15A_1_SPI, 0x0011, 0x0001);
+    MENC15A_1_CS(1);
+
+    MENC15A_2_CS(0);
+    spi_write_16bit_register(MENC15A_2_SPI, 0x0011, 0x0001);
+    MENC15A_2_CS(1);
+
+    // 硬件复位后需等待上电时间(最大 7ms)与上电自检(BIST)完成后才能访问
+    system_delay_ms(10);
     
     return 0;
 }

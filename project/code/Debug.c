@@ -9,6 +9,8 @@
 // 从 CM7_1 收到的 yaw（定点，0.01°/LSB），定义在 main_cm7_0.c
 extern volatile int16 Yaw_Receive;
 extern volatile uint8 wifi_spi_inited;
+// 全局毫秒计时（定义在 cm7_0_isr.c），用于按真实时间积分
+extern volatile uint32 Sys_Tick_Ms;
 
 /**********************************************************/
 /*[S] 界面样式 [S]----------------------------------------*/
@@ -767,7 +769,10 @@ int Debug_MENC15A(void)
     Time_Count1 = 0;
     Time_Count2 = 0;
 
-    int32_t Sum_114514 = 0;
+    int32_t menc15a_sum = 0;
+
+    // 上次积分时刻（用于按真实时间间隔积分，避免循环体耗时被算进周期）
+    uint32 menc15a_last_ms = Sys_Tick_Ms;
 
     while(1)
     {
@@ -778,22 +783,51 @@ int Debug_MENC15A(void)
             return 0;
         }
 
-        /* 数据读取 + WiFi 发送（10ms 周期，与屏幕显示错峰） */
-        if (Time_Count2 >= 2)   // 10ms * 2 发送周期
+        /* 数据读取 + WiFi 发送（约 20ms 周期，按真实时间间隔积分） */
+        uint32 now_ms  = Sys_Tick_Ms;
+        uint16 dt_real = (uint16)(now_ms - menc15a_last_ms);
+        if (dt_real >= 20)
         {
-            Time_Count2 = 0;
+            menc15a_last_ms = now_ms;
+
+            // 单次积分时长限幅保护：
+            // 若循环被意外阻塞（长时间 LCD 刷新、WiFi 卡顿等），间隔会被拉得很长，
+            // 而积分是"当前速度 × 间隔"，等于把整段时长都按这一个瞬时速度计入，误差很大。
+            // 故单次最多按 50ms 计，把单次误差限制住。
+            uint16 dt_ms = (dt_real > 50) ? 50 : dt_real;
 
             // 读取磁编码器的绝对值 / 转速数据
             menc15a_get_absolute_data(menc15a_1_module);
             menc15a_get_speed_data   (menc15a_1_module);
-            // 速度积分（替代直接累加增量）：角速度(rad/s) × 采样周期(20ms)
-            // Sum_114514 单位：毫弧度(mrad)，一圈 = 2π×1000 ≈ 6283 mrad；符号随转向，不受跨零误判影响
-            Sum_114514 += (int32_t)(menc15a_speed_data[0] * 20);
+            // 速度积分：角速度(rad/s) × 真实间隔(ms) = 毫弧度(mrad)，一圈 = 2π×1000 ≈ 6283 mrad
+            // 注意：必须用真实 dt，不能用固定 20ms —— 循环体（SPI 读 + WiFi 发送）耗时会让实际周期变长
+            int16 spd = menc15a_speed_data[0]; 
+            // SPI 偶发错读会读出固定的异常字（换算后约 ±20000 rad/s 量级），远超本机构物理上限
+            // 先在原位重读一次：能救回真实值，避免"整段 20ms 角度被丢弃"造成积分整体偏小
+            if (spd > 15000 || spd < -15000)
+            {
+                menc15a_get_speed_data(menc15a_1_module);
+                spd = menc15a_speed_data[0];
+                if (spd > 15000 || spd < -15000) spd = 0;   // 重读仍异常才丢弃
+            }
+            // ±10 rad/s 为死区，速度原始值的噪声基本被去除（折算到输出轴仅 0.05 rad/s，不影响真实转向）
+            if (spd >= -10 && spd <= 10) spd = 0; 
+            menc15a_sum += (int32_t)spd * (int32_t)dt_ms;
+
+            // AREV 圈数原始值（编码器轴每转一整圈 ±1，9 位有符号）
+            // 需要转了几圈时，直接用首尾两个 arev_now 相减即可
+            menc15a_get_revolution_data(menc15a_1_module);
+            int16 arev_now = menc15a_revolution_data[0];
+
+            // 输出轴角度（编码器在电机轴侧，三级齿轮减速比 (67/12)×(50/8)×(44/8) = 191.927）
+            // menc15a_sum 为编码器轴毫弧度(mrad)，换算到输出轴毫度(0.001°)：
+            // out_mdeg = sum × 360000 / (191.927 × 2π×1000) ≈ sum × 298529 / 1000000
+            int32_t out_mdeg = (int32_t)((int64_t)menc15a_sum * 298529 / 1000000);
 
             if(wifi_spi_inited)
             {
-                char buf[64];
-                sprintf(buf, "%d,%d,%d,%d\n", (int)menc15a_absolute_data[0], (int)menc15a_absolute_offset_data[0], (int)menc15a_speed_data[0], Sum_114514);
+                char buf[80];
+                sprintf(buf, "%d,%d,%d,%d,%d,%d,%d\n", (int)menc15a_absolute_data[0], (int)menc15a_absolute_offset_data[0], (int)menc15a_speed_data[0], menc15a_sum, out_mdeg, (int)arev_now, (int)dt_ms);
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }

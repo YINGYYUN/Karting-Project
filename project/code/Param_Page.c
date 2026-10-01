@@ -16,7 +16,7 @@ static void param_page_init(void)
     menu_reset();       // 清空旧菜单
 
     // 电机接口 1 PID
-    Menu_Item *folder_m1 = DynamicCreate_Menu_Folder(&head, "Motor_FL_PID");
+    Menu_Item *folder_m1 = DynamicCreate_Menu_Folder(&head, "Motor_1_PID");
     DynamicCreate_Menu_LimitNumber(folder_m1, "KP", &MOTOR_1_KP, float_Box, 0, 70);
     DynamicCreate_Menu_LimitNumber(folder_m1, "KI", &MOTOR_1_KI, float_Box, 0, 70);
     DynamicCreate_Menu_LimitNumber(folder_m1, "KD", &MOTOR_1_KD, float_Box, 0, 70);
