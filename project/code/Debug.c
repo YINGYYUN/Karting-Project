@@ -26,6 +26,7 @@ void Debug_Page_Menu_UI(void)
     ips200_show_string(10 ,64 , "MOTOR-PID");
     ips200_show_string(10 ,80 , "IMU");
     ips200_show_string(10 ,96 , "MENC15A");
+    ips200_show_string(10 ,112, "ABS-ENC");
 }
 
 // [三级界面]电机调试界面
@@ -87,13 +88,24 @@ void Debug_IMU_UI(void)
 }
 
 // [三级界面]磁编码器调试界面
-// MENC15A 15位磁编码器（硬件 SPI2, P15.0/15.1/15.2/15.3）
+// MENC15A 15位磁编码器（硬件 SPI3/SCB6, P3.0/3.1/3.2, CS P3.3）
 void Debug_MENC15A_UI(void)
 {
     ips200_show_string(8  ,0  , "[DEBUG]-MENC15A");
     ips200_show_string(0  ,16 , "==============================");
     ips200_show_string(10 ,32 , "ABS:#####  OFF:#####");
     ips200_show_string(10 ,48 , "SPD:#####");
+}
+
+// [三级界面]绝对值角度编码器调试界面
+// 逐飞 360° 绝对式角度传感器（硬件 SPI4/SCB5, P7.0/7.1/7.2, CS P7.3）
+// ANG 为原始值 0~4095 对应 0~360°，DEG 为换算后的 0.1° 单位值
+void Debug_ABS_ENCODER_UI(void)
+{
+    ips200_show_string(8  ,0  , "[DEBUG]-ABS-ENC");
+    ips200_show_string(0  ,16 , "==============================");
+    ips200_show_string(10 ,32 , "ANG:#####  OFF:#####");
+    ips200_show_string(10 ,48 , "DEG:#####");
 }
 
 /**********************************************************/
@@ -111,6 +123,7 @@ int Debug_Motor         (void);
 int Debug_Motor_PID     (void);
 int Debug_IMU           (void);
 int Debug_MENC15A       (void);
+int Debug_ABS_ENCODER   (void);
 
 // [二级界面]Debug模式界面
 int Debug_Page_Menu(void)
@@ -139,14 +152,14 @@ int Debug_Page_Menu(void)
             key_clear_state(KEY_UP);
             key_pressed = 1;
             Debug_Page_flag --;
-            if (Debug_Page_flag < 1)Debug_Page_flag = 5;
+            if (Debug_Page_flag < 1)Debug_Page_flag = 6;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
         {
             key_clear_state(KEY_DOWN); 
             key_pressed = 1;
             Debug_Page_flag ++;
-            if (Debug_Page_flag > 5)Debug_Page_flag = 1;
+            if (Debug_Page_flag > 6)Debug_Page_flag = 1;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
@@ -206,6 +219,16 @@ int Debug_Page_Menu(void)
         {
             ips200_clear();
             Debug_MENC15A();
+
+            // 从子界面返回后
+            ips200_clear();
+            Debug_Page_Menu_UI();
+            key_pressed = 1;
+        }
+        else if (Debug_Page_flag_temp == 6)
+        {
+            ips200_clear();
+            Debug_ABS_ENCODER();
 
             // 从子界面返回后
             ips200_clear();
@@ -840,6 +863,68 @@ int Debug_MENC15A(void)
             // ips200_printf(42 ,32 , "%d    ", (int)menc15a_absolute_data[0]);
             // ips200_printf(130,32 , "%d    ", (int)menc15a_absolute_offset_data[0]);
             // ips200_printf(42 ,48 , "%d    ", (int)menc15a_speed_data[0]);
+        }
+    }
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// [三级界面]绝对值角度编码器调试
+// 逐飞 360° 绝对式角度传感器（硬件 SPI4/SCB5, P7.0/7.1/7.2, CS P7.3）
+// 该传感器是绝对式，上电即可读到当前角度，不需要积分、也不存在累积漂移
+//-------------------------------------------------------------------------------------------------------------------
+int Debug_ABS_ENCODER(void)
+{
+    Debug_ABS_ENCODER_UI();
+
+    // 参考计时值重置
+    Time_Count1 = 0;
+    Time_Count2 = 0;
+
+    int16   abs_enc_ang = 0;            // 当前绝对角度 原始值 0 ~ 4095
+    int16   abs_enc_off = 0;            // 相对上一次读取位置的偏移（超过半圈按最短路径）
+    int32_t abs_enc_deg = 0;            // 换算后的角度 单位 0.1°（0 ~ 3600）
+
+    // 进界面先读一次：把"进界面这一瞬"作为基准
+    // 否则第一次读到的偏移是从上电到现在的累计变化量，看起来会是一个大数
+    absolute_encoder_get_location();
+
+    while(1)
+    {
+        if (KEY_SHORT_PRESS == key_get_state(KEY_BACK))
+        {
+            key_clear_state(KEY_BACK);
+            // 返回上一级界面
+            return 0;
+        }
+
+        /* 数据读取 + WiFi 发送（约 20ms 周期） */
+        if (Time_Count2 >= 2)   // 10ms * 2
+        {
+            Time_Count2 = 0;
+
+            // 读取当前绝对角度（12 位，0~4095 对应 0~360°）
+            // 注意：该函数内部会更新 now/last，所以偏移值必须在它之后读取
+            abs_enc_ang = absolute_encoder_get_location();
+            abs_enc_off = absolute_encoder_get_offset();
+            // 换算成 0.1° 单位：4096 计数 = 360.0° → ang × 3600 / 4096
+            abs_enc_deg = (int32_t)abs_enc_ang * 3600 / 4096;
+
+            if(wifi_spi_inited)
+            {
+                char buf[48];
+                sprintf(buf, "%d,%d,%d\n", (int)abs_enc_ang, (int)abs_enc_off, (int)abs_enc_deg);
+                wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
+            }
+        }
+
+        /* 屏幕显示更新（100ms 周期） */
+        if (Time_Count1 >= 10)  // 10ms * 10 显示周期
+        {
+            Time_Count1 = 0;
+
+            ips200_printf(42 ,32 , "%d    ", (int)abs_enc_ang);
+            ips200_printf(130,32 , "%d    ", (int)abs_enc_off);
+            ips200_printf(42 ,48 , "%d    ", (int)abs_enc_deg);
         }
     }
 }

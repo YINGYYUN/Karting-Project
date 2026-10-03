@@ -57,28 +57,21 @@
 
 //====================================================硬件 SPI 驱动====================================================
 #define MENC15A_1_SPI_SPEED            (8 * 1000 * 1000)                         // 磁编码器1 硬件 SPI 速率
-#define MENC15A_1_SPI                  (SPI_2           )                        // 磁编码器1 硬件 SPI 号
-#define MENC15A_1_CLK_PIN              (SPI2_CLK_P15_2  )                        // 磁编码器1 硬件 SPI SCK 引脚
-#define MENC15A_1_MOSI_PIN             (SPI2_MOSI_P15_1 )                        // 磁编码器1 硬件 SPI MOSI 引脚
-#define MENC15A_1_MISO_PIN             (SPI2_MISO_P15_0 )                        // 磁编码器1 硬件 SPI MISO 引脚
-#define MENC15A_1_CS_PIN               (P15_3)                                   // 磁编码器1 CS 片选引脚
+#define MENC15A_1_SPI                  (SPI_3           )                        // 磁编码器1 硬件 SPI 号   (SCB6)
+#define MENC15A_1_CLK_PIN              (SPI3_CLK_P03_2  )                        // 磁编码器1 硬件 SPI SCK 引脚   P3.2
+#define MENC15A_1_MOSI_PIN             (SPI3_MOSI_P03_1 )                        // 磁编码器1 硬件 SPI MOSI 引脚  P3.1
+#define MENC15A_1_MISO_PIN             (SPI3_MISO_P03_0 )                        // 磁编码器1 硬件 SPI MISO 引脚  P3.0
+#define MENC15A_1_CS_PIN               (P03_3)                                   // 磁编码器1 CS 片选引脚         P3.3
 #define MENC15A_1_CS(x)                ((x) ? (gpio_high(MENC15A_1_CS_PIN)) : (gpio_low(MENC15A_1_CS_PIN)))
 
-
-#define MENC15A_2_SPI_SPEED            (8 * 1000 * 1000)                         // 磁编码器2 硬件 SPI 速率
-#define MENC15A_2_SPI                  (SPI_2           )                        // 磁编码器2 硬件 SPI 号
-#define MENC15A_2_CLK_PIN              (SPI2_CLK_P15_2  )                        // 磁编码器2 硬件 SPI SCK 引脚
-#define MENC15A_2_MOSI_PIN             (SPI2_MOSI_P15_1 )                        // 磁编码器2 硬件 SPI MOSI 引脚
-#define MENC15A_2_MISO_PIN             (SPI2_MISO_P15_0 )                        // 磁编码器2 硬件 SPI MISO 引脚
-#define MENC15A_2_CS_PIN               (P14_1)                                   // 磁编码器2 CS 片选引脚
-#define MENC15A_2_CS(x)                ((x) ? (gpio_high(MENC15A_2_CS_PIN)) : (gpio_low(MENC15A_2_CS_PIN)))
+// 【说明】本项目只使用 1 个磁编码器，且 P7.x(SCB5) 已留给其它 SPI 设备，
+//         因此不再提供“磁编码器2”的引脚配置与初始化。
 //====================================================硬件 SPI 驱动====================================================
 
-// 枚举磁编码模块
+// 枚举磁编码模块（仅 1 路：模块2 的 P7.x/SCB5 已让给其它 SPI 设备）
 typedef enum 
 {
 	menc15a_1_module,
-        menc15a_2_module,
         
 }menc15a_module_enum;
 

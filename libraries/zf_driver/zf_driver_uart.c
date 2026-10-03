@@ -167,6 +167,7 @@ static void get_uart_config(uart_config_struct *config_struct, uart_tx_pin_enum 
         {
             config_struct->tx_port  = GPIO_PRT4 ;  	
             config_struct->tx_pin   = 1;      
+            // 【禁止使用】UART_1=SCB5 已让位给 SPI_4
             config_struct->tx_hsiom = P4_1_SCB5_UART_TX; 
             config_struct->uart_pclk= PCLK_SCB5_CLOCK;
             config_struct->uart_irqn= scb_5_interrupt_IRQn;
@@ -215,6 +216,7 @@ static void get_uart_config(uart_config_struct *config_struct, uart_tx_pin_enum 
         {
             config_struct->tx_port  = GPIO_PRT3;  	
             config_struct->tx_pin   = 1;      
+            // 【禁止使用】UART_6=SCB6 已让位给 SPI_3，且 P3.1 与 SPI_3 的 MOSI 重合
             config_struct->tx_hsiom = P3_1_SCB6_UART_TX; 
             config_struct->uart_pclk= PCLK_SCB6_CLOCK;
             config_struct->uart_irqn= scb_6_interrupt_IRQn;
@@ -235,6 +237,7 @@ static void get_uart_config(uart_config_struct *config_struct, uart_tx_pin_enum 
         {
             config_struct->rx_port  = GPIO_PRT4 ;  	
             config_struct->rx_pin   = 0;      
+            // 【禁止使用】UART_1=SCB5 已让位给 SPI_4
             config_struct->rx_hsiom = P4_0_SCB5_UART_RX;
             config_struct->uart_pclk= PCLK_SCB5_CLOCK;
             config_struct->uart_irqn= scb_5_interrupt_IRQn;
@@ -283,6 +286,7 @@ static void get_uart_config(uart_config_struct *config_struct, uart_tx_pin_enum 
         {
             config_struct->rx_port  = GPIO_PRT3;  	
             config_struct->rx_pin   = 0;      
+            // 【禁止使用】UART_6=SCB6 已让位给 SPI_3，且 P3.0 与 SPI_3 的 MISO 重合
             config_struct->rx_hsiom = P3_0_SCB6_UART_RX; 
             config_struct->uart_pclk= PCLK_SCB6_CLOCK;
             config_struct->uart_irqn= scb_6_interrupt_IRQn;
@@ -304,11 +308,13 @@ volatile stc_SCB_t* get_scb_module(uart_index_enum uart_n)
     switch(uart_n)
     {
         case UART_0: temp_module = SCB0; break;
+        // 【禁止使用】UART_1=SCB5 已让位给 SPI_4（CLK P7.2 / MOSI P7.1 / MISO P7.0 / SEL0 P7.3）
         case UART_1: temp_module = SCB5; break;
         case UART_2: temp_module = SCB4; break;
         case UART_3: temp_module = SCB3; break;
         case UART_4: temp_module = SCB2; break;
         case UART_5: temp_module = SCB7; break;
+        // 【禁止使用】UART_6=SCB6 已让位给 SPI_3（CLK P3.2 / MOSI P3.1 / MISO P3.0 / SEL0 P3.3）
         case UART_6: temp_module = SCB6; break;
         default: zf_assert(0);     break;
     }

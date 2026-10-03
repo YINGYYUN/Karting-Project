@@ -46,8 +46,11 @@
 
 #define SPI_FREQ       CY_INITIAL_TARGET_PERI_FREQ                             // 串口模块时钟 默认80M
 
-volatile stc_SCB_t*        spi_module[4] = {SCB7, SCB8, SCB9, SCB6};
-spi_cs_pin_enum             cs_pin_save[4];
+volatile stc_SCB_t*        spi_module[5] = {SCB7, SCB8, SCB9, SCB6, SCB5};
+spi_cs_pin_enum             cs_pin_save[5];
+
+// 各 SPI 实例对应的外设时钟目标：SPI_0~SPI_4 → SCB7 / SCB8 / SCB9 / SCB6 / SCB5
+static const uint32         spi_pclk_dst[5] = {PCLK_SCB7_CLOCK, PCLK_SCB8_CLOCK, PCLK_SCB9_CLOCK, PCLK_SCB6_CLOCK, PCLK_SCB5_CLOCK};
 //-------------------------------------------------------------------------------------------------------------------
 // 函数简介       SPI获取时钟引脚号
 // 参数说明       clk_pin     时钟引脚 参照 zf_driver_spi.h 内 spi_clk_pin_enum 枚举体定义
@@ -65,6 +68,7 @@ static gpio_pin_enum spi_get_clk_pin (spi_clk_pin_enum clk_pin)
         case SPI1_CLK_P12_2: temp_clk_pin = P12_2; break;
         case SPI2_CLK_P15_2: temp_clk_pin = P15_2; break;
         case SPI3_CLK_P03_2: temp_clk_pin = P03_2; break;
+        case SPI4_CLK_P07_2: temp_clk_pin = P07_2; break;
     }
     
     return temp_clk_pin;
@@ -87,6 +91,7 @@ static gpio_pin_enum spi_get_mosi_pin (spi_mosi_pin_enum mosi_pin)
         case SPI1_MOSI_P12_1: temp_mosi_pin = P12_1; break;
         case SPI2_MOSI_P15_1: temp_mosi_pin = P15_1; break;
         case SPI3_MOSI_P03_1: temp_mosi_pin = P03_1; break;
+        case SPI4_MOSI_P07_1: temp_mosi_pin = P07_1; break;
     }
     
     return temp_mosi_pin;
@@ -109,6 +114,7 @@ static gpio_pin_enum spi_get_miso_pin (spi_miso_pin_enum miso_pin)
         case SPI1_MISO_P12_0: temp_miso_pin = P12_0; break;
         case SPI2_MISO_P15_0: temp_miso_pin = P15_0; break;
         case SPI3_MISO_P03_0: temp_miso_pin = P03_0; break;
+        case SPI4_MISO_P07_0: temp_miso_pin = P07_0; break;
     }
     
     return temp_miso_pin;
@@ -134,6 +140,8 @@ static gpio_pin_enum spi_get_cs_pin (spi_cs_pin_enum cs_pin)
         case SPI2_CS3_P05_1: temp_cs_pin = P05_1; break;
         case SPI3_CS0_P03_3: temp_cs_pin = P03_3; break;
         case SPI3_CS1_P03_4: temp_cs_pin = P03_4; break;
+        case SPI4_CS0_P07_3: temp_cs_pin = P07_3; break;
+        case SPI4_CS1_P07_4: temp_cs_pin = P07_4; break;
     }
     return temp_cs_pin;
 }
@@ -155,6 +163,7 @@ static en_hsiom_sel_t spi_get_clk_hsiom (spi_clk_pin_enum clk_pin)
         case SPI1_CLK_P12_2: temp_clk_hsiom = P12_2_SCB8_SPI_CLK; break;    
         case SPI2_CLK_P15_2: temp_clk_hsiom = P15_2_SCB9_SPI_CLK; break;    
         case SPI3_CLK_P03_2: temp_clk_hsiom = P3_2_SCB6_SPI_CLK; break;    
+        case SPI4_CLK_P07_2: temp_clk_hsiom = P7_2_SCB5_SPI_CLK; break;    
     }
     
     return temp_clk_hsiom;
@@ -177,6 +186,7 @@ static en_hsiom_sel_t spi_get_mosi_hsiom (spi_mosi_pin_enum mosi_pin)
         case SPI1_MOSI_P12_1: temp_mosi_hsiom =  P12_1_SCB8_SPI_MOSI; break;     
         case SPI2_MOSI_P15_1: temp_mosi_hsiom =  P15_1_SCB9_SPI_MOSI; break;     
         case SPI3_MOSI_P03_1: temp_mosi_hsiom =  P3_1_SCB6_SPI_MOSI; break;     
+        case SPI4_MOSI_P07_1: temp_mosi_hsiom =  P7_1_SCB5_SPI_MOSI; break;     
     }
     
     return temp_mosi_hsiom;
@@ -199,6 +209,7 @@ static en_hsiom_sel_t spi_get_miso_hsiom (spi_miso_pin_enum miso_pin)
         case SPI1_MISO_P12_0: temp_miso_hsiom =  P12_0_SCB8_SPI_MISO; break;     
         case SPI2_MISO_P15_0: temp_miso_hsiom =  P15_0_SCB9_SPI_MISO; break;  
         case SPI3_MISO_P03_0: temp_miso_hsiom =  P3_0_SCB6_SPI_MISO; break;     
+        case SPI4_MISO_P07_0: temp_miso_hsiom =  P7_0_SCB5_SPI_MISO; break;     
     }
     
     return temp_miso_hsiom;
@@ -224,6 +235,8 @@ static en_hsiom_sel_t spi_get_cs_hsiom (spi_cs_pin_enum cs_pin)
         case SPI2_CS3_P05_1: temp_cs_hsiom =  P5_1_SCB9_SPI_SELECT3; break;
         case SPI3_CS0_P03_3: temp_cs_hsiom =  P3_3_SCB6_SPI_SELECT0; break;
         case SPI3_CS1_P03_4: temp_cs_hsiom =  P3_4_SCB6_SPI_SELECT1; break;
+        case SPI4_CS0_P07_3: temp_cs_hsiom =  P7_3_SCB5_SPI_SELECT0; break;
+        case SPI4_CS1_P07_4: temp_cs_hsiom =  P7_4_SCB5_SPI_SELECT1; break;
     }
     return temp_cs_hsiom;
 }
@@ -955,6 +968,8 @@ void spi_init (spi_index_enum spi_n, spi_mode_enum mode, uint32 baud, spi_clk_pi
     uint32                      divSetting_float                = (uint32)((double)(SPI_FREQ - divSetting_int * targetFreq) / (double)targetFreq * 32.0f);
     cy_stc_gpio_pin_config_t    spi_pin_cfg                     = {0};
     cy_stc_scb_spi_config_t     spi_config                      = {0};
+    en_clk_dst_t                spi_clk_dst                     = (en_clk_dst_t)spi_pclk_dst[spi_n];
+    uint8                       spi_div_num                     = (uint8)((uint32)spi_n + 7);
     
     // 醒醒，模块号和端口都不对应怎么能初始化呢？
     zf_assert((uint8)spi_n == (uint8)clk_pin ? 1 : 0);
@@ -981,9 +996,10 @@ void spi_init (spi_index_enum spi_n, spi_mode_enum mode, uint32 baud, spi_clk_pi
         Cy_GPIO_Pin_Init(get_port(spi_get_cs_pin(cs_pin)), (spi_get_cs_pin(cs_pin) % 8), &spi_pin_cfg);
     }
     
-    Cy_SysClk_PeriphAssignDivider((en_clk_dst_t)((uint32)PCLK_SCB6_CLOCK + ((uint32)spi_n < 3 ? (uint32)spi_n + 1 : 0)), CY_SYSCLK_DIV_24_5_BIT, ((uint8)spi_n + 7));
-    Cy_SysClk_PeriphSetFracDivider(Cy_SysClk_GetClockGroup((en_clk_dst_t)((uint32)PCLK_SCB6_CLOCK + ((uint32)spi_n < 3 ? (uint32)spi_n + 1 : 0))), CY_SYSCLK_DIV_24_5_BIT, ((uint8)spi_n + 7), (divSetting_int - 1), divSetting_float);
-    Cy_SysClk_PeriphEnableDivider(Cy_SysClk_GetClockGroup((en_clk_dst_t)((uint32)PCLK_SCB6_CLOCK + ((uint32)spi_n < 3 ? (uint32)spi_n + 1 : 0))), CY_SYSCLK_DIV_24_5_BIT, ((uint8)spi_n + 7));
+    // 按 SPI 实例取对应的 SCB 时钟目标与分频器编号（SPI_0~SPI_4 → SCB7/SCB8/SCB9/SCB6/SCB5，分频器编号 7~11）
+    Cy_SysClk_PeriphAssignDivider(spi_clk_dst, CY_SYSCLK_DIV_24_5_BIT, spi_div_num);
+    Cy_SysClk_PeriphSetFracDivider(Cy_SysClk_GetClockGroup(spi_clk_dst), CY_SYSCLK_DIV_24_5_BIT, spi_div_num, (divSetting_int - 1), divSetting_float);
+    Cy_SysClk_PeriphEnableDivider(Cy_SysClk_GetClockGroup(spi_clk_dst), CY_SYSCLK_DIV_24_5_BIT, spi_div_num);
     
     switch(mode)
     {

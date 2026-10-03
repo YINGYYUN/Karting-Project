@@ -22,7 +22,9 @@ void Peripheral_Init(void)
 
     Motor_init();
 
-    menc15a_init();     // 磁编码器初始化（硬件 SPI2, P15.0/15.1/15.2/15.3）
+    menc15a_init();     // 磁编码器初始化（硬件 SPI3/SCB6, P3.0/3.1/3.2/3.3）
+
+    absolute_encoder_init();    // 绝对值角度编码器初始化（硬件 SPI4/SCB5, P7.0/7.1/7.2, CS P7.3）
 
     Param_Init();
 }

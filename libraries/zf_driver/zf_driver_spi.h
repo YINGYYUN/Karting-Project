@@ -45,6 +45,7 @@ typedef enum        				// SPI模块号
     SPI_1,
     SPI_2,
     SPI_3,
+    SPI_4,
 }spi_index_enum;
 
 typedef enum        				// 枚举 SPI 模式 此枚举定义不允许用户修改
@@ -64,6 +65,8 @@ typedef enum                           	// 枚举SPI CLK引脚 此枚举定义�
     SPI2_CLK_P15_2,				// SPI2 CLK 引脚可选范围
     
     SPI3_CLK_P03_2,				// SPI3 CLK 引脚可选范围
+
+    SPI4_CLK_P07_2,				// SPI4 CLK 引脚可选范围 (SCB5)
 }spi_clk_pin_enum;
 
 typedef enum                       		// 枚举SPI MOSI引脚 此枚举定义不允许用户修改
@@ -75,6 +78,8 @@ typedef enum                       		// 枚举SPI MOSI引脚 此枚举定义不�
     SPI2_MOSI_P15_1,                  	        // SPI2 MOSI引脚可选范围
     
     SPI3_MOSI_P03_1,                  	        // SPI3 MOSI引脚可选范围
+
+    SPI4_MOSI_P07_1,                  	        // SPI4 MOSI引脚可选范围 (SCB5)
 }spi_mosi_pin_enum;
 
 typedef enum             			// 枚举SPI MISO引脚 此枚举定义不允许用户修改
@@ -86,6 +91,8 @@ typedef enum             			// 枚举SPI MISO引脚 此枚举定义不允许用�
     SPI2_MISO_P15_0, 				// SPI2 MISO引脚可选范围
     
     SPI3_MISO_P03_0, 				// SPI3 MISO引脚可选范围
+
+    SPI4_MISO_P07_0, 				// SPI4 MISO引脚可选范围 (SCB5)
 	
     SPI_MISO_NULL,
 }spi_miso_pin_enum;
@@ -103,7 +110,10 @@ typedef enum                       		// 枚举SPI CS引脚 此枚举定义不允
 	
     SPI3_CS0_P03_3,                             // SPI3 CS0 引脚可选范围
     SPI3_CS1_P03_4,
-    
+
+    SPI4_CS0_P07_3,                             // SPI4 CS0 引脚可选范围 (SCB5)
+    SPI4_CS1_P07_4,
+
     SPI_CS_NULL,
 }spi_cs_pin_enum;
 
