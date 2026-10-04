@@ -6,23 +6,17 @@
 #include "Param_Storage.h"
 
 
-// 4 个电机的增量式 PID（定义于 PID.c）
-extern PID_INC_t Motor_1_PID;           // 电机接口 1
-extern PID_INC_t Motor_2_PID;           // 电机接口 2
-extern PID_INC_t Motor_3_PID;           // 电机接口 3
-extern PID_INC_t Motor_4_PID;           // 电机接口 4
+// 两路后轮速度闭环的增益（定义于 Motor_Crtl.c）
+// 注意：Motor_LR_Crtl / Motor_RR_Crtl 已在 Motor_Crtl.h 中声明
 
 
 // 默认参数值(首次使用或恢复出厂设置时使用)
+// 参数尚未标定，默认全部为 0（此时闭环输出恒为 0，安全）
 static const float DEFAULT_PARAMS[PARAM_COUNT] = {
-    // Motor_1_PID
-    4.0f, 0.6f, 1.0f,       // KP, KI, KD
-    // Motor_2_PID
-    4.0f, 0.6f, 1.0f,       // KP, KI, KD
-    // Motor_3_PID
-    4.0f, 0.6f, 1.0f,       // KP, KI, KD
-    // Motor_4_PID
-    4.0f, 0.6f, 1.0f,       // KP, KI, KD
+    // 左后轮：inv_K, u0, k_v, k_z
+    0.0f, 0.0f, 0.0f, 0.0f,
+    // 右后轮：inv_K, u0, k_v, k_z
+    0.0f, 0.0f, 0.0f, 0.0f,
 };
 
 // 参数缓存区(菜单直接修改此数组, Flash 读写也通过此数组)
@@ -54,25 +48,16 @@ static void copy_flash_buffer_to_cache(void)
 // 校验参数是否合法(异常值无效)
 static uint8_t param_cache_is_valid(void)
 {
-    uint8_t kp_nonzero = 0;
-
     for (uint8_t i = 0; i < PARAM_COUNT; i++)
     {
-        // 范围检查
+        // 范围检查（Flash 空白/损坏时读出的浮点会远超此范围）
         if (param_cache[i] > 10000.0f || param_cache[i] < -10000.0f)
             return 0;
-
-        // 任意一个 Kp 非零即认为有效
-        // 只是采样检验有效性，后续参数不必要参与该判定
-        if (i == MOTOR_1_KP_IDX || i == MOTOR_2_KP_IDX ||
-            i == MOTOR_3_KP_IDX || i == MOTOR_4_KP_IDX)
-        {
-            if (param_cache[i] > 0.0001f || param_cache[i] < -0.0001f)
-                kp_nonzero = 1;
-        }
     }
 
-    return kp_nonzero;
+    // 注意：不要求"至少一个增益非零"。参数未标定时默认全 0，
+    // 若按旧逻辑（要求 Kp 非零）会判定为无效并每次上电重写 Flash。
+    return 1;
 }
 /**********************************************************/
 /*----------------------------------------[E] 内部函数 [E]*/
@@ -130,21 +115,15 @@ void Param_Erase(void)
 // 将缓存区值同步到实际应用参数
 void Flash_SyncTo_Param(void)
 {
-    Motor_1_PID.Kp = MOTOR_1_KP;
-    Motor_1_PID.Ki = MOTOR_1_KI;
-    Motor_1_PID.Kd = MOTOR_1_KD;
+    Motor_LR_Crtl.inv_K = MOTOR_LR_INV_K;
+    Motor_LR_Crtl.u0    = MOTOR_LR_U0;
+    Motor_LR_Crtl.k_v   = MOTOR_LR_KV;
+    Motor_LR_Crtl.k_z   = MOTOR_LR_KZ;
 
-    Motor_2_PID.Kp = MOTOR_2_KP;
-    Motor_2_PID.Ki = MOTOR_2_KI;
-    Motor_2_PID.Kd = MOTOR_2_KD;
-
-    Motor_3_PID.Kp = MOTOR_3_KP;
-    Motor_3_PID.Ki = MOTOR_3_KI;
-    Motor_3_PID.Kd = MOTOR_3_KD;
-
-    Motor_4_PID.Kp = MOTOR_4_KP;
-    Motor_4_PID.Ki = MOTOR_4_KI;
-    Motor_4_PID.Kd = MOTOR_4_KD;
+    Motor_RR_Crtl.inv_K = MOTOR_RR_INV_K;
+    Motor_RR_Crtl.u0    = MOTOR_RR_U0;
+    Motor_RR_Crtl.k_v   = MOTOR_RR_KV;
+    Motor_RR_Crtl.k_z   = MOTOR_RR_KZ;
 }
 /**********************************************************/
 /*----------------------------------------[E] 外部函数 [E]*/

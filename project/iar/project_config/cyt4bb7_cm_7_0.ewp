@@ -1140,6 +1140,12 @@
             <name>$PROJ_DIR$\..\..\code\Motor.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\Motor_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Motor_Crtl.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\Param_Page.c</name>
         </file>
         <file>

@@ -73,28 +73,16 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
     // 10ms
     
     // 编码器读取
-    ENC_1_CNT = ENC_1_GET();
-    ENC_1_CLEAR();
-    ENC_1_SUM += ENC_1_CNT;
+    ENC_LR_CNT = ENC_LR_GET();
+    ENC_LR_CLEAR();
+    ENC_LR_SUM += ENC_LR_CNT;
 
-    ENC_2_CNT = ENC_2_GET();
-    ENC_2_CLEAR();
-    ENC_2_SUM += ENC_2_CNT;
+    ENC_RR_CNT = ENC_RR_GET();
+    ENC_RR_CLEAR();
+    ENC_RR_SUM += ENC_RR_CNT;
 
-    ENC_3_CNT = ENC_3_GET();
-    ENC_3_CLEAR();
-    ENC_3_SUM += ENC_3_CNT;
-    
-    ENC_4_CNT = ENC_4_GET();
-    ENC_4_CLEAR();
-    ENC_4_SUM += ENC_4_CNT;
-
-    // 电机速度环
-    Motor_1_PID.Actual = ENC_1_CNT;
-    Motor_2_PID.Actual = ENC_2_CNT;
-    Motor_3_PID.Actual = ENC_3_CNT;
-    Motor_4_PID.Actual = ENC_4_CNT;
-    Speed_PID_Crtl();
+    // 后轮电机速度闭环：门控 -> 取反馈 -> 控制 -> 输出
+    Motor_Crtl_Tick();
 }
 
 void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      

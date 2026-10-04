@@ -45,3 +45,6 @@ build.ninja
 *.su
 *.idb
 *.pdb
+
+# ===== 第三方 AI 工具产生的对话记录（非工程内容，不入库）=====
+.workbuddy/

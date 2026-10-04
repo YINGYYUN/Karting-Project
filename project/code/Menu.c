@@ -21,6 +21,7 @@ void Peripheral_Init(void)
     key_init(10);
 
     Motor_init();
+    Motor_Crtl_Init();  // 后轮电机速度闭环（上电默认不使能）
 
     menc15a_init();     // 磁编码器初始化（硬件 SPI3/SCB6, P3.0/3.1/3.2/3.3）
 

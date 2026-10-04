@@ -40,14 +40,11 @@ void Debug_MOTOR_UI(void)
     ips200_show_string(10 ,80 , "PWM 04:###");
     // 空行
     ips200_show_string(10 ,112, "ENC: ");
-    ips200_show_string(10 ,128, "01:###        02:###");
-    ips200_show_string(10 ,144, "03:###        04:###");
+    ips200_show_string(10 ,128, "LR:###        RR:###");
     // 空行
     ips200_show_string(10 ,176, "SUM:");
-    ips200_show_string(10 ,192, "01:###");
-    ips200_show_string(10 ,208, "02:###");
-    ips200_show_string(10 ,224, "03:###");
-    ips200_show_string(10 ,240, "04:###");
+    ips200_show_string(10 ,192, "LR:###");
+    ips200_show_string(10 ,208, "RR:###");
 }
 
 // [三级界面]Motor_PID调试界面   
@@ -56,21 +53,15 @@ void Debug_Motor_PID_UI(void)
 {
     ips200_show_string(8  ,0  , "[DEBUG]-MOTOR-PID");
     ips200_show_string(0  ,16 , "==============================");
-    ips200_show_string(10 ,32 , "TAR 01:###    ENC:###");
-    ips200_show_string(10 ,48 , "TAR 02:###    ENC:###");
-    ips200_show_string(10 ,64 , "TAR 03:###    ENC:###");
-    ips200_show_string(10 ,80 , "TAR 04:###    ENC:###");
+    ips200_show_string(10 ,32 , "TAR LR:###    ENC:###");
+    ips200_show_string(10 ,48 , "TAR RR:###    ENC:###");
     // 空行
-    ips200_show_string(10 ,112, "PWM 01:###");
-    ips200_show_string(10 ,128, "PWM 02:###");
-    ips200_show_string(10 ,144, "PWM 03:###");
-    ips200_show_string(10 ,160, "PWM 04:###");
+    ips200_show_string(10 ,112, "PWM LR:###");
+    ips200_show_string(10 ,128, "PWM RR:###");
     // 空行
     ips200_show_string(10 ,192, "SUM:");
-    ips200_show_string(10 ,208, "01:###");
-    ips200_show_string(10 ,224, "02:###");
-    ips200_show_string(10 ,240, "03:###");
-    ips200_show_string(10 ,256, "04:###");
+    ips200_show_string(10 ,208, "LR:###");
+    ips200_show_string(10 ,224, "RR:###");
 }
 
 // [三级界面]IMU调试界面   
@@ -411,14 +402,10 @@ int Debug_Motor (void)
                 {
                     Time_Count1 = 0;
                     
-                    ips200_printf(34 ,128, "%d   ", ENC_1_CNT);
-                    ips200_printf(146,128, "%d   ", ENC_2_CNT);
-                    ips200_printf(34 ,144, "%d   ", ENC_3_CNT);
-                    ips200_printf(146,144, "%d   ", ENC_4_CNT);
-                    ips200_printf(34 ,192, "%d     ", ENC_1_SUM);
-                    ips200_printf(34 ,208, "%d     ", ENC_2_SUM);
-                    ips200_printf(34 ,224, "%d     ", ENC_3_SUM);
-                    ips200_printf(34 ,240, "%d     ", ENC_4_SUM);
+                    ips200_printf(34 ,128, "%d   ", ENC_LR_CNT);
+                    ips200_printf(146,128, "%d   ", ENC_RR_CNT);
+                    ips200_printf(34 ,192, "%d     ", ENC_LR_SUM);
+                    ips200_printf(34 ,208, "%d     ", ENC_RR_SUM);
                 }
             }
         }
@@ -429,14 +416,10 @@ int Debug_Motor (void)
         {
             Time_Count1 = 0;
             
-            ips200_printf(34 ,128, "%d   ", ENC_1_CNT);
-            ips200_printf(146,128, "%d   ", ENC_2_CNT);
-            ips200_printf(34 ,144, "%d   ", ENC_3_CNT);
-            ips200_printf(146,144, "%d   ", ENC_4_CNT);
-            ips200_printf(34 ,192, "%d     ", ENC_1_SUM);
-            ips200_printf(34 ,208, "%d     ", ENC_2_SUM);
-            ips200_printf(34 ,224, "%d     ", ENC_3_SUM);
-            ips200_printf(34 ,240, "%d     ", ENC_4_SUM);
+            ips200_printf(34 ,128, "%d   ", ENC_LR_CNT);
+            ips200_printf(146,128, "%d   ", ENC_RR_CNT);
+            ips200_printf(34 ,192, "%d     ", ENC_LR_SUM);
+            ips200_printf(34 ,208, "%d     ", ENC_RR_SUM);
         }
 
 
@@ -463,21 +446,19 @@ int Debug_Motor (void)
 // [三级界面]电机调试
 int Debug_Motor_PID (void)
 {
-    // PID期望值相关,为方便调用元素数量为5
-    int16_t enc_tar[5] = {0};
-    // 重置PID中间量
-    PID_ALL_Init();
+    // 目标值相关，为方便调用元素数量为3（只用 [1] [2]）
+    int16_t enc_tar[3] = {0};
+    // 重置闭环状态
+    Motor_Crtl_Reset();
     // 电机速度重置
     Motor_SET_Zero_ALL();
 
-    Speed_PID_Crtl_Enable = 1;
+    Motor_Crtl_Enable = 1;
 
 	Debug_Motor_PID_UI();
 	ips200_show_string(0 ,32 , ">");
     ips200_printf(66 ,32 , "%d  ", enc_tar[1]);
     ips200_printf(66 ,48 , "%d  ", enc_tar[2]);
-    ips200_printf(66 ,64 , "%d  ", enc_tar[3]);
-    ips200_printf(66 ,80 , "%d  ", enc_tar[4]);
     
     // 电机调试界面光标 标志位
     // 正常的命名为Debug_Motor_PID_flag，此处进行简化
@@ -503,14 +484,14 @@ int Debug_Motor_PID (void)
             key_clear_state(KEY_UP);
             key_pressed = 1;
             Debug_M_P_f --;
-            if (Debug_M_P_f < 1){Debug_M_P_f = 4;}
+            if (Debug_M_P_f < 1){Debug_M_P_f = 2;}
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
         {
             key_clear_state(KEY_DOWN);
             key_pressed = 1;
             Debug_M_P_f ++;
-            if (Debug_M_P_f > 4){Debug_M_P_f = 1;}      
+            if (Debug_M_P_f > 2){Debug_M_P_f = 1;}      
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
@@ -521,9 +502,9 @@ int Debug_Motor_PID (void)
         {
             key_clear_state(KEY_BACK);
 
-            Speed_PID_Crtl_Enable = 0;
-            // 重置PID中间量
-            PID_ALL_Init();
+            Motor_Crtl_Enable = 0;
+            // 重置闭环状态
+            Motor_Crtl_Reset();
             // 电机速度重置
             Motor_SET_Zero_ALL();
             // 返回上一级界面
@@ -532,7 +513,7 @@ int Debug_Motor_PID (void)
 
         
         /* 参数设置 */
-        if (1 <=Debug_M_P_f_temp && Debug_M_P_f_temp <= 4)
+        if (1 <=Debug_M_P_f_temp && Debug_M_P_f_temp <= 2)
         {
             ips200_show_string(0 ,16 + 16*Debug_M_P_f_temp , "=");
             
@@ -545,10 +526,8 @@ int Debug_Motor_PID (void)
                     key_clear_state(KEY_UP);
                     enc_tar[Debug_M_P_f] += 20;
                     if (enc_tar[Debug_M_P_f] > 800)enc_tar[Debug_M_P_f] = 800;
-                    Motor_1_PID.Target = enc_tar[1];
-                    Motor_2_PID.Target = enc_tar[2];
-                    Motor_3_PID.Target = enc_tar[3];
-                    Motor_4_PID.Target = enc_tar[4];
+                    Motor_LR_Crtl.target = enc_tar[1];
+                    Motor_RR_Crtl.target = enc_tar[2];
                     ips200_printf(66 ,16 + 16*Debug_M_P_f, "%d  ", enc_tar[Debug_M_P_f]);
                 }
                 else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
@@ -556,10 +535,8 @@ int Debug_Motor_PID (void)
                     key_clear_state(KEY_DOWN);
                     enc_tar[Debug_M_P_f] -= 20;
                     if (enc_tar[Debug_M_P_f] < -800)enc_tar[Debug_M_P_f] = -800;
-                    Motor_1_PID.Target = enc_tar[1];
-                    Motor_2_PID.Target = enc_tar[2];
-                    Motor_3_PID.Target = enc_tar[3];
-                    Motor_4_PID.Target = enc_tar[4];
+                    Motor_LR_Crtl.target = enc_tar[1];
+                    Motor_RR_Crtl.target = enc_tar[2];
                     ips200_printf(66 ,16 + 16*Debug_M_P_f, "%d  ", enc_tar[Debug_M_P_f]);
                 }
                 else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM) || 
@@ -578,18 +555,10 @@ int Debug_Motor_PID (void)
                 {
                     Time_Count1 = 0;
 
-                    ips200_printf(154,32, "%d    ", (int16_t)Motor_1_PID.Actual);
-                    ips200_printf(154,48, "%d    ", (int16_t)Motor_2_PID.Actual);
-                    ips200_printf(154,64, "%d    ", (int16_t)Motor_3_PID.Actual);
-                    ips200_printf(154,80, "%d    ", (int16_t)Motor_4_PID.Actual);
-                    // ips200_printf(66 ,112, "%d   ", (int16_t)Motor_1_PID.Out);
-                    // ips200_printf(66 ,128, "%d   ", (int16_t)Motor_2_PID.Out);
-                    // ips200_printf(66 ,144, "%d   ", (int16_t)Motor_3_PID.Out);
-                    // ips200_printf(66 ,160, "%d   ", (int16_t)Motor_4_PID.Out);
-                    // ips200_printf(34 ,208, "%d     ", ENC_1_SUM);
-                    // ips200_printf(34 ,224, "%d     ", ENC_2_SUM);
-                    // ips200_printf(34 ,240, "%d     ", ENC_3_SUM);
-                    // ips200_printf(34 ,256, "%d     ", ENC_4_SUM);
+                    ips200_printf(154,32, "%d    ", (int16_t)Motor_LR_Crtl.actual);
+                    ips200_printf(154,48, "%d    ", (int16_t)Motor_RR_Crtl.actual);
+                    // ips200_printf(66 ,112, "%d   ", (int16_t)Motor_LR_Crtl.out);
+                    // ips200_printf(66 ,128, "%d   ", (int16_t)Motor_RR_Crtl.out);
                 }
 
                 if (Time_Count2 >= 1)// 10ms * 1 周期
@@ -599,7 +568,7 @@ int Debug_Motor_PID (void)
                     if(wifi_spi_inited) 
                     {
                         char buf[64];
-                        sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_1_PID.Actual, (int16_t)Motor_1_PID.Target, (int16_t)Motor_1_PID.Out);
+                        sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_LR_Crtl.actual, (int16_t)Motor_LR_Crtl.target, (int16_t)Motor_LR_Crtl.out);
                         wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
                     }
                 }
@@ -614,18 +583,10 @@ int Debug_Motor_PID (void)
         {
             Time_Count1 = 0;
 
-            ips200_printf(154,32, "%d    ", (int16_t)Motor_1_PID.Actual);
-            ips200_printf(154,48, "%d    ", (int16_t)Motor_2_PID.Actual);
-            ips200_printf(154,64, "%d    ", (int16_t)Motor_3_PID.Actual);
-            ips200_printf(154,80, "%d    ", (int16_t)Motor_4_PID.Actual);
-            // ips200_printf(66 ,112, "%d   ", (int16_t)Motor_1_PID.Out);
-            // ips200_printf(66 ,128, "%d   ", (int16_t)Motor_2_PID.Out);
-            // ips200_printf(66 ,144, "%d   ", (int16_t)Motor_3_PID.Out);
-            // ips200_printf(66 ,160, "%d   ", (int16_t)Motor_4_PID.Out);
-            // ips200_printf(34 ,208, "%d     ", ENC_1_SUM);
-            // ips200_printf(34 ,224, "%d     ", ENC_2_SUM);
-            // ips200_printf(34 ,240, "%d     ", ENC_3_SUM);
-            // ips200_printf(34 ,256, "%d     ", ENC_4_SUM);
+            ips200_printf(154,32, "%d    ", (int16_t)Motor_LR_Crtl.actual);
+            ips200_printf(154,48, "%d    ", (int16_t)Motor_RR_Crtl.actual);
+            // ips200_printf(66 ,112, "%d   ", (int16_t)Motor_LR_Crtl.out);
+            // ips200_printf(66 ,128, "%d   ", (int16_t)Motor_RR_Crtl.out);
         }
 
         if (Time_Count2 >= 1)// 10ms * 1 周期
@@ -635,7 +596,7 @@ int Debug_Motor_PID (void)
             if(wifi_spi_inited) 
             {
                 char buf[64];
-                sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_1_PID.Actual, (int16_t)Motor_1_PID.Target, (int16_t)Motor_1_PID.Out);
+                sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_LR_Crtl.actual, (int16_t)Motor_LR_Crtl.target, (int16_t)Motor_LR_Crtl.out);
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }
