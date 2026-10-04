@@ -133,10 +133,17 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
     float u_raw;
     float u_clamped;
 
-    /* ---- 门控不通过：输出严格 0，并清掉积分与斜坡状态 ----
-       否则"被保护停住"期间误差一直累积，一放开门就是一次猛冲 */
+    /* ---- 门控不通过：清掉积分与斜坡状态 ----
+       否则"被保护停住"期间误差一直累积，一放开门就是一次猛冲。
+       注意：输出只在"使能 -> 失能"的那一拍清零一次，之后不再写 Motor_Set，
+             否则会和 MOTOR 调试页的手动开环输出互相打架
+             （每拍都写 0 的话，手动给 motor1/2 的 PWM 会被立刻抹掉） */
     if (0 == Motor_Crtl_Enable)
     {
+        if (p->enabled)
+        {
+            Motor_Set(p->motor_id, 0);
+        }
         p->e          = 0.0f;
         p->z          = 0.0f;
         p->target_app = 0.0f;
@@ -145,7 +152,6 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
         p->out        = 0.0f;
         p->sat        = 0;
         p->enabled    = 0;
-        Motor_Set(p->motor_id, 0);
         return;
     }
 

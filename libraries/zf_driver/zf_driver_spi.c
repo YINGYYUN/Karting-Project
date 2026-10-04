@@ -51,6 +51,27 @@ spi_cs_pin_enum             cs_pin_save[5];
 
 // 各 SPI 实例对应的外设时钟目标：SPI_0~SPI_4 → SCB7 / SCB8 / SCB9 / SCB6 / SCB5
 static const uint32         spi_pclk_dst[5] = {PCLK_SCB7_CLOCK, PCLK_SCB8_CLOCK, PCLK_SCB9_CLOCK, PCLK_SCB6_CLOCK, PCLK_SCB5_CLOCK};
+
+/*===================================================================================================================
+ *  SPI 忙等超时保护
+ *
+ *  逐飞原实现在"等待发送完成 / 等待接收到数据"时是无限忙等。一旦 SCB 层面出问题
+ *  （外设时钟被改、SCB 未使能就被访问、复用引脚被别的模块抢走等），函数将永不返回。
+ *  本工程把磁编码器 / 角度编码器的读取放在 10ms 中断里，一旦卡住，中断再也出不来，
+ *  按键扫描、IMU 读取、编码器采集、电机闭环会全部停摆 —— 整车卡死。
+ *
+ *  处理方式：给忙等加计数上限，超时后**直接放弃本次通信**（函数照常返回，
+ *            读到的是 FIFO 里的旧值或 0，由上层自行判断数据是否合理）。
+ *
+ *  超时余量：8MHz 下 16bit 一次传输约 2us，即使 SPI 降到 1MHz 也只有 16us，
+ *            10000 次循环（约 0.5ms 量级）远大于任何正常传输，不会误判。
+ *=================================================================================================================*/
+#define SPI_BUSY_TIMEOUT            (10000u)
+
+// 等待条件成立；超时则放弃本次通信
+#define SPI_WAIT_UNTIL(cond)        do { uint32 spi_wt = SPI_BUSY_TIMEOUT; while(!(cond) && (spi_wt --)) {} } while(0)
+// 在条件成立期间等待（如等待 FIFO 不满）；超时则放弃本次通信
+#define SPI_WAIT_WHILE(cond)        do { uint32 spi_wt = SPI_BUSY_TIMEOUT; while((cond)  && (spi_wt --)) {} } while(0)
 //-------------------------------------------------------------------------------------------------------------------
 // 函数简介       SPI获取时钟引脚号
 // 参数说明       clk_pin     时钟引脚 参照 zf_driver_spi.h 内 spi_clk_pin_enum 枚举体定义
@@ -290,9 +311,9 @@ void spi_write_8bit (spi_index_enum spi_n, const uint8 data)
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], data);                                // 发送数据
-    while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
+    SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)					// 若CS不为空 则拉高CS
     {
@@ -321,11 +342,11 @@ void spi_write_8bit_array (spi_index_enum spi_n, const uint8 *data, uint32 len)
     do
     {
         Cy_SCB_WriteTxFifo(spi_module[spi_n], *data ++);                        // 发送数据
-        while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
+        SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
         len -= 1;						                // 发送长度自减	
     }while(len);
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)				        // 若CS不为空 则拉高CS
     {
@@ -351,9 +372,9 @@ void spi_write_16bit (spi_index_enum spi_n, const uint16 data)
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], data);                                // 发送数据
-    while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
+    SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)					// 若CS不为空 则拉高CS
     {
@@ -383,11 +404,11 @@ void spi_write_16bit_array (spi_index_enum spi_n, const uint16 *data, uint32 len
     do
     {
         Cy_SCB_WriteTxFifo(spi_module[spi_n], *data ++);                        // 发送数据
-        while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
+        SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
         len -= 1;						                // 发送长度自减	
     }while(len);
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)				        // 若CS不为空 则拉高CS
     {
@@ -414,12 +435,12 @@ void spi_write_8bit_register (spi_index_enum spi_n, const uint8 register_name, c
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], register_name);                        // 发送寄存器地址
-    while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
+    SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
 
     Cy_SCB_WriteTxFifo(spi_module[spi_n], data);                                // 发送数据
-    while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
+    SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)					// 若CS不为空 则拉高CS
     {
@@ -447,16 +468,16 @@ void spi_write_8bit_registers (spi_index_enum spi_n, const uint8 register_name, 
     } 
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], register_name);                        // 发送寄存器地址
-    while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
+    SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
     
     do
     {
         Cy_SCB_WriteTxFifo(spi_module[spi_n], *data ++);                        // 发送数据
-        while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
+        SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
         len -= 1;						                // 发送长度自减	
     }while(len);
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)				        // 若CS不为空 则拉高CS
     {
@@ -483,12 +504,12 @@ void spi_write_16bit_register (spi_index_enum spi_n, const uint16 register_name,
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], register_name);                        // 发送寄存器地址
-    while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
+    SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
 
     Cy_SCB_WriteTxFifo(spi_module[spi_n], data);                                // 发送数据
-    while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
+    SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)					// 若CS不为空 则拉高CS
     {
@@ -516,16 +537,16 @@ void spi_write_16bit_registers (spi_index_enum spi_n, const uint16 register_name
     } 
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], register_name);                        // 发送寄存器地址
-    while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
+    SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));           // 缓冲区满则等待
     
     do
     {
         Cy_SCB_WriteTxFifo(spi_module[spi_n], *data ++);                        // 发送数据
-        while(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
+        SPI_WAIT_WHILE(Cy_SCB_GetFifoSize(spi_module[spi_n]) == Cy_SCB_GetNumInTxFifo(spi_module[spi_n]));       // 缓冲区满则等待
         len -= 1;						                // 发送长度自减	
     }while(len);
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)				        // 若CS不为空 则拉高CS
     {
@@ -560,8 +581,8 @@ uint8 spi_read_8bit (spi_index_enum spi_n)
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], 0);                                   // 发送空数据
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
-    while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		        // 等待接收到数据
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		        // 等待接收到数据
     
     read_data = (uint8)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);		// 读取数据
     
@@ -600,8 +621,8 @@ void spi_read_8bit_array (spi_index_enum spi_n, uint8 *data, uint32 len)
     
     do{
         Cy_SCB_WriteTxFifo(spi_module[spi_n], 0);                               // 发送空数据
-        while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                     // 等待数据发送完成
-        while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		// 等待接收到数据
+        SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                     // 等待数据发送完成
+        SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		// 等待接收到数据
         *data ++ = (uint8)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);	// 读取数据
         len -= 1;
     }while(len);
@@ -639,8 +660,8 @@ uint16 spi_read_16bit (spi_index_enum spi_n)
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], 0);                                   // 发送空数据
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
-    while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		        // 等待接收到数据
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		        // 等待接收到数据
     read_data = (uint16)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);		// 读取数据
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)					// 若CS不为空 则拉高CS
@@ -678,8 +699,8 @@ void spi_read_16bit_array (spi_index_enum spi_n, uint16 *data, uint32 len)
     
     do{
         Cy_SCB_WriteTxFifo(spi_module[spi_n], 0);                               // 发送空数据
-        while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                     // 等待数据发送完成
-        while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		// 等待接收到数据
+        SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                     // 等待数据发送完成
+        SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		// 等待接收到数据
         *data ++ = (uint16)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);	// 读取数据
         len -= 1;
     }while(len);
@@ -716,15 +737,15 @@ uint8 spi_read_8bit_register (spi_index_enum spi_n, const uint8 register_name)
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], register_name);                       // 发送寄存器地址
-    while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		        // 等待接收到数据    
+    SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		        // 等待接收到数据    
     
     Cy_SCB_SPI_ClearRxFifo(spi_module[spi_n]);					// 清除接收缓冲区
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], 0);                                   // 发送空数据
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
-    while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		        // 等待接收到数据
+    SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		        // 等待接收到数据
     read_data = (uint8)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);		// 读取数据
     
     if(cs_pin_save[spi_n] != SPI_CS_NULL)					// 若CS不为空 则拉高CS
@@ -760,14 +781,14 @@ void spi_read_8bit_registers (spi_index_enum spi_n, const uint8 register_name, u
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], register_name);                       // 发送寄存器地址
-    while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		        // 等待接收到数据  
+    SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		        // 等待接收到数据  
     
     Cy_SCB_SPI_ClearRxFifo(spi_module[spi_n]);					// 清除接收缓冲区
     
     do{
         Cy_SCB_WriteTxFifo(spi_module[spi_n], 0);                               // 发送空数据
-        while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                     // 等待数据发送完成
-        while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		// 等待接收到数据
+        SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                     // 等待数据发送完成
+        SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		// 等待接收到数据
         *data ++ = (uint8)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);	// 读取数据
         len -= 1;
     }while(len);
@@ -804,17 +825,17 @@ uint16 spi_read_16bit_register (spi_index_enum spi_n, const uint16 register_name
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], register_name);                       // 发送寄存器地址
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
-    while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		        // 等待接收到数据    
+    SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		        // 等待接收到数据    
     
     Cy_SCB_SPI_ClearRxFifo(spi_module[spi_n]);					// 清除接收缓冲区
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], 0);                                   // 发送空数据
     
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
     
-    while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		        // 等待接收到数据
+    SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		        // 等待接收到数据
     
     read_data = (uint16)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);		// 读取数据
     
@@ -852,15 +873,15 @@ void spi_read_16bit_registers (spi_index_enum spi_n, const uint16 register_name,
     }
     
     Cy_SCB_WriteTxFifo(spi_module[spi_n], register_name);                       // 发送寄存器地址
-    while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                         // 等待数据发送完成
-    while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		        // 等待接收到数据  
+    SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                         // 等待数据发送完成
+    SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		        // 等待接收到数据  
     
     Cy_SCB_SPI_ClearRxFifo(spi_module[spi_n]);					// 清除接收缓冲区
     
     do{
         Cy_SCB_WriteTxFifo(spi_module[spi_n], 0);                               // 发送空数据
-        while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                     // 等待数据发送完成
-        while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		// 等待接收到数据
+        SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                     // 等待数据发送完成
+        SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		// 等待接收到数据
         *data ++ = (uint16)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);	// 读取数据
         len -= 1;
     }while(len);
@@ -897,8 +918,8 @@ void spi_transfer_8bit (spi_index_enum spi_n, const uint8 *write_buffer, uint8 *
     
     do{
         Cy_SCB_WriteTxFifo(spi_module[spi_n], *write_buffer ++);                // 发送数据
-        while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                     // 等待数据发送完成
-        while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		// 等待接收到数据  
+        SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                     // 等待数据发送完成
+        SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		// 等待接收到数据  
         *read_buffer ++ = (uint8)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);	// 读取数据
         len -= 1;
     }while(len);
@@ -935,8 +956,8 @@ void spi_transfer_16bit (spi_index_enum spi_n, const uint16 *write_buffer, uint1
     
     do{
         Cy_SCB_WriteTxFifo(spi_module[spi_n], *write_buffer ++);                // 发送数据
-        while(Cy_SCB_IsTxComplete(spi_module[spi_n]) == 0);                     // 等待数据发送完成
-        while(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) == 0);		// 等待接收到数据  
+        SPI_WAIT_UNTIL(Cy_SCB_IsTxComplete(spi_module[spi_n]) != 0);                     // 等待数据发送完成
+        SPI_WAIT_UNTIL(Cy_SCB_SPI_GetNumInRxFifo(spi_module[spi_n]) != 0);		// 等待接收到数据  
         *read_buffer ++ = (uint16)(spi_module[spi_n]->unRX_FIFO_RD.u32Register);// 读取数据
         len -= 1;
     }while(len);

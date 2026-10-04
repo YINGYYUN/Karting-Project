@@ -49,18 +49,17 @@ void    Motor_SET_Zero_ALL          (void);
 /*[S] 编码器 [S]------------------------------------------*/
 /**********************************************************/
 
-// 正交编码器只保留两路（左后轮 / 右后轮），与整车实际电路一致
-// 左后轮
+// 左后轮 正交编码器
 #define ENCODER_LEFT_REAR           TC_CH20_ENCODER
 #define ENC_LR_P_CH1                TC_CH20_ENCODER_CH1_P08_1
 #define ENC_LR_P_CH2                TC_CH20_ENCODER_CH2_P08_2
 
-// 右后轮
+// 右后轮 正交编码器
 #define ENCODER_RIGHT_REAR          TC_CH07_ENCODER
 #define ENC_RR_P_CH1                TC_CH07_ENCODER_CH1_P07_6
 #define ENC_RR_P_CH2                TC_CH07_ENCODER_CH2_P07_7
 
-// 编码器(正交)调用二次宏定义
+// 编码器调用二次宏定义
 #define ENC_LR_GET()                (-encoder_get_count(ENCODER_LEFT_REAR))
 #define ENC_LR_CLEAR()              encoder_clear_count(ENCODER_LEFT_REAR)
 
@@ -68,15 +67,25 @@ void    Motor_SET_Zero_ALL          (void);
 #define ENC_RR_CLEAR()              encoder_clear_count(ENCODER_RIGHT_REAR)
 
 // 编码器计数值全局变量 （单周期增量，不存储累加值）
-extern int16 ENC_LR_CNT;
-extern int16 ENC_RR_CNT;
+extern int16 ENC_LR_CNT;            // 左后轮 正交编码器
+extern int16 ENC_RR_CNT;            // 右后轮 正交编码器
 
 // 编码器累加值全局变量 （累计值）
 // 更多在于调试性质的观测
-extern int32 ENC_LR_SUM;
-extern int32 ENC_RR_SUM;
+extern int32 ENC_LR_SUM;            // 左后轮 正交编码器
+extern int32 ENC_RR_SUM;            // 右后轮 正交编码器
 
-// 编码器相关数据重置
+// 磁编码器（MENC15A，转向减速箱高速侧）对外快照，由 10ms 中断统一采集刷新
+extern uint16 ENC_MAG_ANG;          // 编码器轴 绝对角 0~32767（单圈）
+extern int16  ENC_MAG_OFF;          // 相对上一次的角度增量（带符号）
+extern int16  ENC_MAG_SPD;          // 转速原始值
+extern int16  ENC_MAG_REV;          // AREV 圈数（编码器轴每转一整圈 ±1）
+
+// 角度编码器（360° 绝对式，转向柱侧）对外快照，由 10ms 中断统一采集刷新
+extern int16  ENC_ABS_ANG;          // 原始角 0~4095（4096 对应一圈）
+extern int16  ENC_ABS_OFF;          // 相对上一次的增量
+
+// 编码器相关数据重置（只清软件侧数据，不碰 SPI）
 void ENC_All_Clear(void);
 /**********************************************************/
 /*------------------------------------------[E] 编码器 [E]*/

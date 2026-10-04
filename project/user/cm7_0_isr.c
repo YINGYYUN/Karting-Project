@@ -81,6 +81,27 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
     ENC_RR_CLEAR();
     ENC_RR_SUM += ENC_RR_CNT;
 
+    // ---- 磁编码器（MENC15A，转向减速箱高速侧）：读角度 / 增量 / 转速 / 圈数 ----
+    // 本项目所有编码器的采集都收在这里，其它地方（调试页等）一律只读快照
+    // （这两个传感器"掉线 / 悬空"时的数据特征，见 Motor.c 编码器段的说明）
+    menc15a_get_absolute_data  (menc15a_1_module);
+    menc15a_get_speed_data     (menc15a_1_module);
+    // SPI 偶发错读会读出固定的异常字（换算后约 ±20000 量级），远超物理上限 -> 原位重读一次
+    if ((menc15a_speed_data[0] > 15000) || (menc15a_speed_data[0] < -15000))
+    {
+        menc15a_get_speed_data(menc15a_1_module);
+    }
+    menc15a_get_revolution_data(menc15a_1_module);
+
+    ENC_MAG_ANG = menc15a_absolute_data[0];
+    ENC_MAG_OFF = menc15a_absolute_offset_data[0];
+    ENC_MAG_SPD = menc15a_speed_data[0];
+    ENC_MAG_REV = menc15a_revolution_data[0];
+
+    // ---- 角度编码器（360° 绝对式，转向柱侧）----
+    ENC_ABS_ANG = absolute_encoder_get_location();
+    ENC_ABS_OFF = absolute_encoder_get_offset();
+
     // 后轮电机速度闭环：门控 -> 取反馈 -> 控制 -> 输出
     Motor_Crtl_Tick();
 }
