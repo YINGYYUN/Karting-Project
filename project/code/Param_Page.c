@@ -29,6 +29,11 @@ static void param_page_init(void)
     DynamicCreate_Menu_LimitNumber(folder_rr, "kv",   &MOTOR_RR_KV,    float_Box, 0, 70);
     DynamicCreate_Menu_LimitNumber(folder_rr, "kz",   &MOTOR_RR_KZ,    float_Box, 0, 70);
 
+    // 舵机 转向位置环
+    Menu_Item *folder_sv = DynamicCreate_Menu_Folder(&head, "Servo");
+    DynamicCreate_Menu_LimitNumber(folder_sv, "kp", &SERVO_KP, float_Box, 0, 1000);
+    DynamicCreate_Menu_LimitNumber(folder_sv, "u0", &SERVO_U0, float_Box, 0, 3000);
+
     key = head.first_son;   // 光标移到第一项
 }
 

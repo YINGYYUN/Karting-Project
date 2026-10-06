@@ -16,8 +16,8 @@ CYT4BB 适配：存储位置改为 Work Flash 第 95 页（sector 参数恒为 0
 #define PARAM_FLASH_SECTION         (0)
 #define PARAM_FLASH_PAGE            (95)
 
-// 参数总数（2 个后轮电机 × 4 个参数）
-#define PARAM_COUNT                 (8)
+// 参数总数（2 个后轮电机 × 4 个参数 + 舵机 × 2 个参数）
+#define PARAM_COUNT                 (10)
 
 // 参数缓冲区(Flash 读写的唯一载体)
 extern float param_cache[PARAM_COUNT];
@@ -35,6 +35,10 @@ extern float param_cache[PARAM_COUNT];
 #define MOTOR_RR_KV_IDX             6
 #define MOTOR_RR_KZ_IDX             7
 
+// 舵机 转向位置环 (8-9)
+#define SERVO_KP_IDX                8
+#define SERVO_U0_IDX                9
+
 // 便捷访问宏
 #define MOTOR_LR_INV_K              param_cache[MOTOR_LR_INV_K_IDX]
 #define MOTOR_LR_U0                 param_cache[MOTOR_LR_U0_IDX]
@@ -45,6 +49,9 @@ extern float param_cache[PARAM_COUNT];
 #define MOTOR_RR_U0                 param_cache[MOTOR_RR_U0_IDX]
 #define MOTOR_RR_KV                 param_cache[MOTOR_RR_KV_IDX]
 #define MOTOR_RR_KZ                 param_cache[MOTOR_RR_KZ_IDX]
+
+#define SERVO_KP                    param_cache[SERVO_KP_IDX]
+#define SERVO_U0                    param_cache[SERVO_U0_IDX]
 
 
 void    Param_Init          (void);     // 初始化(加载或设默认值)

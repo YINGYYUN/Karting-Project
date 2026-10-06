@@ -27,6 +27,7 @@ void Debug_Page_Menu_UI(void)
     ips200_show_string(10 ,80 , "IMU");
     ips200_show_string(10 ,96 , "MENC15A");
     ips200_show_string(10 ,112, "ABS-ENC");
+    ips200_show_string(10 ,128, "SERVO");
 }
 
 // [三级界面]电机调试界面
@@ -99,6 +100,17 @@ void Debug_ABS_ENCODER_UI(void)
     ips200_show_string(10 ,48 , "DEG:#####");
 }
 
+// [三级界面]SERVO调试界面
+// 转向角测量 + 位置环调试（上/下键 = 目标角 ±1°，确认键 = 切换闭环使能）
+void Debug_SERVO_UI(void)
+{
+    ips200_show_string(8  ,0  , "[DEBUG]-SERVO");
+    ips200_show_string(0  ,16 , "==============================");
+    ips200_show_string(10 ,32 , "ANG:#####  DEG:+##.#");
+    ips200_show_string(10 ,48 , "TAR:+##.#  ERR:+##.#");
+    ips200_show_string(10 ,64 , "ENABLE:0   OUT:#####");
+}
+
 /**********************************************************/
 /*----------------------------------------[E] 界面样式 [E]*/
 /**********************************************************/
@@ -115,6 +127,7 @@ int Debug_Motor_PID     (void);
 int Debug_IMU           (void);
 int Debug_MENC15A       (void);
 int Debug_ABS_ENCODER   (void);
+int Debug_SERVO         (void);
 
 // [二级界面]Debug模式界面
 int Debug_Page_Menu(void)
@@ -143,14 +156,14 @@ int Debug_Page_Menu(void)
             key_clear_state(KEY_UP);
             key_pressed = 1;
             Debug_Page_flag --;
-            if (Debug_Page_flag < 1)Debug_Page_flag = 6;
+            if (Debug_Page_flag < 1)Debug_Page_flag = 7;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
         {
             key_clear_state(KEY_DOWN); 
             key_pressed = 1;
             Debug_Page_flag ++;
-            if (Debug_Page_flag > 6)Debug_Page_flag = 1;
+            if (Debug_Page_flag > 7)Debug_Page_flag = 1;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
@@ -226,6 +239,16 @@ int Debug_Page_Menu(void)
             Debug_Page_Menu_UI();
             key_pressed = 1;
         }
+        else if (Debug_Page_flag_temp == 7)
+        {
+            ips200_clear();
+            Debug_SERVO();
+
+            // 从子界面返回后
+            ips200_clear();
+            Debug_Page_Menu_UI();
+            key_pressed = 1;
+        }
 
         
         /* 显示更新*/
@@ -238,6 +261,7 @@ int Debug_Page_Menu(void)
 			ips200_show_string(0  ,80 , " ");
 			ips200_show_string(0  ,96 , " ");
 			ips200_show_string(0  ,112, " ");
+			ips200_show_string(0  ,128, " ");
 			// 显示光标
 			ips200_show_string(0  ,16 + 16*Debug_Page_flag , ">");
         }
@@ -874,6 +898,108 @@ int Debug_ABS_ENCODER(void)
             ips200_printf(42 ,32 , "%d    ", (int)abs_enc_ang);
             ips200_printf(130,32 , "%d    ", (int)abs_enc_off);
             ips200_printf(42 ,48 , "%d    ", (int)abs_enc_deg);
+        }
+    }
+}
+
+// 屏幕输出：带符号的角度（单位 0.1°）
+// 分符号输出，避免依赖 %s / %f 的格式支持
+static void Debug_SERVO_ShowDeg (uint16 x, uint16 y, int32_t deg10)
+{
+    int32_t v = (deg10 >= 0) ? deg10 : -deg10;
+
+    if (deg10 < 0)
+    {
+        ips200_printf(x, y, "-%d.%d    ", (int)(v / 10), (int)(v % 10));
+    }
+    else
+    {
+        ips200_printf(x, y, "+%d.%d    ", (int)(v / 10), (int)(v % 10));
+    }
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+// [三级界面]转向角（SERVO）调试
+// 数据源：绝对值角度编码器（10ms 中断统一采集，本页只读快照）
+// 键位：上/下 = 目标角 ±1°（量程 ±SERVO_LIMIT_DEG）；确认 = 切换 Servo_Crtl_Enable；返回 = 退出
+// 使能：进页面固定从"失能"开始，需在本页手动按确认键打开；退出时固定置 0
+// 目标：调试用的临时量，进页面清 0、不跨页面保留；使能后按目标值出力
+//       控制器内部还会把目标夹到软限位 ±SERVO_SOFT_LIMIT_DEG，所以给 30° 只会出到 27.5°
+//-------------------------------------------------------------------------------------------------------------------
+int Debug_SERVO(void)
+{
+    Debug_SERVO_UI();
+
+    // 参考计时值重置
+    Time_Count1 = 0;
+    Time_Count2 = 0;
+
+    int32_t servo_deg10 = 0;            // 方向盘角度 单位 0.1°
+    int32_t servo_tar10 = 0;            // 目标角度   单位 0.1°
+    int32_t servo_err10 = 0;            // 误差       单位 0.1°
+
+    // 进入本页：目标清 0（临时量），并使能从"失能"开始
+    // 此时输出为 0，进页面本身不会产生任何动作
+    Servo_Crtl_Reset();
+    Servo_Crtl_Enable = 0;
+
+    while(1)
+    {
+        /* 按键处理 */
+        if (KEY_SHORT_PRESS == key_get_state(KEY_BACK))
+        {
+            key_clear_state(KEY_BACK);
+            Servo_Crtl_Enable = 0;      // 退出固定置 0（输出由 Tick 里的门控清零）
+            // 返回上一级界面
+            return 0;
+        }
+        else if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
+        {
+            key_clear_state(KEY_UP);
+            Servo_Target_Deg += 3.0f;
+            if (Servo_Target_Deg > SERVO_LIMIT_DEG) { Servo_Target_Deg = SERVO_LIMIT_DEG; }
+        }
+        else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
+        {
+            key_clear_state(KEY_DOWN);
+            Servo_Target_Deg -= 3.0f;
+            if (Servo_Target_Deg < -SERVO_LIMIT_DEG) { Servo_Target_Deg = -SERVO_LIMIT_DEG; }
+        }
+        else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
+        {
+            key_clear_state(KEY_CONFIRM);
+            Servo_Crtl_Enable = (0 == Servo_Crtl_Enable) ? 1 : 0;   // 切换闭环使能
+        }
+
+        /* 数据读取 + WiFi 发送（约 20ms 周期） */
+        if (Time_Count2 >= 2)   // 10ms * 2
+        {
+            Time_Count2 = 0;
+
+            // 读快照（10ms 中断已刷新）
+            servo_deg10 = (int32_t)(Servo_Angle_Deg * 10.0f);
+            servo_tar10 = (int32_t)(Servo_Target_Deg * 10.0f);
+            servo_err10 = (int32_t)(Servo_Err_Deg * 10.0f);
+
+            if(wifi_spi_inited)
+            {
+                char buf[48];
+                sprintf(buf, "%d,%d,%d\n", (int)Servo_Ang_Raw, (int)servo_deg10, (int)servo_tar10);
+                wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
+            }
+        }
+
+        /* 屏幕显示更新（100ms 周期） */
+        if (Time_Count1 >= 10)  // 10ms * 10 显示周期
+        {
+            Time_Count1 = 0;
+
+            ips200_printf(42 ,32 , "%d    ", (int)Servo_Ang_Raw);
+            Debug_SERVO_ShowDeg(130, 32, servo_deg10);
+            Debug_SERVO_ShowDeg(42 , 48, servo_tar10);
+            Debug_SERVO_ShowDeg(130, 48, servo_err10);
+            ips200_printf(66 ,64 , "%d ", (int)Servo_Crtl_Enable);
+            ips200_printf(130,64 , "%d    ", (int)Servo_Out);
         }
     }
 }

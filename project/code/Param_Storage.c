@@ -17,6 +17,9 @@ static const float DEFAULT_PARAMS[PARAM_COUNT] = {
     0.0f, 0.0f, 0.0f, 0.0f,
     // 右后轮：inv_K, u0, k_v, k_z
     0.0f, 0.0f, 0.0f, 0.0f,
+    // 舵机位置环：kp, u0
+    // u0 填实测的启动阈值 1300（kp 仍为 0，需要时自己在参数页加）
+    300.0f, 1600.0f,
 };
 
 // 参数缓存区(菜单直接修改此数组, Flash 读写也通过此数组)
@@ -51,7 +54,9 @@ static uint8_t param_cache_is_valid(void)
     for (uint8_t i = 0; i < PARAM_COUNT; i++)
     {
         // 范围检查（Flash 空白/损坏时读出的浮点会远超此范围）
-        if (param_cache[i] > 10000.0f || param_cache[i] < -10000.0f)
+        // 用"取反的区间判断"而不是 > || <，这样 NaN / Inf 也会被判为非法
+        // （NaN 参与 > 和 < 比较都为假，用旧写法会漏过去，之后参与运算会算出 NaN 输出）
+        if (!((param_cache[i] > -10000.0f) && (param_cache[i] < 10000.0f)))
             return 0;
     }
 
@@ -124,6 +129,9 @@ void Flash_SyncTo_Param(void)
     Motor_RR_Crtl.u0    = MOTOR_RR_U0;
     Motor_RR_Crtl.k_v   = MOTOR_RR_KV;
     Motor_RR_Crtl.k_z   = MOTOR_RR_KZ;
+
+    Servo_Crtl_Kp = SERVO_KP;
+    Servo_Crtl_U0 = SERVO_U0;
 }
 /**********************************************************/
 /*----------------------------------------[E] 外部函数 [E]*/

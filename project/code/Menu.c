@@ -27,6 +27,8 @@ void Peripheral_Init(void)
 
     absolute_encoder_init();    // 绝对值角度编码器初始化（硬件 SPI4/SCB5, P7.0/7.1/7.2, CS P7.3）
 
+    Servo_Crtl_Init();  // 转向角测量（纯换算，无控制律）
+
     Param_Init();
 }
 

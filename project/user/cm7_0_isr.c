@@ -102,6 +102,9 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
     ENC_ABS_ANG = absolute_encoder_get_location();
     ENC_ABS_OFF = absolute_encoder_get_offset();
 
+    // ---- 转向角换算（原始读数 -> 方向盘角度），须在编码器采集之后 ----
+    Servo_Crtl_Tick();
+
     // 后轮电机速度闭环：门控 -> 取反馈 -> 控制 -> 输出
     Motor_Crtl_Tick();
 }

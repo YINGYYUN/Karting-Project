@@ -1164,6 +1164,12 @@
             <name>$PROJ_DIR$\..\..\code\PID.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\Servo_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Servo_Crtl.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>
         </file>
     </group>
