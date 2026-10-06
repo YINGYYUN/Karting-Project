@@ -19,6 +19,10 @@ CYT4BB 适配：存储位置改为 Work Flash 第 95 页（sector 参数恒为 0
 // 参数总数（2 个后轮电机 × 4 个参数 + 舵机 × 2 个参数）
 #define PARAM_COUNT                 (10)
 
+// 一次性迁移开关：默认值改动后，烧录一次时置 1，把 Flash 里的旧参数擦掉，
+// 让新默认值真正生效；确认参数已按预期加载后改回 0 再烧一次（否则每次上电都恢复默认）
+#define PARAM_FORCE_RESET           (0)
+
 // 参数缓冲区(Flash 读写的唯一载体)
 extern float param_cache[PARAM_COUNT];
 

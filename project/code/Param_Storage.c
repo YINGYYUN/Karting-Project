@@ -6,19 +6,17 @@
 #include "Param_Storage.h"
 
 
-// 两路后轮速度闭环的增益（定义于 Motor_Crtl.c）
 // 注意：Motor_LR_Crtl / Motor_RR_Crtl 已在 Motor_Crtl.h 中声明
 
-
-// 默认参数值(首次使用或恢复出厂设置时使用)
-// 参数尚未标定，默认全部为 0（此时闭环输出恒为 0，安全）
+// 默认参数值
 static const float DEFAULT_PARAMS[PARAM_COUNT] = {
     // 左后轮：inv_K, u0, k_v, k_z
-    0.0f, 0.0f, 0.0f, 0.0f,
+    //   inv_K=83.3, u0=330, k_v=88.3, k_z=1249
+    83.3f, 330.0f, 88.3f, 1249.0f,
     // 右后轮：inv_K, u0, k_v, k_z
-    0.0f, 0.0f, 0.0f, 0.0f,
+    //   inv_K=83.3, u0=330, k_v=88.3, k_z=1249
+    83.3f, 330.0f, 88.3f, 1249.0f,
     // 舵机位置环：kp, u0
-    // u0 填实测的启动阈值 1300（kp 仍为 0，需要时自己在参数页加）
     300.0f, 1600.0f,
 };
 
@@ -58,10 +56,8 @@ static uint8_t param_cache_is_valid(void)
         // （NaN 参与 > 和 < 比较都为假，用旧写法会漏过去，之后参与运算会算出 NaN 输出）
         if (!((param_cache[i] > -10000.0f) && (param_cache[i] < 10000.0f)))
             return 0;
+        // 采样性质，后续的其他参数不必都参与检查
     }
-
-    // 注意：不要求"至少一个增益非零"。参数未标定时默认全 0，
-    // 若按旧逻辑（要求 Kp 非零）会判定为无效并每次上电重写 Flash。
     return 1;
 }
 /**********************************************************/
@@ -77,6 +73,11 @@ static uint8_t param_cache_is_valid(void)
 void Param_Init(void)
 {
     flash_init();       // CYT4BB Flash 使用前必须先初始化
+
+#if PARAM_FORCE_RESET
+    // 一次性：擦掉 Flash 里的旧参数，让下面的新默认值生效（由 PARAM_FORCE_RESET 控制）
+    flash_erase_page(PARAM_FLASH_SECTION, PARAM_FLASH_PAGE);
+#endif
 
     if (flash_check(PARAM_FLASH_SECTION, PARAM_FLASH_PAGE))
     {

@@ -35,8 +35,9 @@ Menu_Item head = {
 Menu_Item *key;
 
 // 步进值控制
-#define SETUP_LEN               (4)
-static float SetupNumber[SETUP_LEN] = {0.01f, 0.1f, 1, 10};
+// 加了 100 这一档：速度环换算后的增益是几百~上千（如 k_z≈1249），只靠 10 要按上百次
+#define SETUP_LEN               (5)
+static float SetupNumber[SETUP_LEN] = {0.01f, 0.1f, 1, 10, 100};
 static uint8_t SetupIndex = 2;          // 默认步进 = 1
 
 

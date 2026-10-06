@@ -72,14 +72,9 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
     
     // 10ms
     
-    // 编码器读取
-    ENC_LR_CNT = ENC_LR_GET();
-    ENC_LR_CLEAR();
-    ENC_LR_SUM += ENC_LR_CNT;
-
-    ENC_RR_CNT = ENC_RR_GET();
-    ENC_RR_CLEAR();
-    ENC_RR_SUM += ENC_RR_CNT;
+    // 编码器读取（方向编码器：脉冲 + 方向，含毛刺门限 / 方向去抖 / 滑动平均）
+    ENC_LR_Update();
+    ENC_RR_Update();
 
     // ---- 磁编码器（MENC15A，转向减速箱高速侧）：读角度 / 增量 / 转速 / 圈数 ----
     // 本项目所有编码器的采集都收在这里，其它地方（调试页等）一律只读快照

@@ -56,7 +56,9 @@ void Debug_Motor_PID_UI(void)
     ips200_show_string(0  ,16 , "==============================");
     ips200_show_string(10 ,32 , "TAR LR:###    ENC:###");
     ips200_show_string(10 ,48 , "TAR RR:###    ENC:###");
-    // 空行
+    // 心跳（距上次喂心跳的 ms）/ 编码器脱落锁存标志
+    ips200_show_string(10 ,80 , "HB ms:#####");
+    ips200_show_string(10 ,96 , "FLT LR:#  RR:#");
     ips200_show_string(10 ,112, "PWM LR:###");
     ips200_show_string(10 ,128, "PWM RR:###");
     // 空行
@@ -502,6 +504,8 @@ int Debug_Motor_PID (void)
         // 上/下按键是否被按下过
         uint8_t key_pressed = 0;
 
+        Motor_Crtl_HB_Feed();       // 心跳：MOTOR-PID 主页循环还活着
+
         /* 按键处理 */
         if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
         {
@@ -544,11 +548,13 @@ int Debug_Motor_PID (void)
             // 电机手动设置
             while(1)
             {
+                Motor_Crtl_HB_Feed();   // 心跳：目标编辑循环还活着
+
                 /* 按键解析 */
                 if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
                 {
                     key_clear_state(KEY_UP);
-                    enc_tar[Debug_M_P_f] += 20;
+                    enc_tar[Debug_M_P_f] += 2;
                     if (enc_tar[Debug_M_P_f] > 800)enc_tar[Debug_M_P_f] = 800;
                     Motor_LR_Crtl.target = enc_tar[1];
                     Motor_RR_Crtl.target = enc_tar[2];
@@ -557,7 +563,7 @@ int Debug_Motor_PID (void)
                 else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
                 {
                     key_clear_state(KEY_DOWN);
-                    enc_tar[Debug_M_P_f] -= 20;
+                    enc_tar[Debug_M_P_f] -= 2;
                     if (enc_tar[Debug_M_P_f] < -800)enc_tar[Debug_M_P_f] = -800;
                     Motor_LR_Crtl.target = enc_tar[1];
                     Motor_RR_Crtl.target = enc_tar[2];
@@ -581,8 +587,11 @@ int Debug_Motor_PID (void)
 
                     ips200_printf(154,32, "%d    ", (int16_t)Motor_LR_Crtl.actual);
                     ips200_printf(154,48, "%d    ", (int16_t)Motor_RR_Crtl.actual);
-                    // ips200_printf(66 ,112, "%d   ", (int16_t)Motor_LR_Crtl.out);
-                    // ips200_printf(66 ,128, "%d   ", (int16_t)Motor_RR_Crtl.out);
+                    ips200_printf(66 ,112, "%d    ", (int16_t)Motor_LR_Crtl.out);
+                    ips200_printf(66 ,128, "%d    ", (int16_t)Motor_RR_Crtl.out);
+                    ips200_printf(58 ,80 , "%d    ", (int)Motor_Crtl_HB_Age_Ms());
+                    ips200_printf(66 ,96 , "%d ", Motor_LR_Crtl.enc_fault);
+                    ips200_printf(114,96 , "%d ", Motor_RR_Crtl.enc_fault);
                 }
 
                 if (Time_Count2 >= 1)// 10ms * 1 周期
@@ -592,7 +601,7 @@ int Debug_Motor_PID (void)
                     if(wifi_spi_inited) 
                     {
                         char buf[64];
-                        sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_LR_Crtl.actual, (int16_t)Motor_LR_Crtl.target, (int16_t)Motor_LR_Crtl.out);
+                        sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_RR_Crtl.actual, (int16_t)Motor_RR_Crtl.target, (int16_t)Motor_RR_Crtl.out);
                         wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
                     }
                 }
@@ -609,8 +618,11 @@ int Debug_Motor_PID (void)
 
             ips200_printf(154,32, "%d    ", (int16_t)Motor_LR_Crtl.actual);
             ips200_printf(154,48, "%d    ", (int16_t)Motor_RR_Crtl.actual);
-            // ips200_printf(66 ,112, "%d   ", (int16_t)Motor_LR_Crtl.out);
-            // ips200_printf(66 ,128, "%d   ", (int16_t)Motor_RR_Crtl.out);
+            ips200_printf(66 ,112, "%d    ", (int16_t)Motor_LR_Crtl.out);
+            ips200_printf(66 ,128, "%d    ", (int16_t)Motor_RR_Crtl.out);
+            ips200_printf(58 ,80 , "%d    ", (int)Motor_Crtl_HB_Age_Ms());
+            ips200_printf(66 ,96 , "%d ", Motor_LR_Crtl.enc_fault);
+            ips200_printf(114,96 , "%d ", Motor_RR_Crtl.enc_fault);
         }
 
         if (Time_Count2 >= 1)// 10ms * 1 周期
@@ -620,7 +632,7 @@ int Debug_Motor_PID (void)
             if(wifi_spi_inited) 
             {
                 char buf[64];
-                sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_LR_Crtl.actual, (int16_t)Motor_LR_Crtl.target, (int16_t)Motor_LR_Crtl.out);
+                sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_RR_Crtl.actual, (int16_t)Motor_RR_Crtl.target, (int16_t)Motor_RR_Crtl.out);
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }

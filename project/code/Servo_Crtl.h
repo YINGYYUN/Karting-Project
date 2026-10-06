@@ -37,19 +37,19 @@
 
 // 软限位：比物理限位留 SERVO_SOFT_MARGIN_DEG 余量，让控制器永远不会主动把方向盘推向限位结构。
 // 余量需大于上述波动量（±1.2°），余量需要留出裕度
-#define SERVO_SOFT_MARGIN_DEG   (2.2f)
-#define SERVO_SOFT_LIMIT_DEG    (SERVO_LIMIT_DEG - SERVO_SOFT_MARGIN_DEG)   // 27.5°
+#define SERVO_SOFT_MARGIN_DEG   (2.0f)
+#define SERVO_SOFT_LIMIT_DEG    (SERVO_LIMIT_DEG - SERVO_SOFT_MARGIN_DEG)   // 28.0°
 
 //============================== 控制参数 ==============================
 #define SERVO_T_S               (0.01f)         // 控制周期（秒），与 10ms 节拍一致
 #define SERVO_KP_DEFAULT        (0.0f)          // 位置环比例增益的"上电默认值"
                                                 // 实际生效值放在 Servo_Crtl_Kp，由参数页/Flash 提供
 #define SERVO_U0_DEFAULT        (1300.0f)       // 摩擦截距前馈的"上电默认值"
-                                                // 实测（整车落地、不前后运动）启动阈值约 1300
+                                                // 实测（整车落地、不前后运动）启动阈值约 1300 （注：摩擦似乎也和当前方向盘角度有关）
                                                 // 实际生效值放在 Servo_Crtl_U0，由参数页/Flash 提供
-#define SERVO_U_MAX             (3000.0f)       // 输出限幅（与 Motor_Set 刻度一致：±10000 = ±100%）
+#define SERVO_U_MAX             (3500.0f)       // 输出限幅（与 Motor_Set 刻度一致：±10000 = ±100%）
 #define SERVO_ERR_DEADBAND_DEG  (0.2f)          // 误差死区，抑制静止抖动
-#define SERVO_SLEW_DEG_PER_S    (120.0f)        // 目标变化率上限（度/秒），防止目标阶跃被全额灌进环路
+#define SERVO_SLEW_DEG_PER_S    (40.0f)         // 目标变化率上限（度/秒），防止目标阶跃被全额灌进环路
 
 // 输出极性：Motor 3 的 PWM 为正时方向盘向左转，而角度约定"向右为正"，
 // 故控制器算出的 u 需取反后送电机。实测方向相反时改成 +1。
