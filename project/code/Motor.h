@@ -14,11 +14,11 @@
 /*[S] 电机驱动 [S]----------------------------------------*/
 /**********************************************************/
 
-// 电机驱动(DRV8701)引脚配置	
-#define MOTOR_1_DIR_PIN             P05_1
-#define MOTOR_1_PWM_CHANNEL         TCPWM_CH09_P05_0
-#define MOTOR_2_DIR_PIN             P05_3
-#define MOTOR_2_PWM_CHANNEL         TCPWM_CH11_P05_2
+// 电机驱动(DRV8701)引脚配置
+#define MOTOR_1_DIR_PIN             P05_3
+#define MOTOR_1_PWM_CHANNEL         TCPWM_CH11_P05_2	
+#define MOTOR_2_DIR_PIN             P05_0
+#define MOTOR_2_PWM_CHANNEL         TCPWM_CH10_P05_1
 #define MOTOR_3_DIR_PIN             P10_3
 #define MOTOR_3_PWM_CHANNEL         TCPWM_CH30_P10_2
 #define MOTOR_4_DIR_PIN             P09_1

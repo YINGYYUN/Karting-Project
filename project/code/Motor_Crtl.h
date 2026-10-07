@@ -153,6 +153,10 @@ void    Motor_Crtl_Reset    (void);
 void    Motor_Crtl_Tick     (void);
 // 单路控制计算（通用函数写法，与 PID 基础函数同一风格）
 void    Motor_Crtl_Update   (Motor_Crtl_t *p);
+// 心跳：由正在监督电机运行的循环每圈调用（见 MOTOR_CRTL_HB_TIMEOUT_MS 的说明）
+void    Motor_Crtl_HB_Feed  (void);
+// 距上次喂心跳的毫秒数（调试页显示用）
+uint32  Motor_Crtl_HB_Age_Ms(void);
 
 /**********************************************************/
 /*----------------------------------------[E] 接口 [E]----*/
