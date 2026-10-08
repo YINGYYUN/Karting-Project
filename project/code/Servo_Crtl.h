@@ -47,9 +47,21 @@
 #define SERVO_U0_DEFAULT        (1300.0f)       // 摩擦截距前馈的"上电默认值"
                                                 // 实测（整车落地、不前后运动）启动阈值约 1300 （注：摩擦似乎也和当前方向盘角度有关）
                                                 // 实际生效值放在 Servo_Crtl_U0，由参数页/Flash 提供
-#define SERVO_U_MAX             (3500.0f)       // 输出限幅（与 Motor_Set 刻度一致：±10000 = ±100%）
+#define SERVO_U_MAX             (6000.0f)       // 输出限幅（与 Motor_Set 刻度一致：±10000 = ±100%）
 #define SERVO_ERR_DEADBAND_DEG  (0.2f)          // 误差死区，抑制静止抖动
-#define SERVO_SLEW_DEG_PER_S    (40.0f)         // 目标变化率上限（度/秒），防止目标阶跃被全额灌进环路
+#define SERVO_SLEW_DEG_PER_S    (120.0f)         // 目标变化率上限（度/秒），防止目标阶跃被全额灌进环路
+
+//============================== 反馈源失效保护 ==============================
+// 角度编码器掉线 / 悬空时的特征：SPI 读回全 0 或全 1，原始读数在 0 / 4095 交替。
+// 正常行程是 595~3698，两端留余量后不会误判。
+#define SERVO_ENC_RAW_INVALID_LOW   (3)         // 原始读数 <= 它视为无效
+#define SERVO_ENC_RAW_INVALID_HIGH  (4092)      // 原始读数 >= 它视为无效
+
+// 前提用"指令侧"的 |Servo_Out|：反馈一失效，误差就不再收敛、输出会顶到限幅，
+// 很快超过 1800（实测启动阈值约 1300~1600），所以这是个可靠的"确实在出力"判据。
+#define SERVO_ENC_LOST_OUT      (1800.0f)       // |Servo_Out| 超过它才算"在出力"
+#define SERVO_ENC_LOST_MS       (200)           // 连续多少 ms 读到无效值就停机（锁存，Reset 才清）
+#define SERVO_TICK_MS           (10)            // 节拍周期 ms，与 PIT 一致
 
 // 输出极性：Motor 3 的 PWM 为正时方向盘向左转，而角度约定"向右为正"，
 // 故控制器算出的 u 需取反后送电机。实测方向相反时改成 +1。
@@ -64,6 +76,7 @@ extern volatile int16 Servo_Out;                // 本拍实际写入电机的�
 extern volatile uint8 Servo_Crtl_Enable;        // 0 = 输出强制 0 并清状态
 extern volatile float Servo_Crtl_Kp;            // 位置环比例增益（上电默认 SERVO_KP_DEFAULT，参数页可改）
 extern volatile float Servo_Crtl_U0;            // 摩擦截距前馈（上电默认 SERVO_U0_DEFAULT，参数页可改）
+extern volatile uint8 Servo_Enc_Fault;          // 1 = 反馈源失效已锁存（Servo_Crtl_Reset 才清）
 
 //============================== 接口 ==============================
 void Servo_Crtl_Init  (void);                   // 初始化（清状态、不使能）

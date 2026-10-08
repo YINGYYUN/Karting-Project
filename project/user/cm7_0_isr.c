@@ -72,26 +72,30 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
     
     // 10ms
     
-    // 编码器读取（方向编码器：脉冲 + 方向，含毛刺门限 / 方向去抖 / 滑动平均）
+    // 编码器读取（方向编码器：脉冲 + 方向，含极性对齐与滑动平均）
     ENC_LR_Update();
     ENC_RR_Update();
 
-    // ---- 磁编码器（MENC15A，转向减速箱高速侧）：读角度 / 增量 / 转速 / 圈数 ----
-    // 本项目所有编码器的采集都收在这里，其它地方（调试页等）一律只读快照
-    // （这两个传感器"掉线 / 悬空"时的数据特征，见 Motor.c 编码器段的说明）
-    menc15a_get_absolute_data  (menc15a_1_module);
-    menc15a_get_speed_data     (menc15a_1_module);
-    // SPI 偶发错读会读出固定的异常字（换算后约 ±20000 量级），远超物理上限 -> 原位重读一次
-    if ((menc15a_speed_data[0] > 15000) || (menc15a_speed_data[0] < -15000))
-    {
-        menc15a_get_speed_data(menc15a_1_module);
-    }
-    menc15a_get_revolution_data(menc15a_1_module);
+    #if ENC_MAG_ENABLE == 1
 
-    ENC_MAG_ANG = menc15a_absolute_data[0];
-    ENC_MAG_OFF = menc15a_absolute_offset_data[0];
-    ENC_MAG_SPD = menc15a_speed_data[0];
-    ENC_MAG_REV = menc15a_revolution_data[0];
+        // ---- 磁编码器（MENC15A，转向减速箱高速侧）：读角度 / 增量 / 转速 / 圈数 ----
+        // 本项目所有编码器的采集都收在这里，其它地方（调试页等）一律只读快照
+        // （这两个传感器"掉线 / 悬空"时的数据特征，见 Motor.c 编码器段的说明）
+        menc15a_get_absolute_data  (menc15a_1_module);
+        menc15a_get_speed_data     (menc15a_1_module);
+        // SPI 偶发错读会读出固定的异常字（换算后约 ±20000 量级），远超物理上限 -> 原位重读一次
+        if ((menc15a_speed_data[0] > 15000) || (menc15a_speed_data[0] < -15000))
+        {
+            menc15a_get_speed_data(menc15a_1_module);
+        }
+        menc15a_get_revolution_data(menc15a_1_module);
+
+        ENC_MAG_ANG = menc15a_absolute_data[0];
+        ENC_MAG_OFF = menc15a_absolute_offset_data[0];
+        ENC_MAG_SPD = menc15a_speed_data[0];
+        ENC_MAG_REV = menc15a_revolution_data[0];
+
+    #endif
 
     // ---- 角度编码器（360° 绝对式，转向柱侧）----
     ENC_ABS_ANG = absolute_encoder_get_location();

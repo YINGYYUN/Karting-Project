@@ -51,14 +51,14 @@
 /* 控制周期，必须与调用它的 PIT 中断一致（当前 10ms） */
 #define MOTOR_CRTL_T_S              (0.01f)
 
-/* ★ 待标定：前馈线性项 1/K（目标单位 / 输出单位） */
-#define MOTOR_CRTL_INV_K_DEFAULT    (0.0f)
-/* ★ 待标定：摩擦截距 u0（输出单位） */
-#define MOTOR_CRTL_U0_DEFAULT       (0.0f)
-/* ★ 待标定：比例增益 k_v */
-#define MOTOR_CRTL_K_V_DEFAULT      (0.0f)
-/* ★ 待标定：积分增益 k_z */
-#define MOTOR_CRTL_K_Z_DEFAULT      (0.0f)
+/* 前馈线性项 1/K（目标单位 / 输出单位） */
+#define MOTOR_CRTL_INV_K_DEFAULT    (83.3f)
+/* 摩擦截距 u0（输出单位） */
+#define MOTOR_CRTL_U0_DEFAULT       (330.0f)
+/* 比例增益 k_v */
+#define MOTOR_CRTL_K_V_DEFAULT      (88.3f)
+/* 积分增益 k_z */
+#define MOTOR_CRTL_K_Z_DEFAULT      (1249.0f)
 
 /* 目标变化率上限（单位/秒），0 = 关闭斜坡 */
 #define MOTOR_CRTL_SLEW_DEFAULT     (0.0f)
@@ -91,7 +91,7 @@
    很快突破这个值；而正常闭环跟踪时 |out| 一般远低于它。
    副作用：真被外力堵住的轮子同样满足判据 -> 一起停（两者观测量分不开，宁停勿冲）。 */
 #define MOTOR_CRTL_ENC_LOST_OUT     (1800.0f)
-#define MOTOR_CRTL_ENC_LOST_MS      (500)
+#define MOTOR_CRTL_ENC_LOST_MS      (200)
 
 /**********************************************************/
 /*----------------------------------------[E] 默认参数 [E]*/

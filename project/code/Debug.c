@@ -25,7 +25,7 @@ void Debug_Page_Menu_UI(void)
     ips200_show_string(10 ,48 , "MOTOR");
     ips200_show_string(10 ,64 , "MOTOR-PID");
     ips200_show_string(10 ,80 , "IMU");
-    ips200_show_string(10 ,96 , "MENC15A");
+    ips200_show_string(10 ,96 , "MAG-ENC");
     ips200_show_string(10 ,112, "ABS-ENC");
     ips200_show_string(10 ,128, "SERVO");
 }
@@ -85,7 +85,7 @@ void Debug_IMU_UI(void)
 // MENC15A 15位磁编码器（硬件 SPI3/SCB6, P3.0/3.1/3.2, CS P3.3）
 void Debug_MENC15A_UI(void)
 {
-    ips200_show_string(8  ,0  , "[DEBUG]-MENC15A");
+    ips200_show_string(8  ,0  , "[DEBUG]-MAG-ENC");
     ips200_show_string(0  ,16 , "==============================");
     ips200_show_string(10 ,32 , "ABS:#####  OFF:#####");
     ips200_show_string(10 ,48 , "SPD:#####");
@@ -111,6 +111,7 @@ void Debug_SERVO_UI(void)
     ips200_show_string(10 ,32 , "ANG:#####  DEG:+##.#");
     ips200_show_string(10 ,48 , "TAR:+##.#  ERR:+##.#");
     ips200_show_string(10 ,64 , "ENABLE:0   OUT:#####");
+    ips200_show_string(10 ,80 , "FLT:#");
 }
 
 /**********************************************************/
@@ -1012,6 +1013,7 @@ int Debug_SERVO(void)
             Debug_SERVO_ShowDeg(130, 48, servo_err10);
             ips200_printf(66 ,64 , "%d ", (int)Servo_Crtl_Enable);
             ips200_printf(130,64 , "%d    ", (int)Servo_Out);
+            ips200_printf(42 ,80 , "%d ", (int)Servo_Enc_Fault);
         }
     }
 }

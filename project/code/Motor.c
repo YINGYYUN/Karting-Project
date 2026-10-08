@@ -109,7 +109,8 @@ void Motor_SET_Zero_ALL(void)
 /**********************************************************/
 
 //============================ 方向编码器 （左右后轮，10ms 周期增量） ============================
-// 读取方式：脉冲脚计数、方向脚读电平 + 毛刺门限 + 方向去抖 + 滑动平均。
+// 读取方式：每拍取一次 encoder_get_count（dir 模式下返回 ±本拍脉冲数，符号即 DIR 电平），
+//           随即清计数；软件只做极性对齐与滑动平均。
 
 // 编码器计数值全局变量 （单周期增量，已含方向符号与滑动平均）
 int16 ENC_LR_CNT = 0;               // 左后轮
@@ -126,7 +127,6 @@ Enc_Read_t Enc_LR_Read =
     .idx       = ENCODER_LEFT_REAR,
     .pulse_pin = ENC_LR_P_CH1,
     .dir_pin   = ENC_LR_P_CH2,
-    .dir_gpio  = ENC_LR_DIR_GPIO,
 };
 
 Enc_Read_t Enc_RR_Read =
@@ -134,24 +134,18 @@ Enc_Read_t Enc_RR_Read =
     .idx       = ENCODER_RIGHT_REAR,
     .pulse_pin = ENC_RR_P_CH1,
     .dir_pin   = ENC_RR_P_CH2,
-    .dir_gpio  = ENC_RR_DIR_GPIO,
 };
 
 //--------------------------------------
 // 函数简介     一路读取状态复位
 // 参数说明     e	该路读取状态
-// 备注信息     清硬件计数并重新预读方向；滑动平均用哨兵值表示"下次整体预填"
+// 备注信息     清硬件计数；滑动平均用哨兵值表示"下次整体预填"
 //--------------------------------------
 static void ENC_Read_Reset (Enc_Read_t *e)
 {
     uint8 i;
 
     encoder_clear_count(e->idx);
-
-    e->raw_last = 0;
-    e->dir_last = (uint8)gpio_get_level(e->dir_gpio);
-    e->dir_pend = e->dir_last;
-    e->dir_cnt  = 0;
 
     for (i = 0; i < ENC_WIN_MAX; i++)
     {
@@ -167,67 +161,26 @@ static void ENC_Read_Reset (Enc_Read_t *e)
 // 参数说明     invert	测速取反（0/1）
 // 返回参数     int16	本拍计数增量（已含方向符号与滑动平均）
 // 备注信息     逐飞 encoder_dir_init 把 TCPWM 配成"每条脉冲 +1"的单向计数器，
-//              方向是靠 encoder_get_count() 读 DIR 电平、给整个计数值取反得到的。
-//              因此只要 DIR 在两次采样之间变过，"本次读数 - 上次读数"就是错的：
-//              这里先把库加的符号还原成原始计数，再用去抖后的方向重新定符号。
+//              方向由 encoder_get_count() 按 DIR 电平定符号。这里每拍读一次就清计数，
+//              所以读到的值本身就是"本拍脉冲数 + 方向"。
 //--------------------------------------
 static int16 ENC_Read_One (Enc_Read_t *e, uint8 invert)
 {
-    int16 c;                // 库读数（±计数，符号由库读到的方向电平决定）
-    int16 raw;              // 还原出的原始计数（未定符号）
-    int16 d_raw;            // 原始计数的单拍增量
-    int16 delta;            // 定符号后的本拍增量
-    uint8 d;                // 本次读到的方向电平
+    int16 delta;            // 本拍增量（方向由驱动给出）
     uint8 n;                // 实际使用的窗口长度
     uint8 i;
 
-    c = encoder_get_count(e->idx);
-    d = (uint8)gpio_get_level(e->dir_gpio);
+    // 读本拍脉冲数（符号来自 DIR），读完立即清计数
+    delta = encoder_get_count(e->idx);
+    encoder_clear_count(e->idx);
 
-    // 1) 还原原始计数：库的符号只取决于方向电平，按本次读到的电平反推即可
-    raw = (d != 0) ? c : (int16)(-c);
-
-    // 2) 原始计数的单拍增量 + 毛刺门限
-    d_raw = (int16)(raw - e->raw_last);
-    if ((d_raw > ENC_DLT_GLITCH_MAX) || (d_raw < -ENC_DLT_GLITCH_MAX))
-    {
-        d_raw = 0;
-    }
-    e->raw_last = raw;
-
-    // 3) 方向去抖：新电平要连续 ENC_DIR_DEBOUNCE 拍一致才认换向，认之前沿用旧方向
-    //    （换向必经过 0 速，晚认一两拍几乎不损失精度；好处是一次毛刺不会被判成两次换向）
-    if (d == e->dir_last)
-    {
-        e->dir_pend = d;
-        e->dir_cnt  = 0;
-    }
-    else
-    {
-        if (d == e->dir_pend)
-        {
-            if (e->dir_cnt < 250) { e->dir_cnt++; }
-        }
-        else
-        {
-            e->dir_pend = d;
-            e->dir_cnt  = 1;
-        }
-        if (e->dir_cnt >= ENC_DIR_DEBOUNCE)
-        {
-            e->dir_last = d;
-            e->dir_cnt  = 0;
-        }
-    }
-
-    // 4) 用去抖后的方向定符号；再用 invert 做一次测速极性对齐
-    delta = (e->dir_last != 0) ? d_raw : (int16)(-d_raw);
+    // 测速极性对齐
     if (invert)
     {
         delta = (int16)(-delta);
     }
 
-    // 5) 滑动平均（窗口 ENC_WIN_DEFAULT）
+    // 滑动平均（窗口 ENC_WIN_DEFAULT）
     n = ENC_WIN_DEFAULT;
     if (n < 1u)          { n = 1u; }
     if (n > ENC_WIN_MAX) { n = ENC_WIN_MAX; }
@@ -255,7 +208,7 @@ static int16 ENC_Read_One (Enc_Read_t *e, uint8 invert)
 //--------------------------------------
 // 函数简介     方向编码器读取初始化
 // 使用示例     在 Motor_init() 里调用一次即可
-// 备注信息     两路一起：配置引脚（脉冲计数 + 方向 GPIO）+ 预读初值
+// 备注信息     两路一起：配置引脚（脉冲计数 + 方向）+ 复位状态
 //--------------------------------------
 void ENC_Read_Init (void)
 {
@@ -296,6 +249,16 @@ uint16 ENC_MAG_ANG = 0;             // 编码器轴 绝对角 0~32767（单圈�
 int16  ENC_MAG_OFF = 0;             // 相对上一次的角度增量（带符号）
 int16  ENC_MAG_SPD = 0;             // 转速原始值（含偶发错读，消费方自行判断）
 int16  ENC_MAG_REV = 0;             // AREV 圈数（编码器轴每转一整圈 ±1，掉电清零）
+
+// 磁编码器初始化包装
+// 关闭时为空操作：menc15a_init() 不执行，SCB6 / P3.0~P3.3 就没人占用
+// （数据采集在 cm7_0_isr.c 的 10ms 中断里，用同一个宏开关）
+void ENC_MAG_Init(void)
+{
+    #if ENC_MAG_ENABLE == 1
+        menc15a_init();
+    #endif
+}
 
 //============================ 角度编码器 （360° 绝对式，转向柱侧） ============================
 // 同样由 10ms 中断统一采集刷新

@@ -23,7 +23,7 @@ void Peripheral_Init(void)
     Motor_init();
     Motor_Crtl_Init();  // 后轮电机速度闭环（上电默认不使能）
 
-    menc15a_init();     // 磁编码器初始化（硬件 SPI3/SCB6, P3.0/3.1/3.2/3.3）
+    ENC_MAG_Init();     // 磁编码器初始化（硬件 SPI3/SCB6, P3.0/3.1/3.2/3.3）
 
     absolute_encoder_init();    // 绝对值角度编码器初始化（硬件 SPI4/SCB5, P7.0/7.1/7.2, CS P7.3）
 

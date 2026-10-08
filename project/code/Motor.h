@@ -50,24 +50,19 @@ void    Motor_SET_Zero_ALL          (void);
 /**********************************************************/
 
 // ---- 方向编码器（脉冲 + 方向） ----
+// 方向由逐飞驱动给出（encoder_get_count 的符号即 DIR 电平），软件只做极性对齐与滑动平均
 
 // 左后轮：P17.3(脉冲) / P17.4(方向)
 #define ENCODER_LEFT_REAR           TC_CH58_ENCODER
 #define ENC_LR_P_CH1                TC_CH58_ENCODER_CH1_P17_3
 #define ENC_LR_P_CH2                TC_CH58_ENCODER_CH2_P17_4
-#define ENC_LR_DIR_GPIO             P17_4
 
 // 右后轮：P19.2(脉冲) / P19.3(方向)
 #define ENCODER_RIGHT_REAR          TC_CH27_ENCODER
 #define ENC_RR_P_CH1                TC_CH27_ENCODER_CH1_P19_2
 #define ENC_RR_P_CH2                TC_CH27_ENCODER_CH2_P19_3
-#define ENC_RR_DIR_GPIO             P19_3
 
 // 方向编码器数据处理参数
-#define ENC_DIR_DEBOUNCE            (2)     // 方向电平连续几拍一致才认换向，认之前沿用旧方向
-                                            // （1 = 最接近"一变就认"；一变就丢整拍时，一次毛刺会连丢两拍）
-#define ENC_DLT_GLITCH_MAX          (400)   // 单拍计数增量上限，超过判为读数毛刺，本拍记 0
-                                            // 400 cnt/10ms = 40 转/秒，远高于真实转速，不会误杀
 #define ENC_WIN_MAX                 (16)    // 滑动平均窗口上限（缓冲按它开）
 #define ENC_WIN_DEFAULT             (4)     // 滑动平均窗口默认值（1 = 不滤波）
 
@@ -76,18 +71,12 @@ void    Motor_SET_Zero_ALL          (void);
 #define ENC_LR_INVERT               (0)
 #define ENC_RR_INVERT               (1)
 
-// 方向编码器一路的读取状态（由 ENC_Read_Update 内部维护）
+// 方向编码器一路的读取状态（由 ENC_Read_One 内部维护）
 typedef struct
 {
     encoder_index_enum      idx;            // 定时器通道
     encoder_channel1_enum   pulse_pin;      // 脉冲脚
-    encoder_channel2_enum   dir_pin;        // 方向脚
-    gpio_pin_enum           dir_gpio;       // 方向脚对应的 GPIO（读电平用）
-
-    int16   raw_last;                       // 上一次的原始计数（未定符号）
-    uint8   dir_last;                       // 去抖之后的方向电平
-    uint8   dir_pend;                       // 待确认的方向电平
-    uint8   dir_cnt;                        // 待确认电平已经连续出现的拍数
+    encoder_channel2_enum   dir_pin;        // 方向脚（交给驱动配置，软件不读它）
 
     int16   win_buf[ENC_WIN_MAX];           // 滑动平均缓冲
     int32   win_sum;                        // 缓冲内计数之和
@@ -106,7 +95,7 @@ extern int16 ENC_RR_CNT;                    // 右后轮
 extern int32 ENC_LR_SUM;                    // 左后轮
 extern int32 ENC_RR_SUM;                    // 右后轮
 
-// ---- 磁编码器 ----
+// ---- 磁编码器 （SPI通信）----
 
 // 磁编码器（MENC15A，转向减速箱高速侧）对外快照，由 10ms 中断统一采集刷新
 extern uint16 ENC_MAG_ANG;                  // 编码器轴 绝对角 0~32767（单圈）
@@ -114,7 +103,12 @@ extern int16  ENC_MAG_OFF;                  // 相对上一次的角度增量（
 extern int16  ENC_MAG_SPD;                  // 转速原始值
 extern int16  ENC_MAG_REV;                  // AREV 圈数（编码器轴每转一整圈 ±1）
 
-// ---- 角度编码器 ----
+// 磁编码器硬编码使能
+// 0关 1开
+// 关闭将一同取消相关引脚的初始化
+#define ENC_MAG_ENABLE                      0
+void ENC_MAG_Init(void);
+// ---- 角度编码器（SPI通信） ----
 
 // 角度编码器（360° 绝对式，转向柱侧）对外快照，由 10ms 中断统一采集刷新
 extern int16  ENC_ABS_ANG;                  // 原始角 0~4095（4096 对应一圈）
@@ -122,7 +116,7 @@ extern int16  ENC_ABS_OFF;                  // 相对上一次的增量
 
 // 方向编码器读取初始化（两路一起：配置引脚 + 预读初值），由 Motor_init() 调用
 void ENC_Read_Init(void);
-// 单路 10ms 读取更新：原始计数 -> 单拍增量 -> 毛刺/去抖 -> 定符号 -> 滑动平均 -> 累加
+// 单路 10ms 读取更新：取驱动读数 -> 清计数 -> 极性对齐 -> 滑动平均 -> 累加
 void ENC_LR_Update(void);
 void ENC_RR_Update(void);
 
