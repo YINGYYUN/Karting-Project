@@ -15,14 +15,14 @@
 /**********************************************************/
 
 // 电机驱动(DRV8701)引脚配置
-#define MOTOR_1_DIR_PIN             P05_3
-#define MOTOR_1_PWM_CHANNEL         TCPWM_CH11_P05_2	
-#define MOTOR_2_DIR_PIN             P05_0
-#define MOTOR_2_PWM_CHANNEL         TCPWM_CH10_P05_1
-#define MOTOR_3_DIR_PIN             P10_3
-#define MOTOR_3_PWM_CHANNEL         TCPWM_CH30_P10_2
-#define MOTOR_4_DIR_PIN             P09_1
-#define MOTOR_4_PWM_CHANNEL         TCPWM_CH24_P09_0
+#define MOTOR_1_DIR_PIN             P09_1
+#define MOTOR_1_PWM_CHANNEL         TCPWM_CH24_P09_0	
+#define MOTOR_2_DIR_PIN             P10_3
+#define MOTOR_2_PWM_CHANNEL         TCPWM_CH30_P10_2
+#define MOTOR_3_DIR_PIN             P05_1
+#define MOTOR_3_PWM_CHANNEL         TCPWM_CH09_P05_0
+#define MOTOR_4_DIR_PIN             P05_3
+#define MOTOR_4_PWM_CHANNEL         TCPWM_CH11_P05_2
 
 // 电机调用二次宏定义
 // 体现在 Motor_Set() 函数的调用替代中
@@ -106,7 +106,7 @@ extern int16  ENC_MAG_REV;                  // AREV 圈数（编码器轴每转�
 // 磁编码器硬编码使能
 // 0关 1开
 // 关闭将一同取消相关引脚的初始化
-#define ENC_MAG_ENABLE                      0
+#define ENC_MAG_ENABLE                      1
 void ENC_MAG_Init(void);
 // ---- 角度编码器（SPI通信） ----
 

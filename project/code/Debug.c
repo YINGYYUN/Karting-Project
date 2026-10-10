@@ -775,11 +775,11 @@ int Debug_IMU (void)
     }
 }
 
-//  #####  #   #  #####   ###   #   #    #   #  
-//    #    #   #    #    #   #  #   #    #   #  
-//    #    # # #    #    #   #  #   #    #   #  
-//    #    #   #    #    #   #  #   #    #   #  
-//  #####  #   #  #####   ###   #   #     ###   
+//  #   #  #####  #   #  #####  
+//  ## ##  #      ##  #  #      
+//  # # #  #####  # # #  #      
+//  #   #  #      #  ##  #      
+//  #   #  #####  #   #  #####  
 //
 // [三级界面]磁编码器调试
 int Debug_MENC15A(void)
@@ -849,9 +849,9 @@ int Debug_MENC15A(void)
         {
             Time_Count1 = 0;
 
-            // ips200_printf(42 ,32 , "%d    ", (int)ENC_MAG_ANG);
-            // ips200_printf(130,32 , "%d    ", (int)ENC_MAG_OFF);
-            // ips200_printf(42 ,48 , "%d    ", (int)ENC_MAG_SPD);
+            ips200_printf(42 ,32 , "%d    ", (int)ENC_MAG_ANG);
+            ips200_printf(130,32 , "%d    ", (int)ENC_MAG_OFF);
+            ips200_printf(42 ,48 , "%d    ", (int)ENC_MAG_SPD);
         }
     }
 }
