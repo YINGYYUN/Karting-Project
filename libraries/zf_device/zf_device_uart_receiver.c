@@ -96,25 +96,48 @@ static void uart_receiver_analysis (uart_receiver_struct *remote_data,uint8 * bu
 // 返回参数     void
 // 使用示例     uart_receiver_callback();
 // 备注信息     该函数在 ISR 文件 串口中断程序通过uart_receiver_uart_handler函数指针被调用
+//              【本工程修改】按"只认帧头 + 索引有界 + 收满即归零"重写，杜绝缓冲越界
 //-------------------------------------------------------------------------------------------------------------------
 void uart_receiver_callback(void)
 {
-    static vuint8 length = 0;
+    static uint8 length = 0;
+    uint8 data = 0;
 
+    /* 帧间隙超时：一帧收了一半就断流（> 3ms），说明这帧废了，重新对齐到帧头 */
     if (uart_receiver_interval_time() > 3000)
     {
         length = 0;
     }
-    
-    if(uart_query_byte(UART_RECEVIER_UART_INDEX, &uart_receiver_data[length]))
+
+    if(0 == uart_query_byte(UART_RECEVIER_UART_INDEX, &data))
     {
-        length ++;
-        if((REV_DATA_LEN == length) && (FRAME_STAR == uart_receiver_data[0]) && (FRAME_END == uart_receiver_data[24]))
+        return;                                     /* 本次没有新字节 */
+    }
+
+    /* 没在收帧时只认帧头：其余字节直接丢，避免错位后把垃圾填进缓冲 */
+    if((0 == length) && (FRAME_STAR != data))
+    {
+        return;
+    }
+
+    /* 索引恒小于帧长：正常流程到不了这里，纯兜底 */
+    if(length >= REV_DATA_LEN)
+    {
+        length = 0;
+        return;
+    }
+
+    uart_receiver_data[length ++] = data;
+
+    /* 收满一帧：校验帧尾 -> 解析；无论成败都归零，立刻开始下一帧 */
+    if(REV_DATA_LEN == length)
+    {
+        if(FRAME_END == uart_receiver_data[REV_DATA_LEN - 1])
         {
             uart_receiver_analysis(&uart_receiver, uart_receiver_data);
         }
+        length = 0;
     }
-
 }
 
 //-------------------------------------------------------------------------------------------------------------------

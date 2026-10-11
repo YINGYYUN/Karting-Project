@@ -47,9 +47,6 @@ uint16 Time_Count2 = 0;
 // 全局毫秒计时（由 1ms 中断 pit0_ch10_isr 自增，永不复位，用于测量真实时间间隔）
 volatile uint32 Sys_Tick_Ms = 0;
 
-// 从 CM7_1 共享内存读到的 yaw（定义在 main_cm7_0.c）
-extern volatile int16 Yaw_Receive;
-
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
 {
@@ -258,6 +255,9 @@ void uart3_isr (void)
     }
 }
 
+// ---- UART_4 已被【串口接收机（SBUS）】占用，不要再作其它串口用途 ----
+//   串口/引脚：UART_4 = SCB2；P14.0 = RX（接接收机的 UART/TXD 输出）；P14.1 = TX（占位，接收机无此脚，硬件悬空）
+//   定时器    ：TC_TIME2_CH2 也被该驱动占用（做帧间隔计时），别处不要再 timer_init 同一个通道
 void uart4_isr (void)
 {
     if(uart_isr_mask(UART_4))            // 串口4接收中断

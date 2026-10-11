@@ -116,12 +116,19 @@
 #include "Motor.h"
 #include "Motor_Crtl.h"
 #include "Servo_Crtl.h"
+#include "Remote_Crtl.h"
 #include "Debug.h"
 #include "PID.h"
 #include "Param_Storage.h"
 #include "Param_Page.h"
 extern uint16 Time_Count1;
 extern uint16 Time_Count2;
+
+// 跨文件使用的全局量：定义在各自的 .c 里，这里统一对外声明，
+// 避免每个用到的文件各自写一份 extern（漏写就是 "identifier is undefined"）
+extern volatile uint8  wifi_spi_inited;     // WiFi-SPI 是否已初始化（定义在 main_cm7_0.c）
+extern volatile uint32 Sys_Tick_Ms;         // 1ms 全局计时（定义在 cm7_0_isr.c）
+extern volatile int16  Yaw_Receive;         // 从 CM7_1 收到的 yaw（定义在 main_cm7_0.c）
 //=====================================================自建代码层=====================================================
 
 #endif

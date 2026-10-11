@@ -6,12 +6,6 @@
 #include "zf_common_headfile.h"
 #include "IMU_Analysis.h"
 
-// 从 CM7_1 收到的 yaw（定点，0.01°/LSB），定义在 main_cm7_0.c
-extern volatile int16 Yaw_Receive;
-extern volatile uint8 wifi_spi_inited;
-// 全局毫秒计时（定义在 cm7_0_isr.c），用于按真实时间积分
-extern volatile uint32 Sys_Tick_Ms;
-
 /**********************************************************/
 /*[S] 界面样式 [S]----------------------------------------*/
 /**********************************************************/
@@ -28,6 +22,7 @@ void Debug_Page_Menu_UI(void)
     ips200_show_string(10 ,96 , "MAG-ENC");
     ips200_show_string(10 ,112, "ABS-ENC");
     ips200_show_string(10 ,128, "SERVO");
+    ips200_show_string(10 ,144, "UART-RC");
 }
 
 // [三级界面]电机调试界面
@@ -114,6 +109,21 @@ void Debug_SERVO_UI(void)
     ips200_show_string(10 ,80 , "FLT:#");
 }
 
+// [三级界面]UART接收机调试界面
+// 逐飞 UART 接收机（SBUS 帧，UART_4 = SCB2，RX = P14.0），CH1~CH6 量程 0~2047（中位约 1024）
+void Debug_UART_RC_UI(void)
+{
+    ips200_show_string(8  ,0  , "[DEBUG]-UART-RC");
+    ips200_show_string(0  ,16 , "==============================");
+    ips200_show_string(10 ,32 , "CH1:####");
+    ips200_show_string(10 ,48 , "CH2:####");
+    ips200_show_string(10 ,64 , "CH3:####");
+    ips200_show_string(10 ,80 , "CH4:####");
+    ips200_show_string(10 ,96 , "CH5:####");
+    ips200_show_string(10 ,112, "CH6:####");
+    ips200_show_string(10 ,144, "ST:#   FRM:#####");
+}
+
 /**********************************************************/
 /*----------------------------------------[E] 界面样式 [E]*/
 /**********************************************************/
@@ -131,6 +141,7 @@ int Debug_IMU           (void);
 int Debug_MENC15A       (void);
 int Debug_ABS_ENCODER   (void);
 int Debug_SERVO         (void);
+int Debug_UART_RC       (void);
 
 // [二级界面]Debug模式界面
 int Debug_Page_Menu(void)
@@ -159,14 +170,14 @@ int Debug_Page_Menu(void)
             key_clear_state(KEY_UP);
             key_pressed = 1;
             Debug_Page_flag --;
-            if (Debug_Page_flag < 1)Debug_Page_flag = 7;
+            if (Debug_Page_flag < 1)Debug_Page_flag = 8;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
         {
             key_clear_state(KEY_DOWN); 
             key_pressed = 1;
             Debug_Page_flag ++;
-            if (Debug_Page_flag > 7)Debug_Page_flag = 1;
+            if (Debug_Page_flag > 8)Debug_Page_flag = 1;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
@@ -252,6 +263,16 @@ int Debug_Page_Menu(void)
             Debug_Page_Menu_UI();
             key_pressed = 1;
         }
+        else if (Debug_Page_flag_temp == 8)
+        {
+            ips200_clear();
+            Debug_UART_RC();
+
+            // 从子界面返回后
+            ips200_clear();
+            Debug_Page_Menu_UI();
+            key_pressed = 1;
+        }
 
         
         /* 显示更新*/
@@ -265,6 +286,7 @@ int Debug_Page_Menu(void)
 			ips200_show_string(0  ,96 , " ");
 			ips200_show_string(0  ,112, " ");
 			ips200_show_string(0  ,128, " ");
+			ips200_show_string(0  ,144, " ");
 			// 显示光标
 			ips200_show_string(0  ,16 + 16*Debug_Page_flag , ">");
         }
@@ -775,11 +797,11 @@ int Debug_IMU (void)
     }
 }
 
-//  #   #  #####  #   #  #####  
-//  ## ##  #      ##  #  #      
-//  # # #  #####  # # #  #      
-//  #   #  #      #  ##  #      
-//  #   #  #####  #   #  #####  
+//  #   #   ###    ###        #####  #   #  #####  
+//  ## ##  #   #  #           #      ##  #  #      
+//  # # #  #####  #   #  ###  #####  # # #  #      
+//  #   #  #   #  #   #       #      #  ##  #      
+//  #   #  #   #   ####       #####  #   #  #####  
 //
 // [三级界面]磁编码器调试
 int Debug_MENC15A(void)
@@ -828,7 +850,6 @@ int Debug_MENC15A(void)
             menc15a_sum += (int32_t)spd * (int32_t)dt_ms;
 
             // AREV 圈数原始值（编码器轴每转一整圈 ±1，9 位有符号）
-            // 需要转了几圈时，直接用首尾两个 arev_now 相减即可
             int16 arev_now = ENC_MAG_REV;
 
             // 输出轴角度（编码器在电机轴侧，三级齿轮减速比 (67/12)×(50/8)×(44/8) = 191.927）
@@ -856,11 +877,14 @@ int Debug_MENC15A(void)
     }
 }
 
-//-------------------------------------------------------------------------------------------------------------------
+
+//   ###   ####   #####       #####  #   #  #####  
+//  #   #  #   #  #           #      ##  #  #      
+//  #####  ####   #####  ###  #####  # # #  #      
+//  #   #  #   #      #       #      #  ##  #      
+//  #   #  ####   #####       #####  #   #  #####  
+//
 // [三级界面]绝对值角度编码器调试
-// 逐飞 360° 绝对式角度传感器（硬件 SPI4/SCB5, P7.0/7.1/7.2, CS P7.3）
-// 该传感器是绝对式，上电即可读到当前角度，不需要积分、也不存在累积漂移
-//-------------------------------------------------------------------------------------------------------------------
 int Debug_ABS_ENCODER(void)
 {
     Debug_ABS_ENCODER_UI();
@@ -931,14 +955,13 @@ static void Debug_SERVO_ShowDeg (uint16 x, uint16 y, int32_t deg10)
     }
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-// [三级界面]转向角（SERVO）调试
-// 数据源：绝对值角度编码器（10ms 中断统一采集，本页只读快照）
-// 键位：上/下 = 目标角 ±1°（量程 ±SERVO_LIMIT_DEG）；确认 = 切换 Servo_Crtl_Enable；返回 = 退出
-// 使能：进页面固定从"失能"开始，需在本页手动按确认键打开；退出时固定置 0
-// 目标：调试用的临时量，进页面清 0、不跨页面保留；使能后按目标值出力
-//       控制器内部还会把目标夹到软限位 ±SERVO_SOFT_LIMIT_DEG，所以给 30° 只会出到 27.5°
-//-------------------------------------------------------------------------------------------------------------------
+//  #####  #####  ####   #   #   ###   
+//  #      #      #   #  #   #  #   #  
+//  #####  #####  ####   #   #  #   #  
+//      #  #      #  #    # #   #   #  
+//  #####  #####  #   #    #     ###   
+//
+// [三级界面]舵机闭环调试界面
 int Debug_SERVO(void)
 {
     Debug_SERVO_UI();
@@ -978,6 +1001,7 @@ int Debug_SERVO(void)
             Servo_Target_Deg -= 3.0f;
             if (Servo_Target_Deg < -SERVO_LIMIT_DEG) { Servo_Target_Deg = -SERVO_LIMIT_DEG; }
         }
+        // 确认键直接绑定调试界面的使能
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
             key_clear_state(KEY_CONFIRM);
@@ -1014,6 +1038,83 @@ int Debug_SERVO(void)
             ips200_printf(66 ,64 , "%d ", (int)Servo_Crtl_Enable);
             ips200_printf(130,64 , "%d    ", (int)Servo_Out);
             ips200_printf(42 ,80 , "%d ", (int)Servo_Enc_Fault);
+        }
+    }
+}
+
+//  
+//  
+//  
+//  
+//  
+//
+// [三级界面]UART 接收机调试 （对应HotRc遥控器）
+int Debug_UART_RC(void)
+{
+    Debug_UART_RC_UI();
+
+    // 参考计时值重置
+    Time_Count1 = 0;
+    Time_Count2 = 0;
+
+    uint16 rc_ch[6]  = {0};             // CH1~CH6 快照，仅用于本调试界面的显示
+    uint8  rc_state  = 0;               // 遥控器状态 1=正常 0=失控
+    uint32 rc_frames = 0;               // 累计收到的完整帧数
+
+    while(1)
+    {
+        if (KEY_SHORT_PRESS == key_get_state(KEY_BACK))
+        {
+            key_clear_state(KEY_BACK);
+            // 返回上一级界面
+            return 0;
+        }
+
+        /* 数据读取 + WiFi 发送（约 20ms 周期） */
+        if (Time_Count2 >= 2)   // 10ms * 2
+        {
+            Time_Count2 = 0;
+
+            // 读快照（10ms 中断里解析好的结果）
+            rc_ch[0] = uart_receiver.channel[0];
+            rc_ch[1] = uart_receiver.channel[1];
+            rc_ch[2] = uart_receiver.channel[2];
+            rc_ch[3] = uart_receiver.channel[3];
+            rc_ch[4] = uart_receiver.channel[4];
+            rc_ch[5] = uart_receiver.channel[5];
+            rc_state = uart_receiver.state;
+
+            // 收到一帧就把标志清掉并累加：这样 FRAMES 能反映"链路是否在持续收帧"
+            if (uart_receiver.finsh_flag)
+            {
+                uart_receiver.finsh_flag = 0;
+                rc_frames ++;
+            }
+
+            if(wifi_spi_inited)
+            {
+                char buf[64];
+                sprintf(buf, "%d,%d,%d,%d,%d,%d,%d,%d\n",
+                        (int)rc_ch[0], (int)rc_ch[1], (int)rc_ch[2],
+                        (int)rc_ch[3], (int)rc_ch[4], (int)rc_ch[5],
+                        (int)rc_state, (int)rc_frames);
+                wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
+            }
+        }
+
+        /* 屏幕显示更新（100ms 周期） */
+        if (Time_Count1 >= 10)  // 10ms * 10 显示周期
+        {
+            Time_Count1 = 0;
+
+            ips200_printf(42 ,32 , "%d    ", (int)rc_ch[0]);
+            ips200_printf(42 ,48 , "%d    ", (int)rc_ch[1]);
+            ips200_printf(42 ,64 , "%d    ", (int)rc_ch[2]);
+            ips200_printf(42 ,80 , "%d    ", (int)rc_ch[3]);
+            ips200_printf(42 ,96 , "%d    ", (int)rc_ch[4]);
+            ips200_printf(42 ,112, "%d    ", (int)rc_ch[5]);
+            ips200_printf(34 ,144, "%d ",   (int)rc_state);
+            ips200_printf(98 ,144, "%d    ", (int)rc_frames);
         }
     }
 }

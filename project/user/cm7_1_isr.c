@@ -202,6 +202,9 @@ void uart3_isr (void)
     }
 }
 
+// ---- UART_4 已被【串口接收机（SBUS）】占用，不要再作其它串口用途 ----
+//   串口/引脚：UART_4 = SCB2；P14.0 = RX（接接收机的 UART/TXD 输出）；P14.1 = TX（占位，接收机无此脚，硬件悬空）
+//   定时器    ：TC_TIME2_CH2 也被该驱动占用（做帧间隔计时），别处不要再 timer_init 同一个通道
 void uart4_isr (void)
 {
     if(uart_isr_mask(UART_4))            // 串口4接收中断
