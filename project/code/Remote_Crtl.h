@@ -38,7 +38,7 @@
 #define RC_STEER_MIN            (192)
 #define RC_STEER_MAX            (1792)
 
-// CH2 油门：静止约 990（实测在 988/990/992 跳变），两端满幅 216 / 1816
+// CH2 油门：静止约 992（实测在 988/990/992 跳变），两端满幅 192 / 1792
 #define RC_THR_MID              (992)
 #define RC_THR_MIN              (192)
 #define RC_THR_MAX              (1792)
@@ -64,8 +64,9 @@
 // 方向盘极性：+1 = 原始值增大的方向为"向右"；实测方向相反就改成 -1
 #define RC_STEER_DIR_SIGN       (+1)
 
-// 油门中位死区（原始计数）：把静止时的 ±2 抖动压成 0
-#define RC_THR_DEADBAND         (6)
+// 油门中位死区（原始计数）：|CH2 - RC_THR_MID| 不超过它就算 0
+// 即 990 ± 8 → 982 ~ 1002 全部当"没给油"，把静止抖动压掉
+#define RC_THR_DEADBAND         (8)
 
 // 后轮速度目标的上限（单位：每 10ms 的编码器计数，即 Motor_Crtl 的目标量纲）
 // 油门 ±1.0 线性映射到这两个值：前进为正、后退为负
@@ -81,11 +82,12 @@
 /*[S] 闭环介入状态 [S]------------------------------------*/
 /**********************************************************/
 
-// 只有接收机状态正常（ST = 1）时才允许按下确认键切换介入；
-// ST 掉到 0 会从 ON 掉进 FAILSAFE 并锁住，不会自动回到 ON（需人工重新确认）
-#define RC_ENGAGE_OFF           (0)     // 未使能：舵机 / 后轮都失能，目标 0
-#define RC_ENGAGE_ON            (1)     // 已使能：双闭环 + 遥控设置目标
-#define RC_ENGAGE_FAILSAFE      (2)     // 失控挂起：舵机失能；后轮**保持使能**、目标 0（主动刹停）
+// 进页面即进入 STANDBY（双闭环使能、目标 0）；只有接收机状态正常（ST = 1）时
+// 才允许按下确认键让遥控接管目标；ST 掉到 0 会掉进 FAILSAFE 并锁住，不会自动恢复
+#define RC_ENGAGE_OFF           (0)     // 全部失能、目标 0（离开遥控页面后的状态）
+#define RC_ENGAGE_STANDBY       (1)     // 双闭环使能、目标 0（进页面后的默认状态，遥控尚未接管）
+#define RC_ENGAGE_ON            (2)     // 双闭环使能 + 遥控设置目标
+#define RC_ENGAGE_FAILSAFE      (3)     // 失控挂起：舵机失能；后轮**保持使能**、目标 0（主动刹停）
 
 /**********************************************************/
 /*----------------------------------------[E] 闭环介入状态 [E]*/
@@ -106,7 +108,7 @@ extern volatile int8   RC_Sw4;                      // CH4 三档 -1 / 0 / +1
 extern volatile uint8  RC_Sw5;                      // CH5 两态 0/1
 extern volatile uint8  RC_Sw6;                      // CH6 两态 0/1
 extern volatile uint8  RC_Online;                   // 1 = 接收机报告状态正常（未失控）
-extern volatile uint8  RC_Engage;                   // 闭环介入状态，取 RC_ENGAGE_OFF / ON / FAILSAFE
+extern volatile uint8  RC_Engage;                   // 闭环介入状态，取 RC_ENGAGE_OFF / STANDBY / ON / FAILSAFE
 
 /**********************************************************/
 /*----------------------------------------[E] 对外数据 [E]*/

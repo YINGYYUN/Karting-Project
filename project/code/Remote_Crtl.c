@@ -133,7 +133,7 @@ void Remote_Crtl_Update (void)
                  * RC_Norm(RC_Raw_Ch1, RC_STEER_MID, RC_STEER_MIN, RC_STEER_MAX)
                  * RC_STEER_LIMIT_DEG;
 
-    // 油门：中位附近留死区，把静止时的 ±2 抖动压成 0
+    // 油门：中位附近留死区（RC_THR_MID ± RC_THR_DEADBAND），把静止抖动压成 0
     thr = (int)RC_Raw_Ch2 - RC_THR_MID;
     if ((thr <= RC_THR_DEADBAND) && (thr >= -RC_THR_DEADBAND))
     {
@@ -156,41 +156,51 @@ void Remote_Crtl_Update (void)
 // 参数说明     void
 // 使用示例     Remote_Crtl_Apply();
 // 备注信息     调用前必须先 Remote_Crtl_Update()；
-//              三种状态的处理见 Remote_Crtl.h 里 RC_ENGAGE_* 的说明
+//              四种状态的处理见 Remote_Crtl.h 里 RC_ENGAGE_* 的说明
 //--------------------------------------
 void Remote_Crtl_Apply (void)
 {
     float tgt = RC_ThrottleToTarget();
 
-    // 接收机报失控：从"已使能"掉进"失控挂起"（锁存，不自动复位）
-    if ((0 == RC_Online) && (RC_ENGAGE_ON == RC_Engage))
+    // 接收机报失控：从非 FAILSAFE 状态掉进"失控挂起"（锁存，不自动恢复）
+    if ((0 == RC_Online) && (RC_ENGAGE_FAILSAFE != RC_Engage))
     {
         RC_Engage = RC_ENGAGE_FAILSAFE;
     }
 
-    if (RC_ENGAGE_ON == RC_Engage)              // 已使能：双闭环 + 遥控设置目标
+    switch (RC_Engage)
     {
-        Servo_Crtl_Enable    = 1;
-        Motor_Crtl_Enable    = 1;
-        Servo_Target_Deg     = RC_Steer_Deg;
-        Motor_LR_Crtl.target = tgt;
-        Motor_RR_Crtl.target = tgt;
-    }
-    else if (RC_ENGAGE_FAILSAFE == RC_Engage)   // 失控挂起：舵机失能；后轮保持使能、目标 0
-    {
-        Servo_Crtl_Enable    = 0;
-        Servo_Target_Deg     = 0.0f;
-        Motor_Crtl_Enable    = 1;
-        Motor_LR_Crtl.target = 0.0f;
-        Motor_RR_Crtl.target = 0.0f;
-    }
-    else                                        // 未使能：全部失能、目标 0
-    {
-        Servo_Crtl_Enable    = 0;
-        Servo_Target_Deg     = 0.0f;
-        Motor_Crtl_Enable    = 0;
-        Motor_LR_Crtl.target = 0.0f;
-        Motor_RR_Crtl.target = 0.0f;
+        case RC_ENGAGE_ON:              // 遥控接管：双闭环 + 遥控设置目标
+            Servo_Crtl_Enable    = 1;
+            Motor_Crtl_Enable    = 1;
+            Servo_Target_Deg     = RC_Steer_Deg;
+            Motor_LR_Crtl.target = tgt;
+            Motor_RR_Crtl.target = tgt;
+            break;
+
+        case RC_ENGAGE_STANDBY:         // 待命：双闭环使能，但目标 0（遥控还没接管）
+            Servo_Crtl_Enable    = 1;
+            Motor_Crtl_Enable    = 1;
+            Servo_Target_Deg     = 0.0f;
+            Motor_LR_Crtl.target = 0.0f;
+            Motor_RR_Crtl.target = 0.0f;
+            break;
+
+        case RC_ENGAGE_FAILSAFE:        // 失控挂起：舵机失能；后轮保持使能、目标 0
+            Servo_Crtl_Enable    = 0;
+            Servo_Target_Deg     = 0.0f;
+            Motor_Crtl_Enable    = 1;
+            Motor_LR_Crtl.target = 0.0f;
+            Motor_RR_Crtl.target = 0.0f;
+            break;
+
+        default:                        // OFF：全部失能、目标 0
+            Servo_Crtl_Enable    = 0;
+            Servo_Target_Deg     = 0.0f;
+            Motor_Crtl_Enable    = 0;
+            Motor_LR_Crtl.target = 0.0f;
+            Motor_RR_Crtl.target = 0.0f;
+            break;
     }
 }
 
@@ -225,7 +235,8 @@ void Remote_Crtl_Release (void)
 // 数据源：Remote_Crtl_Update() 换算出来的指令量（原始值来自 10ms 中断的 uart_receiver 快照）
 // WiFi 上行：CH1,CH2,DEG10,THR,K3,S4,K5,K6,ST,EN,TGT,FRAMES （20ms 一行）
 //   DEG10 = 方向盘指令角，单位 0.1°；THR = 油门千分比（-1000~+1000）
-//   ST = 接收机状态；EN = 介入状态(0 未使能 / 1 已使能 / 2 失控挂起)；TGT = 后轮目标(计数/10ms)
+//   ST = 接收机状态；TGT = 后轮目标(计数/10ms)
+//   EN = 介入状态：0 全部失能 / 1 待命(闭环使能、目标 0) / 2 遥控接管 / 3 失控挂起
 //   FRAMES = 累计收帧数（一直不涨 -> 接收机没在发 / 帧格式对不上）
 //-------------------------------------------------------------------------------------------------------------------
 
@@ -238,7 +249,7 @@ static void Remote_Crtl_UI (void)
     ips200_show_string(10 ,64 , "K3:# K5:# K6:#  S4:#");
     ips200_show_string(10 ,80 , "ST:#  FRM:#####");
     ips200_show_string(10 ,96 , "EN:#  TGT:+####");
-    ips200_show_string(10 ,112, "CONFIRM: ARM/OFF");
+    ips200_show_string(10 ,144, "CONFIRM: RC ON/OFF");
 }
 
 // 屏幕输出：带符号的整数（分符号输出，避免依赖 %+d 的格式支持）
@@ -273,8 +284,9 @@ int Remote_Crtl_Page (void)
 {
     Remote_Crtl_UI();
 
-    // 进页面固定从"未使能"开始，进来本身不会产生任何动作
-    Remote_Crtl_Release();
+    // 进页面即让双闭环"待命"：两路使能、目标 0。
+    // 车不会动，但方向盘会被驱动回 0°；按下确认键后遥控才接管目标
+    RC_Engage = RC_ENGAGE_STANDBY;
 
     // 参考计时值重置
     Time_Count1 = 0;
@@ -292,16 +304,21 @@ int Remote_Crtl_Page (void)
             return 0;
         }
 
+        // 心跳：本页面在监督后轮闭环，必须每圈喂一次。
+        // 漏喂 -> Motor_Crtl 的心跳门会一直判定"监督循环已死"，电机输出恒为 0。
+        Motor_Crtl_HB_Feed();
+
         // 先算遥控指令量（纯算术，开销可忽略）
         Remote_Crtl_Update();
 
-        // 确认键：只有接收机状态正常（ST = 1）才允许切换介入
+        // 确认键：只有接收机状态正常（ST = 1）才允许让遥控接管 / 收回
+        // （遥控收回后回到 STANDBY：闭环仍然使能，只是目标回到 0）
         if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
             key_clear_state(KEY_CONFIRM);
             if (RC_Online)
             {
-                RC_Engage = (RC_ENGAGE_ON == RC_Engage) ? RC_ENGAGE_OFF : RC_ENGAGE_ON;
+                RC_Engage = (RC_ENGAGE_ON == RC_Engage) ? RC_ENGAGE_STANDBY : RC_ENGAGE_ON;
             }
         }
 
