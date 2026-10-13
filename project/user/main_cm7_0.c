@@ -49,7 +49,8 @@ int main(void)
 
     Peripheral_Init();				    // 初始化外设，自行配置
     pit_ms_init(PIT_CH0, 10);
-    pit_ms_init(PIT_CH1, 10);
+    pit_ms_init(PIT_CH1, 10);           // 10ms：转向相关（磁/角度编码器 + 舵机位置环）
+    pit_ms_init(PIT_CH11, 5);           // 5ms：后轮速度环
     pit_ms_init(PIT_CH10, 1);           // 1ms 定时，全局毫秒计时（编码器速度积分用）
 
     while(true)

@@ -48,3 +48,6 @@ build.ninja
 
 # ===== 第三方 AI 工具产生的对话记录（非工程内容，不入库）=====
 .workbuddy/
+
+# ===== 参考工程（仅作参考，不入库）=====
+zjc_kart_cyt4bb7-main/

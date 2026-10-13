@@ -64,7 +64,7 @@ void    Motor_SET_Zero_ALL          (void);
 
 // 方向编码器数据处理参数
 #define ENC_WIN_MAX                 (16)    // 滑动平均窗口上限（缓冲按它开）
-#define ENC_WIN_DEFAULT             (4)     // 滑动平均窗口默认值（1 = 不滤波）
+#define ENC_WIN_DEFAULT             (4)     // 滑动平均窗口默认值（1 = 不滤波）；4 @5ms 等效 20ms 均值
 
 // 方向编码器极性
 // 手把左后轮朝车前进方向转，若 ENC_LR_CNT 为负则把 ENC_LR_INVERT 置 1；右后轮同理
@@ -116,7 +116,8 @@ extern int16  ENC_ABS_OFF;                  // 相对上一次的增量
 
 // 方向编码器读取初始化（两路一起：配置引脚 + 预读初值），由 Motor_init() 调用
 void ENC_Read_Init(void);
-// 单路 10ms 读取更新：取驱动读数 -> 清计数 -> 极性对齐 -> 滑动平均 -> 累加
+// 单路 5ms 读取更新：取驱动读数 -> 清计数 -> 极性对齐 -> 滑动平均 -> 累加
+// （调用点在 cm7_0_isr.c 的 pit0_ch11_isr，与后轮速度环同拍）
 void ENC_LR_Update(void);
 void ENC_RR_Update(void);
 

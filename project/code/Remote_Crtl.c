@@ -94,7 +94,7 @@ static int8 RC_Pick3 (uint16 v)
 
 //--------------------------------------
 // 函数简介     油门 -> 后轮速度目标
-// 返回参数     float	每 10ms 的编码器计数（前进为正）
+// 返回参数     float	rps（前进为正，与 Motor_Crtl 同口径）
 // 备注信息     前进 / 后退各自限幅，两个上限都由宏给
 //--------------------------------------
 static float RC_ThrottleToTarget (void)
@@ -162,8 +162,14 @@ void Remote_Crtl_Apply (void)
 {
     float tgt = RC_ThrottleToTarget();
 
-    // 接收机报失控：从非 FAILSAFE 状态掉进"失控挂起"（锁存，不自动恢复）
-    if ((0 == RC_Online) && (RC_ENGAGE_FAILSAFE != RC_Engage))
+    // 急停：CH5 拨到高位即触发，锁存。松开 CH5 也不会自动退出（要按确认键才恢复）
+    if (1 == RC_Sw5)
+    {
+        RC_Engage = RC_ENGAGE_ESTOP;
+    }
+    // 接收机报失控：掉进"失控挂起"（锁存，不自动恢复）
+    // 急停优先：已锁在 ESTOP 时不被 FAILSAFE 顶掉
+    else if ((0 == RC_Online) && (RC_ENGAGE_ESTOP != RC_Engage))
     {
         RC_Engage = RC_ENGAGE_FAILSAFE;
     }
@@ -184,6 +190,15 @@ void Remote_Crtl_Apply (void)
             Servo_Target_Deg     = 0.0f;
             Motor_LR_Crtl.target = 0.0f;
             Motor_RR_Crtl.target = 0.0f;
+            break;
+
+        case RC_ENGAGE_ESTOP:           // 急停：后轮保持使能、目标 0（主动刹停）
+            Servo_Crtl_Enable    = 1;   // 舵机仍使能，保住转向
+            Motor_Crtl_Enable    = 1;
+            Motor_LR_Crtl.target = 0.0f;
+            Motor_RR_Crtl.target = 0.0f;
+            // 故意不写 Servo_Target_Deg：保持急停前的转向，
+            // 避免车在减速过程中突然自己回正（那会更危险）
             break;
 
         case RC_ENGAGE_FAILSAFE:        // 失控挂起：舵机失能；后轮保持使能、目标 0
@@ -235,8 +250,8 @@ void Remote_Crtl_Release (void)
 // 数据源：Remote_Crtl_Update() 换算出来的指令量（原始值来自 10ms 中断的 uart_receiver 快照）
 // WiFi 上行：CH1,CH2,DEG10,THR,K3,S4,K5,K6,ST,EN,TGT,FRAMES （20ms 一行）
 //   DEG10 = 方向盘指令角，单位 0.1°；THR = 油门千分比（-1000~+1000）
-//   ST = 接收机状态；TGT = 后轮目标(计数/10ms)
-//   EN = 介入状态：0 全部失能 / 1 待命(闭环使能、目标 0) / 2 遥控接管 / 3 失控挂起
+//   ST = 接收机状态；TGT = 后轮目标(0.01 rps)
+//   EN = 介入状态：0 全部失能 / 1 待命(闭环使能、目标 0) / 2 遥控接管 / 3 失控挂起 / 4 急停
 //   FRAMES = 累计收帧数（一直不涨 -> 接收机没在发 / 帧格式对不上）
 //-------------------------------------------------------------------------------------------------------------------
 
@@ -316,7 +331,8 @@ int Remote_Crtl_Page (void)
         if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
             key_clear_state(KEY_CONFIRM);
-            if (RC_Online)
+            // 急停还挂在 CH5 上时不允许恢复：必须先松开 CH5，再按确认键
+            if (RC_Online && (0 == RC_Sw5))
             {
                 RC_Engage = (RC_ENGAGE_ON == RC_Engage) ? RC_ENGAGE_STANDBY : RC_ENGAGE_ON;
             }
@@ -345,7 +361,7 @@ int Remote_Crtl_Page (void)
                         (int)(RC_Steer_Deg * 10.0f), (int)(RC_Throttle * 1000.0f),
                         (int)RC_Sw3, (int)RC_Sw4, (int)RC_Sw5, (int)RC_Sw6,
                         (int)RC_Online, (int)RC_Engage,
-                        (int)Motor_LR_Crtl.target, (int)rc_frames);
+                        (int)(Motor_LR_Crtl.target * 100.0f), (int)rc_frames);
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }
@@ -366,7 +382,7 @@ int Remote_Crtl_Page (void)
             ips200_printf(34 ,80 , "%d ", (int)RC_Online);
             ips200_printf(90 ,80 , "%d    ", (int)rc_frames);
             ips200_printf(34 ,96 , "%d ", (int)RC_Engage);
-            Remote_Crtl_ShowInt(90 ,96 , (int32_t)Motor_LR_Crtl.target);
+            Remote_Crtl_ShowInt(90 ,96 , (int32_t)(Motor_LR_Crtl.target * 100.0f));   // 0.01 rps
         }
     }
 }

@@ -35,10 +35,12 @@ Menu_Item head = {
 Menu_Item *key;
 
 // 步进值控制
-// 加了 100 这一档：速度环换算后的增益是几百~上千（如 k_z≈1249），只靠 10 要按上百次
-#define SETUP_LEN               (5)
-static float SetupNumber[SETUP_LEN] = {0.01f, 0.1f, 1, 10, 100};
-static uint8_t SetupIndex = 2;          // 默认步进 = 1
+// 速度环增益口径 v=rps、u=归一化占空比，量级在 0.03 ~ 2.3：
+//   inv_K=0.1548、u0=0.033、k_v=0.164、k_z=2.32 —— 所以 0.001 / 0.01 两档必须有。
+// 默认步进仍取 1（舵机 kp=300 那一页用得上），调速度环参数时用退出键循环到 0.001/0.01
+#define SETUP_LEN               (6)
+static float SetupNumber[SETUP_LEN] = {0.001f, 0.01f, 0.1f, 1, 10, 100};
+static uint8_t SetupIndex = 3;          // 默认步进 = 1
 
 
 /**********************************************************/

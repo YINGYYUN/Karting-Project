@@ -67,11 +67,8 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
 {
     pit_isr_flag_clear(PIT_CH1);
     
-    // 10ms
-    
-    // 编码器读取（方向编码器：脉冲 + 方向，含极性对齐与滑动平均）
-    ENC_LR_Update();
-    ENC_RR_Update();
+    // 10ms：转向相关（磁编码器 / 角度编码器 / 舵机位置环）
+    // ★ 后轮测速与速度环已移到 pit0_ch11_isr（5ms），这里不要再调，否则编码器会被读两次
 
     #if ENC_MAG_ENABLE == 1
 
@@ -100,9 +97,6 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
 
     // ---- 转向角换算（原始读数 -> 方向盘角度），须在编码器采集之后 ----
     Servo_Crtl_Tick();
-
-    // 后轮电机速度闭环：门控 -> 取反馈 -> 控制 -> 输出
-    Motor_Crtl_Tick();
 }
 
 void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      
@@ -119,10 +113,18 @@ void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务
     Sys_Tick_Ms ++;
 }
 
-void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数      
+void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数（后轮速度环 5ms）
 {
     pit_isr_flag_clear(PIT_CH11);
-    
+
+    // ★ 后轮速度环节拍 5ms。
+    //   没有用 PIT_CH2：那个硬件通道已被 CM7_1 的 IMU 解算占用（同一块 TCPWM0 GRP2）。
+    //   测速必须与控制同拍，否则速度环读到的是上一拍的旧值。
+    ENC_LR_Update();
+    ENC_RR_Update();
+
+    // 后轮电机速度闭环：门控 -> 取反馈 -> 控制 -> 输出
+    Motor_Crtl_Tick();
 }
 
 void pit0_ch12_isr()                    // 定时器通道 12 周期中断服务函数      

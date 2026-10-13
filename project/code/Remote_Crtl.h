@@ -44,6 +44,7 @@
 #define RC_THR_MAX              (1792)
 
 // 开关档位原始值：CH3 / CH5 / CH6 为两态（低 / 高），CH4 为三档（低 / 中 / 高）
+// 其中 CH5 被用作急停：拨到高位（RC_Sw5 == 1）即急停
 #define RC_SW_VAL_LOW           (192)
 #define RC_SW_VAL_MID           (992)
 #define RC_SW_VAL_HIGH          (1792)
@@ -68,10 +69,11 @@
 // 即 990 ± 8 → 982 ~ 1002 全部当"没给油"，把静止抖动压掉
 #define RC_THR_DEADBAND         (8)
 
-// 后轮速度目标的上限（单位：每 10ms 的编码器计数，即 Motor_Crtl 的目标量纲）
+// 后轮速度目标的上限（单位：rps，与 Motor_Crtl 同口径）
 // 油门 ±1.0 线性映射到这两个值：前进为正、后退为负
-#define RC_THR_TARGET_FWD       ( 10.0f)
-#define RC_THR_TARGET_REV       (-10.0f)
+// 取 1.0 rps 是为了保住原本的车速（原"每 10ms 编码器计数"口径的 ±20 ≈ 1.08 rps）
+#define RC_THR_TARGET_FWD       ( 1.0f)
+#define RC_THR_TARGET_REV       (-1.0f)
 
 /**********************************************************/
 /*----------------------------------------[E] 换算参数 [E]*/
@@ -88,6 +90,10 @@
 #define RC_ENGAGE_STANDBY       (1)     // 双闭环使能、目标 0（进页面后的默认状态，遥控尚未接管）
 #define RC_ENGAGE_ON            (2)     // 双闭环使能 + 遥控设置目标
 #define RC_ENGAGE_FAILSAFE      (3)     // 失控挂起：舵机失能；后轮**保持使能**、目标 0（主动刹停）
+// 急停（CH5 原始值为高位，即 RC_Sw5 == 1 时触发）：后轮保持使能、目标 0（主动刹停）；
+// 舵机保持急停前的转向、不再跟随 CH1。进入后**锁存**，遥控彻底失效；
+// 恢复 = 先把 CH5 拨回低位，再在板子上重新按确认键
+#define RC_ENGAGE_ESTOP         (4)
 
 /**********************************************************/
 /*----------------------------------------[E] 闭环介入状态 [E]*/
@@ -108,7 +114,7 @@ extern volatile int8   RC_Sw4;                      // CH4 三档 -1 / 0 / +1
 extern volatile uint8  RC_Sw5;                      // CH5 两态 0/1
 extern volatile uint8  RC_Sw6;                      // CH6 两态 0/1
 extern volatile uint8  RC_Online;                   // 1 = 接收机报告状态正常（未失控）
-extern volatile uint8  RC_Engage;                   // 闭环介入状态，取 RC_ENGAGE_OFF / STANDBY / ON / FAILSAFE
+extern volatile uint8  RC_Engage;                   // 闭环介入状态，取 RC_ENGAGE_OFF / STANDBY / ON / FAILSAFE / ESTOP
 
 /**********************************************************/
 /*----------------------------------------[E] 对外数据 [E]*/

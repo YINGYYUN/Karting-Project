@@ -496,6 +496,7 @@ int Debug_Motor (void)
 int Debug_Motor_PID (void)
 {
     // 目标值相关，为方便调用元素数量为3（只用 [1] [2]）
+    // ★ 单位：0.01 rps（与 Motor_Crtl 同口径），写入 target 时 ×0.01
     int16_t enc_tar[3] = {0};
     // 重置闭环状态
     Motor_Crtl_Reset();
@@ -577,19 +578,19 @@ int Debug_Motor_PID (void)
                 if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
                 {
                     key_clear_state(KEY_UP);
-                    enc_tar[Debug_M_P_f] += 2;
-                    if (enc_tar[Debug_M_P_f] > 800)enc_tar[Debug_M_P_f] = 800;
-                    Motor_LR_Crtl.target = enc_tar[1];
-                    Motor_RR_Crtl.target = enc_tar[2];
+                    enc_tar[Debug_M_P_f] += 2;      // 步进 2 = 0.02 rps
+                    if (enc_tar[Debug_M_P_f] > 300)enc_tar[Debug_M_P_f] = 300;   // 上限 3.00 rps
+                    Motor_LR_Crtl.target = enc_tar[1] * 0.01f;
+                    Motor_RR_Crtl.target = enc_tar[2] * 0.01f;
                     ips200_printf(66 ,16 + 16*Debug_M_P_f, "%d  ", enc_tar[Debug_M_P_f]);
                 }
                 else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
                 {
                     key_clear_state(KEY_DOWN);
-                    enc_tar[Debug_M_P_f] -= 2;
-                    if (enc_tar[Debug_M_P_f] < -800)enc_tar[Debug_M_P_f] = -800;
-                    Motor_LR_Crtl.target = enc_tar[1];
-                    Motor_RR_Crtl.target = enc_tar[2];
+                    enc_tar[Debug_M_P_f] -= 2;      // 步进 2 = 0.02 rps
+                    if (enc_tar[Debug_M_P_f] < -300)enc_tar[Debug_M_P_f] = -300; // 下限 -3.00 rps
+                    Motor_LR_Crtl.target = enc_tar[1] * 0.01f;
+                    Motor_RR_Crtl.target = enc_tar[2] * 0.01f;
                     ips200_printf(66 ,16 + 16*Debug_M_P_f, "%d  ", enc_tar[Debug_M_P_f]);
                 }
                 else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM) || 
@@ -608,10 +609,10 @@ int Debug_Motor_PID (void)
                 {
                     Time_Count1 = 0;
 
-                    ips200_printf(154,32, "%d    ", (int16_t)Motor_LR_Crtl.actual);
-                    ips200_printf(154,48, "%d    ", (int16_t)Motor_RR_Crtl.actual);
-                    ips200_printf(66 ,112, "%d    ", (int16_t)Motor_LR_Crtl.out);
-                    ips200_printf(66 ,128, "%d    ", (int16_t)Motor_RR_Crtl.out);
+                    ips200_printf(154,32, "%d    ", (int16_t)(Motor_LR_Crtl.actual * 100.0f));   // 0.01 rps
+                    ips200_printf(154,48, "%d    ", (int16_t)(Motor_RR_Crtl.actual * 100.0f));
+                    ips200_printf(66 ,112, "%d    ", (int16_t)(Motor_LR_Crtl.out * 10000.0f));   // 等效 duty
+                    ips200_printf(66 ,128, "%d    ", (int16_t)(Motor_RR_Crtl.out * 10000.0f));
                     ips200_printf(58 ,80 , "%d    ", (int)Motor_Crtl_HB_Age_Ms());
                     ips200_printf(66 ,96 , "%d ", Motor_LR_Crtl.enc_fault);
                     ips200_printf(114,96 , "%d ", Motor_RR_Crtl.enc_fault);
@@ -624,7 +625,7 @@ int Debug_Motor_PID (void)
                     if(wifi_spi_inited) 
                     {
                         char buf[64];
-                        sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_RR_Crtl.actual, (int16_t)Motor_RR_Crtl.target, (int16_t)Motor_RR_Crtl.out);
+                        sprintf(buf, "%d,%d,%d\n", (int16_t)(Motor_RR_Crtl.actual * 100.0f), (int16_t)(Motor_RR_Crtl.target * 100.0f), (int16_t)(Motor_RR_Crtl.out * 10000.0f));
                         wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
                     }
                 }
@@ -639,10 +640,10 @@ int Debug_Motor_PID (void)
         {
             Time_Count1 = 0;
 
-            ips200_printf(154,32, "%d    ", (int16_t)Motor_LR_Crtl.actual);
-            ips200_printf(154,48, "%d    ", (int16_t)Motor_RR_Crtl.actual);
-            ips200_printf(66 ,112, "%d    ", (int16_t)Motor_LR_Crtl.out);
-            ips200_printf(66 ,128, "%d    ", (int16_t)Motor_RR_Crtl.out);
+            ips200_printf(154,32, "%d    ", (int16_t)(Motor_LR_Crtl.actual * 100.0f));   // 0.01 rps
+            ips200_printf(154,48, "%d    ", (int16_t)(Motor_RR_Crtl.actual * 100.0f));
+            ips200_printf(66 ,112, "%d    ", (int16_t)(Motor_LR_Crtl.out * 10000.0f));   // 等效 duty
+            ips200_printf(66 ,128, "%d    ", (int16_t)(Motor_RR_Crtl.out * 10000.0f));
             ips200_printf(58 ,80 , "%d    ", (int)Motor_Crtl_HB_Age_Ms());
             ips200_printf(66 ,96 , "%d ", Motor_LR_Crtl.enc_fault);
             ips200_printf(114,96 , "%d ", Motor_RR_Crtl.enc_fault);
@@ -655,7 +656,7 @@ int Debug_Motor_PID (void)
             if(wifi_spi_inited) 
             {
                 char buf[64];
-                sprintf(buf, "%d,%d,%d\n", (int16_t)Motor_RR_Crtl.actual, (int16_t)Motor_RR_Crtl.target, (int16_t)Motor_RR_Crtl.out);
+                sprintf(buf, "%d,%d,%d\n", (int16_t)(Motor_RR_Crtl.actual * 100.0f), (int16_t)(Motor_RR_Crtl.target * 100.0f), (int16_t)(Motor_RR_Crtl.out * 10000.0f));
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }

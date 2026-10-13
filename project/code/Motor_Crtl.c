@@ -174,7 +174,7 @@ void Motor_Crtl_Init (void)
 }
 
 //--------------------------------------
-// 函数简介     10ms 主节拍
+// 函数简介     5ms 主节拍
 // 参数说明     void
 // 使用示例     在 PIT 中断里调用 Motor_Crtl_Tick();
 // 备注信息     顺序固定：取反馈 -> 保护判定 -> 控制 -> 写输出
@@ -182,8 +182,9 @@ void Motor_Crtl_Init (void)
 //--------------------------------------
 void Motor_Crtl_Tick (void)
 {
-    Motor_LR_Crtl.actual = (float)ENC_LR_CNT;
-    Motor_RR_Crtl.actual = (float)ENC_RR_CNT;
+    // 编码器原始计数（每拍增量）-> 转速 rps：每转 MOTOR_CRTL_CPR 个计数，拍长 MOTOR_CRTL_T_S
+    Motor_LR_Crtl.actual = (float)ENC_LR_CNT / (MOTOR_CRTL_CPR * MOTOR_CRTL_T_S);
+    Motor_RR_Crtl.actual = (float)ENC_RR_CNT / (MOTOR_CRTL_CPR * MOTOR_CRTL_T_S);
 
     // 编码器脱落/堵转：用本拍增量 + 上一拍输出判定，先于控制
     Motor_Crtl_EncCheck(&Motor_LR_Crtl, ENC_LR_CNT);
@@ -239,7 +240,7 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
        直接写 target 等于灌阶跃：不处理会 1.前馈瞬间打满 2.积分攒一堆 -> 大超调 */
     {
         float d   = r - p->target_app;
-        float lim = MOTOR_CRTL_SLEW_DEFAULT * MOTOR_CRTL_T_S;
+        float lim = MOTOR_CRTL_SLEW * MOTOR_CRTL_T_S;
 
         if (MOTOR_CRTL_INT_CLR_STEP > 0.0f)
         {
@@ -299,7 +300,8 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
     p->out     = u_clamped;
     p->enabled = 1;
 
-    Motor_Set(p->motor_id, (int16)u_clamped);
+    // u 是归一化 ±1，只在这一刻换算成 duty 写进驱动
+    Motor_Set(p->motor_id, (int16)(u_clamped * (float)PWM_DUTY_MAX));
 }
 
 /**********************************************************/
