@@ -156,27 +156,25 @@ static void show_title(void)
     ips200_show_string(0, 0, buf);
 }
 
-// 显示步进值(固定 7 字符宽, 避免短字符串残留旧像素)
+// 显示步进值
+// 用固定字符串而非浮点格式化：0.001 走 "%.2f" 会显示成 "<0.00>"，看不出是哪一档。
+// ★ 每个字符串尾部那些空格是**故意写的**，作用是把所有档位都撑到同样 8 字符宽：
+//   菜单刷新不整屏清，短串不清尾巴会留上一次的旧像素（残影）。每档空格数 = 8 - 标签长度。
+//   注意：编辑器/格式化工具若开了"自动删除行尾空格"，会把这些空格吃掉、残影复现 —— 改完确认空格还在。
+// SetupText 与 SetupNumber 一一对应，长度/顺序必须一致（都是 SETUP_LEN）。
 static void show_setup(void)
 {
-    char buf[8];
-    memset(buf, ' ', 7);
-    buf[7] = '\0';
-
-    if (SetupNumber[SetupIndex] < 1)
+    static const char *const SetupText[SETUP_LEN] =
     {
-        // <0.00>
-        int len = sprintf(buf, "<%.2f>", SetupNumber[SetupIndex]);
-        buf[len] = ' ';     // 抹掉 sprintf 写入的 '\0', 让后面空格继续显示
-    }
-    else
-    {
-        // <1000>
-        int len = sprintf(buf, "<%.0f>", SetupNumber[SetupIndex]);
-        buf[len] = ' ';
-    }
+        "<0.001> ",     // 7 + 1 空格
+        "<0.01>  ",     // 6 + 2 空格
+        "<0.1>   ",     // 5 + 3 空格
+        "<1>     ",     // 3 + 5 空格
+        "<10>    ",     // 4 + 4 空格
+        "<100>   "      // 5 + 3 空格
+    };
 
-    ips200_show_string(160, 0, buf);
+    ips200_show_string(160, 0, SetupText[SetupIndex]);
 }
 
 // 显示菜单项名称
@@ -273,8 +271,20 @@ static void show_data(void)
                 break;
 
             case float_Box:
-                ips200_printf(150, y, "%3.2f", *(float *)s->data);
-                break;
+            {
+                /* 4 位小数（如 0.1548）。右侧补空格到定宽 11 字符：
+                   菜单刷新不整屏清，短字符串不清尾巴会留上一次的旧像素。
+                   数据区 x=150..239 共 90px，8x16 字体下 = 11 字符，够放 "-9999.9999"(10) */
+                char buf[16];
+                float v = *(float *)s->data;
+                if (v >  9999.9999f) { v =  9999.9999f; }
+                if (v < -9999.9999f) { v = -9999.9999f; }
+                int n = sprintf(buf, "%.4f", v);
+                while (n < 11) { buf[n ++] = ' '; }
+                buf[n] = '\0';
+                ips200_show_string(150, y, buf);
+            }
+            break;
 
             case bool_Box:
                 if (*(bool *)s->data == true)

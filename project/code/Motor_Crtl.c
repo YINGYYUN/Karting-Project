@@ -96,11 +96,13 @@ static uint8 Motor_Crtl_HB_Alive (void)
 //--------------------------------------
 // 函数简介     编码器脱落 / 堵转判定（单路，每拍调一次）
 // 参数说明     p	控制器实例
-// 参数说明     delta	本拍编码器增量（ENC_x_CNT）
+// 参数说明     delta	本拍编码器增量窗口均值（ENC_x_CNT_F，浮点原值）
 // 备注信息     前提用"指令侧"的 |out|：在出力、反馈却连续不动 -> 锁存停机。
 //              必须在控制之前调用；用到的 out 是上一拍真正给出去的值
+//              用浮点原值判定：整数版在窗口均值不足 1 计数时会被截断成 0，
+//              把"转得很慢"误判成"完全没动"
 //--------------------------------------
-static void Motor_Crtl_EncCheck (Motor_Crtl_t *p, int16 delta)
+static void Motor_Crtl_EncCheck (Motor_Crtl_t *p, float delta)
 {
     float o = p->out;
 
@@ -118,9 +120,9 @@ static void Motor_Crtl_EncCheck (Motor_Crtl_t *p, int16 delta)
         return;
     }
 
-    /* 在出力，看反馈有没有动 */
-    if (0 == delta) { p->zero_ms += MOTOR_CRTL_TICK_MS; }
-    else            { p->zero_ms  = 0; }
+    /* 在出力，看反馈有没有动（窗口内一个脉冲都没有才会精确为 0.0f） */
+    if (0.0f == delta) { p->zero_ms += MOTOR_CRTL_TICK_MS; }
+    else               { p->zero_ms  = 0; }
 
     if (p->zero_ms >= MOTOR_CRTL_ENC_LOST_MS)
     {
@@ -182,13 +184,15 @@ void Motor_Crtl_Init (void)
 //--------------------------------------
 void Motor_Crtl_Tick (void)
 {
-    // 编码器原始计数（每拍增量）-> 转速 rps：每转 MOTOR_CRTL_CPR 个计数，拍长 MOTOR_CRTL_T_S
-    Motor_LR_Crtl.actual = (float)ENC_LR_CNT / (MOTOR_CRTL_CPR * MOTOR_CRTL_T_S);
-    Motor_RR_Crtl.actual = (float)ENC_RR_CNT / (MOTOR_CRTL_CPR * MOTOR_CRTL_T_S);
+    // 编码器计数（每拍增量的窗口均值的浮点原值）-> 转速 rps：
+    // 每转 MOTOR_CRTL_CPR 个计数，拍长 MOTOR_CRTL_T_S。
+    // 必须取浮点版：低速时整数版会把不足 1 计数的均值截断成 0，反馈恒 0 -> 积分失去回复力
+    Motor_LR_Crtl.actual = ENC_LR_CNT_F / (MOTOR_CRTL_CPR * MOTOR_CRTL_T_S);
+    Motor_RR_Crtl.actual = ENC_RR_CNT_F / (MOTOR_CRTL_CPR * MOTOR_CRTL_T_S);
 
     // 编码器脱落/堵转：用本拍增量 + 上一拍输出判定，先于控制
-    Motor_Crtl_EncCheck(&Motor_LR_Crtl, ENC_LR_CNT);
-    Motor_Crtl_EncCheck(&Motor_RR_Crtl, ENC_RR_CNT);
+    Motor_Crtl_EncCheck(&Motor_LR_Crtl, ENC_LR_CNT_F);
+    Motor_Crtl_EncCheck(&Motor_RR_Crtl, ENC_RR_CNT_F);
 
     Motor_Crtl_Update(&Motor_LR_Crtl);
     Motor_Crtl_Update(&Motor_RR_Crtl);

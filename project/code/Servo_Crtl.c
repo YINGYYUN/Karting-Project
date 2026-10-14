@@ -6,55 +6,58 @@
 #include "zf_common_headfile.h"
 
 //============================== 对外数据 ==============================
-volatile int16 Servo_Ang_Raw        = 0;                // 当前原始读数 0 ~ 4095
-volatile float Servo_Angle_Deg      = 0.0f;             // 当前方向盘角度（度，向右为正）
-volatile float Servo_Target_Deg     = 0.0f;             // 目标角度（度，向右为正）
-volatile float Servo_Err_Deg        = 0.0f;             // 本拍误差（度）
-volatile int16 Servo_Out            = 0;                // 本拍实际写入电机的输出
-volatile uint8 Servo_Crtl_Enable    = 0;                // 0 = 输出强制 0 并清状态
-volatile float Servo_Crtl_Kp        = SERVO_KP_DEFAULT; // 位置环比例增益（参数页/Flash 会覆盖）
-volatile float Servo_Crtl_U0        = SERVO_U0_DEFAULT; // 摩擦截距前馈（参数页/Flash 会覆盖）
-volatile uint8 Servo_Enc_Fault      = 0;                // 1 = 反馈源失效已锁存
+volatile int16 Servo_Ang_Raw            = 0;                // 当前原始读数 0 ~ 4095
+volatile float Servo_Angle_Deg          = 0.0f;             // 当前方向盘角度（度，向右为正）
+volatile float Servo_Target_Deg         = 0.0f;             // 目标角度（设定值，度，向右为正）
+volatile float Servo_Target_Applied_Deg = 0.0f;             // 实际施加目标（目标软限位夹紧后，度）
+volatile float Servo_Err_Deg            = 0.0f;             // 本拍误差（度）
+volatile int16 Servo_Out                = 0;                // 本拍实际写入电机的输出
+volatile uint8 Servo_Crtl_Enable        = 0;                // 0 = 输出强制 0 并清状态
+volatile float Servo_Crtl_Kp            = SERVO_KP_DEFAULT; // 位置环比例增益（参数页/Flash 会覆盖）
+volatile float Servo_Crtl_U0            = SERVO_U0_DEFAULT; // 摩擦截距前馈（参数页/Flash 会覆盖）
+volatile uint8 Servo_Enc_Fault          = 0;                // 1 = 反馈源失效已锁存
 
 //============================== 内部状态 ==============================
-static float servo_target_applied   = 0.0f;             // 目标斜坡的上一次实际施加目标
-static uint8 servo_enabled          = 0;                // 上一拍是否为启用状态（用于失能时只清一次输出）
-static uint32 servo_invalid_ms      = 0;                // 在出力、却连续读到无效角度的累计时间
+static uint8 servo_enabled          = 0;                    // （上一拍）是否为启用状态（用于失能时只清一次输出）
+static uint32 servo_invalid_ms      = 0;                    // 电机在出力、却连续读到无效角度的累计时间
 
 //--------------------------------------
 // 函数简介     反馈源失效判定（角度编码器读到无效值）
 // 参数说明     void
 // 备注信息     前提用"指令侧"的 |Servo_Out|：在出力、反馈却连续读到无效值 -> 锁存停机。
-//              必须在门控之前调用；用到的 Servo_Out 是上一拍真正给出去的值
+//              必须在门控之前调用，来尽早停机；用到的 Servo_Out 是上一拍真正给出去的值
 //--------------------------------------
 static void Servo_Crtl_EncCheck (void)
 {
-    float o = (float)Servo_Out;
+    int16 out = (float)Servo_Out;
 
-    if (0 != Servo_Enc_Fault)
+    if (Servo_Enc_Fault == 1)
     {
         return;                         // 已锁存，等 Servo_Crtl_Reset()
     }
 
-    /* 前提不成立（没使能 / 出力还没到阈值）-> 只清计时，不判 */
-    if ((0 == Servo_Crtl_Enable) ||
-        ((o < SERVO_ENC_LOST_OUT) && (o > -SERVO_ENC_LOST_OUT)))
+    /* 前提不成立（没使能 / 出力还没到阈值）-> 只清零计时，不判决 */
+    if ((Servo_Crtl_Enable == 0) ||
+        ((out < SERVO_ENC_LOST_OUT) && (out > -SERVO_ENC_LOST_OUT)))
     {
         servo_invalid_ms = 0;
         return;
     }
 
-    /* 在出力，看角度读数是不是"掉线特征值" */
+    /* 在出力，判定角度编码器是否掉线 */
+    // 利用SPI设备掉线的固定特征值进行判定
     if ((Servo_Ang_Raw <= SERVO_ENC_RAW_INVALID_LOW) ||
         (Servo_Ang_Raw >= SERVO_ENC_RAW_INVALID_HIGH))
     {
         servo_invalid_ms += SERVO_TICK_MS;
     }
+    // 未掉线
     else
     {
         servo_invalid_ms = 0;
     }
 
+    /* 掉线时间到达阈值，触发停机 */
     if (servo_invalid_ms >= SERVO_ENC_LOST_MS)
     {
         servo_invalid_ms = 0;
@@ -63,7 +66,7 @@ static void Servo_Crtl_EncCheck (void)
 }
 
 //--------------------------------------
-// 函数简介     清目标 / 斜坡 / 误差 / 输出
+// 函数简介     清目标 / 误差 / 输出
 // 参数说明     void
 // 使用示例     Servo_Crtl_Reset();
 // 备注信息     进/出调试页时调用，避免把上次的设定带进下一次；
@@ -71,12 +74,12 @@ static void Servo_Crtl_EncCheck (void)
 //--------------------------------------
 void Servo_Crtl_Reset (void)
 {
-    Servo_Target_Deg = 0.0f;
-    Servo_Err_Deg    = 0.0f;
-    Servo_Out        = 0;
-    servo_target_applied = 0.0f;
-    Servo_Enc_Fault  = 0;
-    servo_invalid_ms = 0;
+    Servo_Target_Deg     = 0.0f;
+    Servo_Target_Applied_Deg = 0.0f;
+    Servo_Err_Deg        = 0.0f;
+    Servo_Out            = 0;
+    Servo_Enc_Fault      = 0;
+    servo_invalid_ms     = 0;
 }
 
 //--------------------------------------
@@ -114,6 +117,20 @@ void Servo_Crtl_Tick (void)
     /* ---- 反馈源失效判定：用本拍原始读数 + 上一拍输出，先于门控 ---- */
     Servo_Crtl_EncCheck();
 
+    /* ---- 目标处理：只做软限位夹紧，不做目标斜坡 ----
+       软限位比物理限位留 SERVO_SOFT_MARGIN_DEG 余量，保证控制器不会主动把方向盘
+       顶向限位结构。
+       夹紧是**兜底**：各设置入口（调试页按键 / 遥控换算）已按软限位限幅，正常状态下
+       这里不会真的夹到东西；留一次是为了外部直接写 Servo_Target_Deg 时也不越界。
+       目标阶跃时不再限速率：误差一次性给足，Kp·err 直接顶到输出限幅 -> 满 PWM、最快到位。
+       代价是没有减速过程，到位附近靠背隙/摩擦自然停住。
+       放在门控之前：让"实际施加目标"始终对外可见（Servo_Target_Applied_Deg），与是否使能无关。 */
+    // 手动实测限位读数重复性波动约 ±1.2°，余量需要留出裕度
+    r = Servo_Target_Deg;
+    if (r >  SERVO_SOFT_LIMIT_DEG) { r =  SERVO_SOFT_LIMIT_DEG; }
+    if (r < -SERVO_SOFT_LIMIT_DEG) { r = -SERVO_SOFT_LIMIT_DEG; }
+    Servo_Target_Applied_Deg = r;
+
     /* ---- 门控不通过：清状态，并只在"使能 -> 失能"那一拍清零输出 ----
        两种不通过：总使能关 / 反馈源失效锁存。
        失能后不再每拍写电机，否则会和 MOTOR 调试页的手动开环输出互相打架 */
@@ -125,23 +142,8 @@ void Servo_Crtl_Tick (void)
         }
         Servo_Err_Deg    = 0.0f;
         Servo_Out        = 0;
-        servo_target_applied = 0.0f;
         servo_enabled    = 0;
         return;
-    }
-
-    /* ---- 目标处理：软限位夹紧 + 变化率限制 ----
-       软限位比物理限位留 SERVO_SOFT_MARGIN_DEG 余量，保证控制器不会主动把方向盘
-       顶向限位结构 */
-    // 手动实测限位读数重复性波动约 ±1.2°，余量需要留出裕度
-    r = Servo_Target_Deg;
-    if (r >  SERVO_SOFT_LIMIT_DEG) { r =  SERVO_SOFT_LIMIT_DEG; }
-    if (r < -SERVO_SOFT_LIMIT_DEG) { r = -SERVO_SOFT_LIMIT_DEG; }
-    {
-        float lim = SERVO_SLEW_DEG_PER_S * SERVO_T_S;
-        if (r > servo_target_applied + lim) { r = servo_target_applied + lim; }
-        if (r < servo_target_applied - lim) { r = servo_target_applied - lim; }
-        servo_target_applied = r;
     }
 
     err = r - Servo_Angle_Deg;

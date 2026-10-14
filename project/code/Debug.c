@@ -993,14 +993,16 @@ int Debug_SERVO(void)
         else if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
         {
             key_clear_state(KEY_UP);
+            // 步进上限直接取【软】限位：本页设的目标永远落在控制器真正能执行的范围里，
+            // 于是 Servo_Target_Deg 与施加目标一致，屏幕/上发不会被"夹紧前的命令"污染
             Servo_Target_Deg += 3.0f;
-            if (Servo_Target_Deg > SERVO_LIMIT_DEG) { Servo_Target_Deg = SERVO_LIMIT_DEG; }
+            if (Servo_Target_Deg > SERVO_SOFT_LIMIT_DEG) { Servo_Target_Deg = SERVO_SOFT_LIMIT_DEG; }
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
         {
             key_clear_state(KEY_DOWN);
             Servo_Target_Deg -= 3.0f;
-            if (Servo_Target_Deg < -SERVO_LIMIT_DEG) { Servo_Target_Deg = -SERVO_LIMIT_DEG; }
+            if (Servo_Target_Deg < -SERVO_SOFT_LIMIT_DEG) { Servo_Target_Deg = -SERVO_SOFT_LIMIT_DEG; }
         }
         // 确认键直接绑定调试界面的使能
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
@@ -1022,7 +1024,10 @@ int Debug_SERVO(void)
             if(wifi_spi_inited)
             {
                 char buf[48];
-                sprintf(buf, "%d,%d,%d\n", (int)Servo_Ang_Raw, (int)servo_deg10, (int)servo_tar10);
+                // 第三列用施加目标(Servo_Target_Applied_Deg，软限位夹紧后)，而不是屏幕上的 raw
+                // servo_tar10：否则命令超软限位时，外部拿 目标-实际 反推会得到偏大的假误差
+                sprintf(buf, "%d,%d,%d\n", (int)Servo_Ang_Raw, (int)servo_deg10,
+                        (int)(int32_t)(Servo_Target_Applied_Deg * 10.0f));
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }

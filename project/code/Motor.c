@@ -115,10 +115,12 @@ void Motor_SET_Zero_ALL(void)
 //           窗口 ENC_WIN_DEFAULT=4 @5ms -> 等效 20ms 均值。
 
 // 编码器计数值全局变量 （单周期增量，已含方向符号与滑动平均）
-int16 ENC_LR_CNT = 0;               // 左后轮
-int16 ENC_RR_CNT = 0;               // 右后轮
+int16 ENC_LR_CNT = 0;               // 左后轮（整数计数，四舍五入）
+int16 ENC_RR_CNT = 0;               // 右后轮（整数计数，四舍五入）
+float ENC_LR_CNT_F = 0.0f;          // 左后轮（浮点原值，保留 1/n 计数分辨力）
+float ENC_RR_CNT_F = 0.0f;          // 右后轮（浮点原值，保留 1/n 计数分辨力）
 
-// 编码器累加值全局变量 （累计值）
+// 编码器累加值全局变量 （累计值，整数计数）
 // 更多在于调试性质的观测
 int32 ENC_LR_SUM = 0;               // 左后轮
 int32 ENC_RR_SUM = 0;               // 右后轮
@@ -151,9 +153,9 @@ static void ENC_Read_Reset (Enc_Read_t *e)
 
     for (i = 0; i < ENC_WIN_MAX; i++)
     {
-        e->win_buf[i] = 0;
+        e->win_buf[i] = 0.0f;
     }
-    e->win_sum = 0;
+    e->win_sum = 0.0f;
     e->win_idx = ENC_WIN_MAX;
 }
 
@@ -161,25 +163,27 @@ static void ENC_Read_Reset (Enc_Read_t *e)
 // 函数简介     一路方向编码器读取
 // 参数说明     e	该路读取状态
 // 参数说明     invert	测速取反（0/1）
-// 返回参数     int16	本拍计数增量（已含方向符号与滑动平均）
+// 返回参数     float	本拍计数增量的窗口均值（已含方向符号与滑动平均）
 // 备注信息     逐飞 encoder_dir_init 把 TCPWM 配成"每条脉冲 +1"的单向计数器，
 //              方向由 encoder_get_count() 按 DIR 电平定符号。这里每拍读一次就清计数，
 //              所以读到的值本身就是"本拍脉冲数 + 方向"。
+//              全程浮点：低速时窗口均值不足 1 计数，整数除法会把它截断成 0，
+//              反馈恒为 0 会让速度环积分失去回复力，必须在源头保留小数。
 //--------------------------------------
-static int16 ENC_Read_One (Enc_Read_t *e, uint8 invert)
+static float ENC_Read_One (Enc_Read_t *e, uint8 invert)
 {
-    int16 delta;            // 本拍增量（方向由驱动给出）
+    float delta;            // 本拍增量（方向由驱动给出）
     uint8 n;                // 实际使用的窗口长度
     uint8 i;
 
     // 读本拍脉冲数（符号来自 DIR），读完立即清计数
-    delta = encoder_get_count(e->idx);
+    delta = (float)encoder_get_count(e->idx);
     encoder_clear_count(e->idx);
 
     // 测速极性对齐
     if (invert)
     {
-        delta = (int16)(-delta);
+        delta = -delta;
     }
 
     // 滑动平均（窗口 ENC_WIN_DEFAULT）
@@ -193,18 +197,30 @@ static int16 ENC_Read_One (Enc_Read_t *e, uint8 invert)
         {
             e->win_buf[i] = delta;
         }
-        e->win_sum = (int32)delta * (int32)n;
+        e->win_sum = delta * (float)n;
         e->win_idx = 0;
     }
     else
     {
-        e->win_sum += (int32)delta - (int32)e->win_buf[e->win_idx];
+        e->win_sum += delta - e->win_buf[e->win_idx];
         e->win_buf[e->win_idx] = delta;
         e->win_idx++;
         if (e->win_idx >= n) { e->win_idx = 0; }
     }
 
-    return (int16)(e->win_sum / (int32)n);
+    // 缓冲内都是整数值，浮点加减无累积误差；这里保留除法的小数部分
+    return e->win_sum / (float)n;
+}
+
+//--------------------------------------
+// 函数简介     浮点计数取整（四舍五入，非截断）
+// 参数说明     x	浮点计数
+// 返回参数     int16	取整结果
+// 备注信息     仅供显示、累计与脱落判据使用；速度环用的是未取整的浮点原值
+//--------------------------------------
+static int16 ENC_ToInt (float x)
+{
+    return (int16)((x >= 0.0f) ? (x + 0.5f) : (x - 0.5f));
 }
 
 //--------------------------------------
@@ -221,6 +237,7 @@ void ENC_Read_Init (void)
     ENC_Read_Reset(&Enc_RR_Read);
 
     ENC_LR_CNT = 0; ENC_RR_CNT = 0;
+    ENC_LR_CNT_F = 0.0f; ENC_RR_CNT_F = 0.0f;
     ENC_LR_SUM = 0; ENC_RR_SUM = 0;
 }
 
@@ -230,8 +247,9 @@ void ENC_Read_Init (void)
 //--------------------------------------
 void ENC_LR_Update (void)
 {
-    ENC_LR_CNT = ENC_Read_One(&Enc_LR_Read, ENC_LR_INVERT);
-    ENC_LR_SUM += ENC_LR_CNT;
+    ENC_LR_CNT_F = ENC_Read_One(&Enc_LR_Read, ENC_LR_INVERT);   // 浮点原值（速度环用）
+    ENC_LR_CNT   = ENC_ToInt(ENC_LR_CNT_F);                     // 整数计数（显示/累计/判据用）
+    ENC_LR_SUM  += ENC_LR_CNT;
 }
 
 //--------------------------------------
@@ -239,8 +257,9 @@ void ENC_LR_Update (void)
 //--------------------------------------
 void ENC_RR_Update (void)
 {
-    ENC_RR_CNT = ENC_Read_One(&Enc_RR_Read, ENC_RR_INVERT);
-    ENC_RR_SUM += ENC_RR_CNT;
+    ENC_RR_CNT_F = ENC_Read_One(&Enc_RR_Read, ENC_RR_INVERT);   // 浮点原值（速度环用）
+    ENC_RR_CNT   = ENC_ToInt(ENC_RR_CNT_F);                     // 整数计数（显示/累计/判据用）
+    ENC_RR_SUM  += ENC_RR_CNT;
 }
 
 //============================ 磁编码器 （MENC15A，转向减速箱高速侧） ============================
@@ -292,6 +311,7 @@ void ENC_All_Clear(void)
     ENC_Read_Reset(&Enc_RR_Read);
 
     ENC_LR_CNT = 0; ENC_RR_CNT = 0;
+    ENC_LR_CNT_F = 0.0f; ENC_RR_CNT_F = 0.0f;
     ENC_LR_SUM = 0; ENC_RR_SUM = 0;
 
     ENC_MAG_ANG = 0; ENC_MAG_OFF = 0; ENC_MAG_SPD = 0; ENC_MAG_REV = 0;

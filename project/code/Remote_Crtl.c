@@ -353,15 +353,34 @@ int Remote_Crtl_Page (void)
                 rc_frames ++;
             }
 
-            if(wifi_spi_inited)
+            // 打印所有遥控器数据的演示
+            // if(wifi_spi_inited)
+            // {
+            //     char buf[96];
+            //     sprintf(buf, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+            //             (int)RC_Raw_Ch1, (int)RC_Raw_Ch2,
+            //             (int)(RC_Steer_Deg * 10.0f), (int)(RC_Throttle * 1000.0f),
+            //             (int)RC_Sw3, (int)RC_Sw4, (int)RC_Sw5, (int)RC_Sw6,
+            //             (int)RC_Online, (int)RC_Engage,
+            //             (int)(Motor_LR_Crtl.target * 100.0f), (int)rc_frames);
+            //     wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
+            // }
+
+            // 舵机数据上发：施加目标角, 实际角, PWM 输出（每 20ms 一行）
+            // 角度单位 0.01°（×100）：编码器 1 计数 ≈ 0.02°，×100 不丢分辨率，
+            //   且与后轮通道（actual/target ×100、out ×10000）的 ×100 口径一致，便于同图对比。
+            // ★ 第一列用 Servo_Target_Applied_Deg（软限位夹紧后实际施加的目标），不要用 Servo_Target_Deg：
+            //   后者是用户设定值，命令超过软限位(±28°)时它仍显示 ±30°，拿 目标-实际 反推误差会
+            //   看到约 2° 的假误差（实际早已进死区）。
+            // PWM 直接取 Servo_Out 整数值 —— 它就是 Motor_Set 的刻度（±SERVO_U_MAX = ±7500），
+            //   与后轮 out→duty 的 ×10000 不同，这里无需再缩放。
+            if (wifi_spi_inited)
             {
-                char buf[96];
-                sprintf(buf, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
-                        (int)RC_Raw_Ch1, (int)RC_Raw_Ch2,
-                        (int)(RC_Steer_Deg * 10.0f), (int)(RC_Throttle * 1000.0f),
-                        (int)RC_Sw3, (int)RC_Sw4, (int)RC_Sw5, (int)RC_Sw6,
-                        (int)RC_Online, (int)RC_Engage,
-                        (int)(Motor_LR_Crtl.target * 100.0f), (int)rc_frames);
+                char buf[48];
+                sprintf(buf, "%d,%d,%d\n",
+                        (int)(Servo_Target_Applied_Deg * 100.0f),   // 施加目标角 0.01°
+                        (int)(Servo_Angle_Deg      * 100.0f),   // 实际角 0.01°
+                        (int)Servo_Out);                        // PWM 输出 duty
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }

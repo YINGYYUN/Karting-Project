@@ -78,8 +78,8 @@ typedef struct
     encoder_channel1_enum   pulse_pin;      // 脉冲脚
     encoder_channel2_enum   dir_pin;        // 方向脚（交给驱动配置，软件不读它）
 
-    int16   win_buf[ENC_WIN_MAX];           // 滑动平均缓冲
-    int32   win_sum;                        // 缓冲内计数之和
+    float   win_buf[ENC_WIN_MAX];           // 滑动平均缓冲（浮点，保留 1/n 计数分辨力）
+    float   win_sum;                        // 缓冲内计数之和（浮点）
     uint8   win_idx;                        // 缓冲写指针（>= 窗口长度 表示需要整体预填）
 } Enc_Read_t;
 
@@ -87,10 +87,16 @@ extern Enc_Read_t   Enc_LR_Read;            // 左后轮
 extern Enc_Read_t   Enc_RR_Read;            // 右后轮
 
 // 编码器计数值全局变量 （单周期增量，已含方向符号与滑动平均）
-extern int16 ENC_LR_CNT;                    // 左后轮
-extern int16 ENC_RR_CNT;                    // 右后轮
+//   ENC_LR_CNT   / ENC_RR_CNT   ：取整到整数计数，供显示、累计与脱落判据
+//   ENC_LR_CNT_F / ENC_RR_CNT_F ：同一拍的浮点原值，保留 1/窗口长度 的计数分辨力
+//   ★ 速度环必须用 _F 版本。整数版在低速（窗口均值不足 1 计数/拍）会被截断成 0，
+//     反馈一旦恒为 0，积分就没有回复力，表现为零目标下的低速蠕动。
+extern int16 ENC_LR_CNT;                    // 左后轮（整数计数）
+extern int16 ENC_RR_CNT;                    // 右后轮（整数计数）
+extern float ENC_LR_CNT_F;                  // 左后轮（浮点原值，1/n 计数分辨力）
+extern float ENC_RR_CNT_F;                  // 右后轮（浮点原值，1/n 计数分辨力）
 
-// 编码器累加值全局变量 （累计值）
+// 编码器累加值全局变量 （累计值，整数计数）
 // 更多在于调试性质的观测
 extern int32 ENC_LR_SUM;                    // 左后轮
 extern int32 ENC_RR_SUM;                    // 右后轮
