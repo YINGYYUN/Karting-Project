@@ -21,15 +21,13 @@ void Peripheral_Init(void)
     key_init(10);
 
     Motor_init();
-    Motor_Crtl_Init();  // 后轮电机速度闭环（上电默认不使能）
+    Motor_Crtl_Init();          // 后轮电机速度闭环变量重置（上电默认不使能）
 
-    ENC_MAG_Init();     // 磁编码器初始化（硬件 SPI3/SCB6, P3.0/3.1/3.2/3.3）
-
+    ENC_MAG_Init();             // 磁编码器初始化（硬件 SPI3/SCB6, P3.0/3.1/3.2/3.3）
     absolute_encoder_init();    // 绝对值角度编码器初始化（硬件 SPI4/SCB5, P7.0/7.1/7.2, CS P7.3）
+    Servo_Crtl_Init();          // 舵机位置环变量重置（上电默认不使能）
 
-    Servo_Crtl_Init();  // 转向角测量（纯换算，无控制律）
-
-    uart_receiver_init(); // uart接收机初始化(P14.0 P14.1)
+    uart_receiver_init();       // uart接收机初始化(P14.0 P14.1)
 
     Param_Init();
 }

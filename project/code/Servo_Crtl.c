@@ -1,6 +1,7 @@
 /*******************************************************************************
-转向角测量与控制 - 实现
-标定参数与控制器说明见 Servo_Crtl.h
+转向角测量与控制 - Servo_Crtl.c
+数据来源：绝对值角度编码器（ENC_ABS_ANG，10ms 中断统一采集，见 cm7_0_isr.c）
+控制对象：Motor 3（MOTOR_SERVO）
 *******************************************************************************/
 
 #include "zf_common_headfile.h"
@@ -22,18 +23,18 @@ static uint8 servo_enabled          = 0;                    // （上一拍）�
 static uint32 servo_invalid_ms      = 0;                    // 电机在出力、却连续读到无效角度的累计时间
 
 //--------------------------------------
-// 函数简介     反馈源失效判定（角度编码器读到无效值）
+// 函数简介     反馈源失效判定（角度编码器读出无效值）
 // 参数说明     void
 // 备注信息     前提用"指令侧"的 |Servo_Out|：在出力、反馈却连续读到无效值 -> 锁存停机。
 //              必须在门控之前调用，来尽早停机；用到的 Servo_Out 是上一拍真正给出去的值
 //--------------------------------------
 static void Servo_Crtl_EncCheck (void)
 {
-    int16 out = (float)Servo_Out;
+    int16 out = Servo_Out;
 
-    if (Servo_Enc_Fault == 1)
+    if (Servo_Enc_Fault != 0)
     {
-        return;                         // 已锁存，等 Servo_Crtl_Reset()
+        return;                         // 反馈源失效已锁存，等 Servo_Crtl_Reset()解除
     }
 
     /* 前提不成立（没使能 / 出力还没到阈值）-> 只清零计时，不判决 */
@@ -66,31 +67,31 @@ static void Servo_Crtl_EncCheck (void)
 }
 
 //--------------------------------------
-// 函数简介     清目标 / 误差 / 输出
+// 函数简介     重置状态 （失能 / 清目标 / 误差 / 输出 / 故障锁存）
 // 参数说明     void
 // 使用示例     Servo_Crtl_Reset();
-// 备注信息     进/出调试页时调用，避免把上次的设定带进下一次；
-//              同时清反馈源失效锁存（这是该故障唯一的复位途径）
+// 备注信息     不清 servo_enabled（有意，留给 Tick 补硬件归零）
+//             不清 Servo_Crtl_Kp/U0（归参数页管）
 //--------------------------------------
 void Servo_Crtl_Reset (void)
 {
-    Servo_Target_Deg     = 0.0f;
+    Servo_Crtl_Enable        = 0;
+    Servo_Target_Deg         = 0.0f;
     Servo_Target_Applied_Deg = 0.0f;
-    Servo_Err_Deg        = 0.0f;
-    Servo_Out            = 0;
-    Servo_Enc_Fault      = 0;
-    servo_invalid_ms     = 0;
+    Servo_Err_Deg            = 0.0f;
+    Servo_Out                = 0;
+    Servo_Enc_Fault          = 0;
+    servo_invalid_ms         = 0;
 }
 
 //--------------------------------------
 // 函数简介     转向控制初始化
 // 参数说明     void
 // 使用示例     Servo_Crtl_Init();
-// 备注信息     上电默认不使能，需要上层显式把 Servo_Crtl_Enable 置 1
+// 备注信息     上电后调用一次
 //--------------------------------------
 void Servo_Crtl_Init (void)
 {
-    Servo_Crtl_Enable = 0;
     Servo_Crtl_Reset();
     Motor_Set(MOTOR_SERVO, 0);
 }
@@ -100,14 +101,14 @@ void Servo_Crtl_Init (void)
 // 参数说明     void
 // 使用示例     在 PIT 中断里调用 Servo_Crtl_Tick();
 // 备注信息     顺序：角度换算 -> 反馈失效判定 -> 门控 -> 目标处理 -> 位置环 -> 限幅 -> 输出
-//              角度换算是测量量，与使能无关，始终更新
-//              数据源 ENC_ABS_ANG 由同一中断的编码器采集段刷新，须在它之后调用
+//              角度换算是测量量，始终更新，与舵机闭环使能无关
+//              数据源 ENC_ABS_ANG 由同一中断的编码器采集段刷新，本函数须在它之后调用
 //--------------------------------------
 void Servo_Crtl_Tick (void)
 {
-    float r;
-    float err;
-    float u;
+    float tar_deg;  // 本函数内的舵机目标角度（度）
+    float err;      // 角度误差（度）
+    float u;        // 计算中间变量
 
     /* ---- 角度换算：原始读数 -> 方向盘角度（向右为正）----
        放在门控之前：闭环未启用时角度照常更新，供显示与上层使用 */
@@ -118,23 +119,24 @@ void Servo_Crtl_Tick (void)
     Servo_Crtl_EncCheck();
 
     /* ---- 目标处理：只做软限位夹紧，不做目标斜坡 ----
-       软限位比物理限位留 SERVO_SOFT_MARGIN_DEG 余量，保证控制器不会主动把方向盘
-       顶向限位结构。
-       夹紧是**兜底**：各设置入口（调试页按键 / 遥控换算）已按软限位限幅，正常状态下
-       这里不会真的夹到东西；留一次是为了外部直接写 Servo_Target_Deg 时也不越界。
-       目标阶跃时不再限速率：误差一次性给足，Kp·err 直接顶到输出限幅 -> 满 PWM、最快到位。
+       软限位比物理限位留 SERVO_SOFT_MARGIN_DEG 余量，保证控制器不会主动把方向盘顶向限
+       位结构。
+       夹紧是兜底：各设置入口（调试页按键 / 遥控换算）已按软限位限幅，正常状态下不会真的
+       夹到。
+       目标阶跃时不限速率：误差一次性给足，Kp·err 直接顶到输出限幅 -> 满 PWM、最快到位。
        代价是没有减速过程，到位附近靠背隙/摩擦自然停住。
-       放在门控之前：让"实际施加目标"始终对外可见（Servo_Target_Applied_Deg），与是否使能无关。 */
+       放在门控之前：让"实际施加目标"始终对外可见（Servo_Target_Applied_Deg），与是否
+       使能无关。 */
     // 手动实测限位读数重复性波动约 ±1.2°，余量需要留出裕度
-    r = Servo_Target_Deg;
-    if (r >  SERVO_SOFT_LIMIT_DEG) { r =  SERVO_SOFT_LIMIT_DEG; }
-    if (r < -SERVO_SOFT_LIMIT_DEG) { r = -SERVO_SOFT_LIMIT_DEG; }
-    Servo_Target_Applied_Deg = r;
+    tar_deg = Servo_Target_Deg;
+    if (tar_deg >  SERVO_SOFT_LIMIT_DEG) { tar_deg =  SERVO_SOFT_LIMIT_DEG; }
+    if (tar_deg < -SERVO_SOFT_LIMIT_DEG) { tar_deg = -SERVO_SOFT_LIMIT_DEG; }
+    Servo_Target_Applied_Deg = tar_deg;
 
     /* ---- 门控不通过：清状态，并只在"使能 -> 失能"那一拍清零输出 ----
        两种不通过：总使能关 / 反馈源失效锁存。
        失能后不再每拍写电机，否则会和 MOTOR 调试页的手动开环输出互相打架 */
-    if ((0 == Servo_Crtl_Enable) || (0 != Servo_Enc_Fault))
+    if ((Servo_Crtl_Enable == 0) || (Servo_Enc_Fault != 0))
     {
         if (servo_enabled)
         {
@@ -146,7 +148,7 @@ void Servo_Crtl_Tick (void)
         return;
     }
 
-    err = r - Servo_Angle_Deg;
+    err = tar_deg - Servo_Angle_Deg;
 
     /* ---- 越限保护：实测已超出软限位、且误差仍指向限位方向 -> 不再出力 ----
        保证即使因外部原因压到限位，电机也不会继续加力去顶限位结构 */
@@ -163,7 +165,7 @@ void Servo_Crtl_Tick (void)
     }
 
     /* ---- 位置环 + 摩擦前馈 + 输出限幅 ----
-       u = kp × err   : 细调
+       u = kp × err   ：经典Kp
        u0 × sign(err) : 克服静摩擦与减速箱阻力
        err 已经过死区与越限保护，等于 0 时 u0 也不加，静止不会抖 */
     u = Servo_Crtl_Kp * err;

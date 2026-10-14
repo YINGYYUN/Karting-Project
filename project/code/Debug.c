@@ -975,10 +975,9 @@ int Debug_SERVO(void)
     int32_t servo_tar10 = 0;            // 目标角度   单位 0.1°
     int32_t servo_err10 = 0;            // 误差       单位 0.1°
 
-    // 进入本页：目标清 0（临时量），并使能从"失能"开始
+    // 进入本页：目标清 0（临时量），使能一并清（Servo_Crtl_Reset 内部已置 Enable=0）
     // 此时输出为 0，进页面本身不会产生任何动作
     Servo_Crtl_Reset();
-    Servo_Crtl_Enable = 0;
 
     while(1)
     {

@@ -299,6 +299,9 @@ int Remote_Crtl_Page (void)
 {
     Remote_Crtl_UI();
 
+    // 重置舵机状态，包括强制失能舵机闭环一次
+    Servo_Crtl_Reset();
+
     // 进页面即让双闭环"待命"：两路使能、目标 0。
     // 车不会动，但方向盘会被驱动回 0°；按下确认键后遥控才接管目标
     RC_Engage = RC_ENGAGE_STANDBY;
