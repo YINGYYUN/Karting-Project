@@ -224,6 +224,50 @@ static void show_key(void)
     }
 }
 
+// 浮点显示：按 decimals 指定的位数格式化，再右侧补空格到定宽 11 字符。
+// 菜单刷新不整屏清，短字符串不清尾巴会留上一次的旧像素（残影），故必须补到定宽。
+// 数据区 x=150..239 共 90px，8x16 字体下 = 11 字符（含负号）；夹紧值按位数留整数位余量，
+// 保证最宽串不超宽：1 位 "-99999.9"(8) | 2 位 "-99999.99"(9)
+//                 3 位 "-99999.999"(10) | 4 位 "-9999.9999"(10)
+static void show_float_data(int x, int y, float v, uint8_t decimals)
+{
+    char buf[16];
+    int  n;
+
+    switch (decimals)
+    {
+        case 1:
+            if (v >  99999.9f)   { v =  99999.9f; }
+            if (v < -99999.9f)   { v = -99999.9f; }
+            n = sprintf(buf, "%.1f", v);
+            break;
+
+        case 3:
+            if (v >  99999.999f) { v =  99999.999f; }
+            if (v < -99999.999f) { v = -99999.999f; }
+            n = sprintf(buf, "%.3f", v);
+            break;
+
+        case 4:
+            if (v >  9999.9999f) { v =  9999.9999f; }
+            if (v < -9999.9999f) { v = -9999.9999f; }
+            n = sprintf(buf, "%.4f", v);
+            break;
+
+        case 2:
+        default:                    // 非法位数兜底，按 2 位显示
+            if (v >  99999.99f)  { v =  99999.99f; }
+            if (v < -99999.99f)  { v = -99999.99f; }
+            n = sprintf(buf, "%.2f", v);
+            break;
+    }
+
+    while (n < 11) { buf[n ++] = ' '; }
+    buf[n] = '\0';
+
+    ips200_show_string(x, y, buf);
+}
+
 // 显示存储的参数
 static void show_data(void)
 {
@@ -270,21 +314,21 @@ static void show_data(void)
                 ips200_printf(150, y, "%05u", *(uint8_t *)s->data);
                 break;
 
-            case float_Box:
-            {
-                /* 4 位小数（如 0.1548）。右侧补空格到定宽 11 字符：
-                   菜单刷新不整屏清，短字符串不清尾巴会留上一次的旧像素。
-                   数据区 x=150..239 共 90px，8x16 字体下 = 11 字符，够放 "-9999.9999"(10) */
-                char buf[16];
-                float v = *(float *)s->data;
-                if (v >  9999.9999f) { v =  9999.9999f; }
-                if (v < -9999.9999f) { v = -9999.9999f; }
-                int n = sprintf(buf, "%.4f", v);
-                while (n < 11) { buf[n ++] = ' '; }
-                buf[n] = '\0';
-                ips200_show_string(150, y, buf);
-            }
-            break;
+            case float_01_Box:
+                show_float_data(150, y, *(float *)s->data, 1);
+                break;
+
+            case float_02_Box:
+                show_float_data(150, y, *(float *)s->data, 2);
+                break;
+
+            case float_03_Box:
+                show_float_data(150, y, *(float *)s->data, 3);
+                break;
+
+            case float_04_Box:
+                show_float_data(150, y, *(float *)s->data, 4);
+                break;
 
             case bool_Box:
                 if (*(bool *)s->data == true)
@@ -431,7 +475,10 @@ static void key_plus(void)
             *(uint8_t *)key->data = val;
             break;
         }
-        case float_Box:
+        case float_01_Box:
+        case float_02_Box:
+        case float_03_Box:
+        case float_04_Box:
         {
             float val = *(float *)key->data + step;
             if (key->isLimit && val > key->limit_max)
@@ -500,7 +547,10 @@ static void key_sub(void)
             *(uint8_t *)key->data = val;
             break;
         }
-        case float_Box:
+        case float_01_Box:
+        case float_02_Box:
+        case float_03_Box:
+        case float_04_Box:
         {
             float val = *(float *)key->data - step;
             if (key->isLimit && val < key->limit_min)
@@ -672,7 +722,7 @@ void menu_reset(void)
 //     DynamicCreate_Menu_Folder(&head, "folder4");
 
 //     DynamicCreate_Menu_Number(folder_1, "aaa", &test, int32_Box);
-//     DynamicCreate_Menu_Number(folder_1, "bbb", &test1, float_Box);
+//     DynamicCreate_Menu_Number(folder_1, "bbb", &test1, float_02_Box);
 //     DynamicCreate_Menu_Number(folder_1, "ccc", &test2, bool_Box);
 
 //     Menu_Item *folder_1_1 = DynamicCreate_Menu_Folder(folder_1, "sub_f1");

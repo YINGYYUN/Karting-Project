@@ -1,7 +1,7 @@
 /*******************************************************************************
 参数 Flash 存储
 将可调参数持久化到 Flash，上电自动加载并同步到实际应用参数。
-CYT4BB 适配：存储位置改为 Work Flash 第 95 页（sector 参数恒为 0）。
+CYT4BB 适配：存储位置为 Work Flash 第 0 页（sector 参数恒为 0）。
 宏定义映射 — 每个参数单独编号，不强制 Kp/Ki/Kd 整齐排列。
 *******************************************************************************/
 
@@ -13,8 +13,9 @@ CYT4BB 适配：存储位置改为 Work Flash 第 95 页（sector 参数恒为 0
 #include "zf_common_headfile.h"
 
 // Flash 存储位置（CYT4BB Work Flash：sector 恒为 0，页范围 0-95）
+// 页分配约定：第 0 页存放参数；第 1-95 页预留给路表等其他数据
 #define PARAM_FLASH_SECTION         (0)
-#define PARAM_FLASH_PAGE            (95)
+#define PARAM_FLASH_PAGE            (0)
 
 // 参数总数（2 个后轮电机 × 4 个参数 + 舵机 × 2 个参数）
 #define PARAM_COUNT                 (10)

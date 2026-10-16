@@ -840,7 +840,7 @@ int Debug_MENC15A(void)
             // 故单次最多按 50ms 计，把单次误差限制住。
             uint16 dt_ms = (dt_real > 50) ? 50 : dt_real;
 
-            // 数据全部由 10ms 中断统一采集（见 cm7_0_isr.c），这里只读快照，不再直接调驱动
+            // 数据全部由 5ms 中断统一采集（见 cm7_0_isr.c），这里只读快照，不再直接调驱动
             // 速度积分：角速度(rad/s) × 真实间隔(ms) = 毫弧度(mrad)，一圈 = 2π×1000 ≈ 6283 mrad
             // 注意：必须用真实 dt，不能用固定 20ms —— 循环体（SPI 读 + WiFi 发送）耗时会让实际周期变长
             int16 spd = ENC_MAG_SPD; 
@@ -898,7 +898,7 @@ int Debug_ABS_ENCODER(void)
     int16   abs_enc_off = 0;            // 相对上一次读取位置的偏移（超过半圈按最短路径）
     int32_t abs_enc_deg = 0;            // 换算后的角度 单位 0.1°（0 ~ 3600）
 
-    // 数据由 10ms 中断统一采集（见 cm7_0_isr.c），这里只读快照，不再直接调驱动
+    // 数据由 5ms 中断统一采集（见 cm7_0_isr.c），这里只读快照，不再直接调驱动
 
     while(1)
     {
@@ -914,7 +914,7 @@ int Debug_ABS_ENCODER(void)
         {
             Time_Count2 = 0;
 
-            // 读快照（10ms 中断已刷新）
+            // 读快照（5ms 中断已刷新）
             abs_enc_ang = ENC_ABS_ANG;
             abs_enc_off = ENC_ABS_OFF;
             // 换算成 0.1° 单位：4096 计数 = 360.0° → ang × 3600 / 4096
@@ -1015,7 +1015,7 @@ int Debug_SERVO(void)
         {
             Time_Count2 = 0;
 
-            // 读快照（10ms 中断已刷新）
+            // 读快照（5ms 中断已刷新）
             servo_deg10 = (int32_t)(Servo_Angle_Deg * 10.0f);
             servo_tar10 = (int32_t)(Servo_Target_Deg * 10.0f);
             servo_err10 = (int32_t)(Servo_Err_Deg * 10.0f);

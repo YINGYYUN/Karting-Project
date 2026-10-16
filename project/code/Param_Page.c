@@ -16,24 +16,23 @@ static void param_page_init(void)
     menu_reset();       // 清空旧菜单
 
     // 左后轮 速度闭环
-    // 量程口径：v=rps、u=归一化占空比；默认值 inv_K=0.1548、k_v=0.164、k_z=2.32、u0=0.033，上面留标定余量
     Menu_Item *folder_lr = DynamicCreate_Menu_Folder(&head, "Motor_LR");
-    DynamicCreate_Menu_LimitNumber(folder_lr, "invK", &MOTOR_LR_INV_K, float_Box, 0, 1);
-    DynamicCreate_Menu_LimitNumber(folder_lr, "u0",   &MOTOR_LR_U0,    float_Box, 0, 0.5);
-    DynamicCreate_Menu_LimitNumber(folder_lr, "kv",   &MOTOR_LR_KV,    float_Box, 0, 2);
-    DynamicCreate_Menu_LimitNumber(folder_lr, "kz",   &MOTOR_LR_KZ,    float_Box, 0, 20);
+    DynamicCreate_Menu_LimitNumber(folder_lr, "invK", &MOTOR_LR_INV_K, float_04_Box, 0, 1);
+    DynamicCreate_Menu_LimitNumber(folder_lr, "u0",   &MOTOR_LR_U0,    float_03_Box, 0, 0.5);
+    DynamicCreate_Menu_LimitNumber(folder_lr, "kv",   &MOTOR_LR_KV,    float_03_Box, 0, 2);
+    DynamicCreate_Menu_LimitNumber(folder_lr, "kz",   &MOTOR_LR_KZ,    float_02_Box, 0, 20);
 
     // 右后轮 速度闭环
     Menu_Item *folder_rr = DynamicCreate_Menu_Folder(&head, "Motor_RR");
-    DynamicCreate_Menu_LimitNumber(folder_rr, "invK", &MOTOR_RR_INV_K, float_Box, 0, 1);
-    DynamicCreate_Menu_LimitNumber(folder_rr, "u0",   &MOTOR_RR_U0,    float_Box, 0, 0.5);
-    DynamicCreate_Menu_LimitNumber(folder_rr, "kv",   &MOTOR_RR_KV,    float_Box, 0, 2);
-    DynamicCreate_Menu_LimitNumber(folder_rr, "kz",   &MOTOR_RR_KZ,    float_Box, 0, 20);
+    DynamicCreate_Menu_LimitNumber(folder_rr, "invK", &MOTOR_RR_INV_K, float_04_Box, 0, 1);
+    DynamicCreate_Menu_LimitNumber(folder_rr, "u0",   &MOTOR_RR_U0,    float_03_Box, 0, 0.5);
+    DynamicCreate_Menu_LimitNumber(folder_rr, "kv",   &MOTOR_RR_KV,    float_03_Box, 0, 2);
+    DynamicCreate_Menu_LimitNumber(folder_rr, "kz",   &MOTOR_RR_KZ,    float_02_Box, 0, 20);
 
     // 舵机 转向位置环
     Menu_Item *folder_sv = DynamicCreate_Menu_Folder(&head, "Servo");
-    DynamicCreate_Menu_LimitNumber(folder_sv, "kp", &SERVO_KP, float_Box, 0, 1000);
-    DynamicCreate_Menu_LimitNumber(folder_sv, "u0", &SERVO_U0, float_Box, 0, 3000);
+    DynamicCreate_Menu_LimitNumber(folder_sv, "kp", &SERVO_KP, float_01_Box, 0, 1000);
+    DynamicCreate_Menu_LimitNumber(folder_sv, "u0", &SERVO_U0, float_01_Box, 0, 3000);
 
     key = head.first_son;   // 光标移到第一项
 }

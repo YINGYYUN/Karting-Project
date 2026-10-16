@@ -103,7 +103,7 @@ extern int32 ENC_RR_SUM;                    // 右后轮
 
 // ---- 磁编码器 （SPI通信）----
 
-// 磁编码器（MENC15A，转向减速箱高速侧）对外快照，由 10ms 中断统一采集刷新
+// 磁编码器（MENC15A，转向减速箱高速侧）对外快照，由 5ms 中断统一采集刷新
 extern uint16 ENC_MAG_ANG;                  // 编码器轴 绝对角 0~32767（单圈）
 extern int16  ENC_MAG_OFF;                  // 相对上一次的角度增量（带符号）
 extern int16  ENC_MAG_SPD;                  // 转速原始值
@@ -112,11 +112,11 @@ extern int16  ENC_MAG_REV;                  // AREV 圈数（编码器轴每转�
 // 磁编码器硬编码使能
 // 0关 1开
 // 关闭将一同取消相关引脚的初始化
-#define ENC_MAG_ENABLE                      1
+#define ENC_MAG_ENABLE                      0
 void ENC_MAG_Init(void);
 // ---- 角度编码器（SPI通信） ----
 
-// 角度编码器（360° 绝对式，转向柱侧）对外快照，由 10ms 中断统一采集刷新
+// 角度编码器（360° 绝对式，转向柱侧）对外快照，由 5ms 中断统一采集刷新
 extern int16  ENC_ABS_ANG;                  // 原始角 0~4095（4096 对应一圈）
 extern int16  ENC_ABS_OFF;                  // 相对上一次的增量
 

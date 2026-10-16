@@ -18,7 +18,10 @@ typedef enum MENU_KIND {
     uint16_Box,
     int8_Box,
     uint8_Box,
-    float_Box,
+    float_01_Box,       // 浮点：显示保留 1 位小数
+    float_02_Box,       // 浮点：显示保留 2 位小数
+    float_03_Box,       // 浮点：显示保留 3 位小数
+    float_04_Box,       // 浮点：显示保留 4 位小数
     bool_Box,
 }MENU_KIND;
 
