@@ -124,6 +124,26 @@ void Debug_UART_RC_UI(void)
     ips200_show_string(10 ,144, "ST:#   FRM:#####");
 }
 
+// WiFi 候选列表（SSID / 密码，直接写死；顺序与界面显示一致）
+static char *Debug_WiFi_SSID[] = { "ASC_Circuit_IoT", "YUNYYING" };
+static char *Debug_WiFi_PASS[] = { "1145141919810",   "12345678" };
+#define DEBUG_WIFI_NUM          (sizeof(Debug_WiFi_SSID) / sizeof(Debug_WiFi_SSID[0]))
+
+// [三级界面]WiFi SPI初始化界面
+// 上/下键选择要连接的 WiFi，确认键用选中的 SSID/密码发起初始化
+void Debug_WiFi_SPI_UI(void)
+{
+    ips200_show_string(8  ,0  , "[DEBUG]-WIFI-SPI");
+    ips200_show_string(0  ,16 , "==============================");
+    ips200_show_string(10 ,32 , "[Press Confirm to Init]");
+
+    // 候选 WiFi 名称（选中光标 > 由逻辑函数绘制）
+    for (uint8 i = 0; i < DEBUG_WIFI_NUM; i++)
+    {
+        ips200_show_string(10, 48 + 16*i, Debug_WiFi_SSID[i]);
+    }
+}
+
 /**********************************************************/
 /*----------------------------------------[E] 界面样式 [E]*/
 /**********************************************************/
@@ -308,37 +328,71 @@ int Debug_Page_Menu(void)
 //  #   #  #####  #      #####  
 //
 // [三级界面]WiFi SPI初始化（手动触发 WiFi SPI初始化 + 连接）
+// 上/下键选择候选 WiFi，确认键用选中的 SSID/密码发起初始化并连 UDP
 int Debug_WiFi_SPI(void)
 {
-    ips200_show_string(8 ,0  , "[DEBUG]-WIFI-SPI");
-    ips200_show_string(0 ,16 , "==============================");
-    ips200_show_string(10,32 , "Press Confirm to Init");
+    // 当前选中的 WiFi 下标（0 起）
+    uint8_t wifi_sel = 0;
+
+    Debug_WiFi_SPI_UI();
+    ips200_show_string(0, 48, ">");
 
     if (wifi_spi_inited)
     {
-        ips200_show_string(10, 96, "Init done!");
+        ips200_show_string(10, 224, "Init done!");
     }
-    
 
     while(1)
     {
-        if(KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
+        // 上/下按键是否被按下过
+        uint8_t key_pressed = 0;
+
+        /* 按键处理 */
+        if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
+        {
+            key_clear_state(KEY_UP);
+            key_pressed = 1;
+            if (wifi_sel == 0) { wifi_sel = (uint8_t)(DEBUG_WIFI_NUM - 1); }
+            else               { wifi_sel --; }
+        }
+        else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
+        {
+            key_clear_state(KEY_DOWN);
+            key_pressed = 1;
+            wifi_sel ++;
+            if (wifi_sel >= DEBUG_WIFI_NUM) { wifi_sel = 0; }
+        }
+        else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
             key_clear_state(KEY_CONFIRM);
 
             // 触发 WiFi 初始化 + 连 UDP（目标：电脑 192.168.50.247:8086）
-            uint8 r1 = wifi_spi_init("ASC_Circuit_IoT", "1145141919810");
+            uint8 r1 = wifi_spi_init(Debug_WiFi_SSID[wifi_sel], Debug_WiFi_PASS[wifi_sel]);
             uint8 r2 = wifi_spi_socket_connect("UDP", "192.168.50.247", "8086", "6666");
 
             if(r1 == 0 && r2 == 0) wifi_spi_inited = 1;
-            ips200_show_string(10, 64, r1 ? "Wifi fail" : "Wifi ok");
-            ips200_show_string(10, 80, r2 ? "Sock fail" : "Sock ok");
-            ips200_show_string(10, 96, "Init done!");
+            // 屏幕倒数三行显示（240 高 / 16 字高 = 15 行，即 192 / 208 / 224）
+            // 同长度字符串，避免反复按下时残留旧文本
+            ips200_show_string(10, 192, r1 ? "Wifi fail" : "Wifi ok  ");
+            ips200_show_string(10, 208, r2 ? "Sock fail" : "Sock ok  ");
+            ips200_show_string(10, 224, "Init done!");
         }
         else if(KEY_SHORT_PRESS == key_get_state(KEY_BACK))
         {
             key_clear_state(KEY_BACK);
             return 0;
+        }
+
+        /* 光标更新 */
+        if (key_pressed)
+        {
+            // 清理光标
+            for (uint8 i = 0; i < DEBUG_WIFI_NUM; i++)
+            {
+                ips200_show_string(0, 48 + 16*i, " ");
+            }
+            // 显示光标
+            ips200_show_string(0, 48 + 16*wifi_sel, ">");
         }
     }
 }

@@ -15,7 +15,7 @@ static const float DEFAULT_PARAMS[PARAM_COUNT] = {
     // 右后轮：inv_K, u0, k_v, k_z
     0.1548f, 0.033f, 0.164f, 2.32f,
     // 舵机位置环：kp, u0
-    500.0f, 1800.0f,
+    500.0f, 1900.0f,
 };
 
 // 参数缓存区(菜单直接修改此数组, Flash 读写也通过此数组)

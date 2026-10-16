@@ -58,11 +58,9 @@ extern float param_cache[PARAM_COUNT];
 #define SERVO_KP                    param_cache[SERVO_KP_IDX]
 #define SERVO_U0                    param_cache[SERVO_U0_IDX]
 
-
 void    Param_Init          (void);     // 初始化(加载或设默认值)
 void    Param_Save          (void);     // 保存当前参数到 Flash
 void    Param_Erase         (void);     // 擦除 Flash(下次启动恢复默认)
 void    Flash_SyncTo_Param  (void);     // 将缓存区的值推送到实际参数
-
 
 #endif
