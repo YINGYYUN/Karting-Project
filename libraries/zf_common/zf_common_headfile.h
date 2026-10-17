@@ -117,6 +117,7 @@
 #include "Motor_Crtl.h"
 #include "Servo_Crtl.h"
 #include "Remote_Crtl.h"
+#include "Host_Crtl.h"
 #include "Debug.h"
 #include "PID.h"
 #include "Param_Storage.h"

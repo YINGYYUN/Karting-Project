@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- 全部用代码建界面、不用设计器，关掉"自定义控件属性需可被设计器序列化"这条规则 -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
+    <AssemblyName>KartHostLite</AssemblyName>
+    <!-- ★ RootNamespace 保持 KartHost：从队友工程搬来的 Protocol/Link/WavePanel 等
+         文件里写的是 namespace KartHost; 这样搬过来一字不改 -->
+    <RootNamespace>KartHost</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>0.1.0</Version>
+    <Product>卡丁快跑 轻量上位机</Product>
+    <AssemblyTitle>KartHostLite</AssemblyTitle>
+  </PropertyGroup>
+
+  <!-- 刻意不引 System.IO.Ports：本工程不走串口（路表灌表等能力不做） -->
+
+</Project>

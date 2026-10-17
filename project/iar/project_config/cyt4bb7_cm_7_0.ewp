@@ -1128,6 +1128,12 @@
             <name>$PROJ_DIR$\..\..\code\Debug.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\Host_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Host_Crtl.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\Menu.c</name>
         </file>
         <file>

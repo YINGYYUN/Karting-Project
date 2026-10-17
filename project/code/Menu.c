@@ -30,6 +30,9 @@ void Peripheral_Init(void)
     uart_receiver_init();       // uart接收机初始化(P14.0 P14.1)
 
     Param_Init();
+
+    Host_Crtl_Init();           // 上位机对接：只重置链路状态（不连 WiFi，避免卡住上电）
+                                // 调用纪律（静默 / 链路来源）见 Host_Crtl.h 文件头
 }
 
 
@@ -46,6 +49,7 @@ void Menu_UI(void)
     ips200_show_string(10 ,48 , "Debug");
     ips200_show_string(10 ,64 , "Param");
     ips200_show_string(10 ,80 , "Remote_Crtl");
+    ips200_show_string(10 ,96 , "Host_Crtl");
 }
 /**********************************************************/
 /*----------------------------------------[E] 界面样式 [E]*/
@@ -72,21 +76,24 @@ void Menu_Show(void)
 		// 上/下按键是否被按下过
 		uint8_t key_pressed = 0;
 
-        
+        // ★ 本页**故意不**调 Host_Crtl_Task()：主菜单待机 = 整车静默。
+        //   此处原来挂过，2026-10-16 按"待机静默"要求摘掉，**不要补回来**。
+        //   链路层的唯一调用点在 Host_Crtl_Page()；完整说明见 Host_Crtl.h 文件头。
+
         /* 按键处理 */
         if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
         {
             key_clear_state(KEY_UP);
             key_pressed = 1;
             menu_flag --;
-            if (menu_flag < 1)menu_flag = 4;
+            if (menu_flag < 1)menu_flag = 5;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
         {
             key_clear_state(KEY_DOWN); 
             key_pressed = 1;
             menu_flag ++;
-            if (menu_flag > 4)menu_flag = 1;
+            if (menu_flag > 5)menu_flag = 1;
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
@@ -136,6 +143,16 @@ void Menu_Show(void)
             Menu_UI();
             key_pressed = 1;
         }
+        else if (menu_flag_temp == 5)
+        {
+            ips200_clear();
+            Host_Crtl_Page();
+
+            // 从上位机界面返回，显示主菜单界面
+            ips200_clear();
+            Menu_UI();
+            key_pressed = 1;
+        }
 
 
         /* 光标更新 */
@@ -146,6 +163,7 @@ void Menu_Show(void)
 			ips200_show_string(0  ,48 , " ");
 			ips200_show_string(0  ,64 , " ");
 			ips200_show_string(0  ,80 , " ");
+			ips200_show_string(0  ,96 , " ");
 			// 显示光标
 			ips200_show_string(0  ,16 + 16*menu_flag , ">");
         }

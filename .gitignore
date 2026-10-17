@@ -51,3 +51,25 @@ build.ninja
 
 # ===== 参考工程（仅作参考，不入库）=====
 zjc_kart_cyt4bb7-main/
+
+# ===== 上位机 / PC 工具（tools/ 下的 .NET 工程）=====
+# 每个工具目录本来可以自带 .gitignore，但新人最容易犯的错是 `git add .`
+# 一把梭 —— 只要有一个工具忘了写，113 MB 的发布产物就进历史了（删不掉，只能重写历史）。
+# 所以在根上兜一道，按目录通配，不依赖各工具自己记得。
+tools/**/bin/
+tools/**/obj/
+tools/**/dist/
+tools/**/selftest.txt
+# 截图（--shot-form / --shot-demo 的产物，只是自查用，不是工程内容）
+tools/**/*.png
+# 发布 / 构建脚本里可能被重定向误建的空文件
+tools/**/PATH
+
+# ===== .NET 用户级文件（VS / Rider 打开过就会生成）=====
+.vs/
+*.user
+*.suo
+*.DotSettings.user
+
+# ===== 本地私有工具链（比如手装的 .NET SDK，几百 MB，绝不入库）=====
+.tools/
