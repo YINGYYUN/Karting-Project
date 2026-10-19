@@ -1122,6 +1122,12 @@
             <name>$PROJ_DIR$\..\..\code\common_menu.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\ins_imu.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_imu.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\Debug.c</name>
         </file>
         <file>

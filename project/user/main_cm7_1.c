@@ -34,60 +34,26 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
-#include "IMU_Analysis.h"
 
+/* ★★ 2026-10-19：本核**不再承担任何业务**。
+ *
+ *   姿态解算（原 IMU_Analysis + 共享内存 yaw）已整体换成 CM7_0 的 `ins_imu` 模块，
+ *   这里是刻意保留的空壳 —— IAR 的双核工程结构要求两个 .ewp 各有一个 main，
+ *   直接删文件会让 CM7_1 的链接配置失效。
+ *
+ *   原实现留档：project/code/IMU_Analysis-已停用.txt
+ */
 
 int main(void)
 {
     clock_init(SYSTEM_CLOCK_250M); 	// 时钟配置及系统初始化<务必保留>
-    debug_info_init();                  // 调试串口信息初始化
+    debug_info_init();              // 调试串口信息初始化
 
-    // 外设初始化
-    // 当DEFINE_IMU_ANALYSIS_MODE == 0时，IMU初始化和解算函数将不调用实际内容
-    // 0 - 初始化成功; 1 - 初始化失败; 4 - imu被禁用 
-    uint8 imu_ret = IMU_init();    // IMU963RA 初始化（硬件 SPI2, P15.x）
-    printf("[CM7_1] imu_init ret=%d\n", imu_ret);
-    pit_ms_init(PIT_CH2, 10);           // 10ms 定时，IMU 解算（pit0_ch2_isr）
+    printf("[CM7_1] idle: IMU moved to CM7_0 (ins_imu), PIT_CH2 unused\n");
 
     while(true)
     {
-        // 处理 CM7_0 通过共享内存发来的命令（先失效 cache 读最新值）
-        SHARED_IMU_READ_SYNC();
-        if(SHARED_IMU_ADDR->cmd_gyro_calib == 1)
-        {
-            IMU_Gyro_Calib_Start(&gyro_cal);    // 零漂校准开始（车需静止）
-            // 指示（陀螺仪零漂）校准开始
-            SHARED_IMU_ADDR->cmd_gyro_calib = 2;
-            SHARED_IMU_WRITE_SYNC();
-        }
-
-        if(IMU_D_and_A_Enable && IMU_Gyro_Calib_Check(&gyro_cal) == GYRO_CALIB_STATE_RUNNING)
-        {
-            // 如果校准正在进行，将消耗IMU_D_and_A_Enable标志位，并阻止解算
-            // 下面这行置零只是指示这个标志位在这里被置零了
-            IMU_D_and_A_Enable = 0;
-        }
-        else if (IMU_Gyro_Calib_Check(&gyro_cal) == GYRO_CALIB_STATE_DONE && SHARED_IMU_ADDR->cmd_gyro_calib != 0)
-        {
-            // 指示（陀螺仪零漂）校准完成
-            SHARED_IMU_ADDR->cmd_gyro_calib = 3;
-            SHARED_IMU_WRITE_SYNC();
-        }
-
-        if(SHARED_IMU_ADDR->cmd_reset == 1)
-        {
-            IMU_Reset_Data();                   // Yaw 归零
-            SHARED_IMU_ADDR->cmd_reset = 0;
-        }
-
-        // IMU 解算（10ms）
-        if(IMU_D_and_A_Enable)
-        {
-            IMU_D_and_A_Enable = 0;
-            IMU_Update_Analysis();              // 解算 Yaw_Result
-            SHARED_IMU_ADDR->yaw = (int16)(Yaw_Result * 100.0f);  // 定点：0.01°/LSB
-            SHARED_IMU_WRITE_SYNC();            // 写回 cache，让 CM7_0 可见
-        }
+        // 无事可做。不要在别的核上再初始化 IMU：SPI_2 现在归 CM7_0 独占。
     }
 }
 

@@ -4,7 +4,7 @@
 
 
 #include "zf_common_headfile.h"
-#include "IMU_Analysis.h"
+#include "ins_imu.h"
 
 /**********************************************************/
 /*[S] 界面样式 [S]----------------------------------------*/
@@ -665,13 +665,8 @@ int Debug_IMU (void)
 
     // IMU调试界面光标 标志位
     uint8_t Debug_IMU_f = 1;
-    // IMU调试界面 陀螺仪校准状态 标志位
-    // 直接用于推进菜单显示
-    uint8_t gyro_cal_flag= 0;
-    // 0 空闲
-    // 1 发送校准申请
-    // 2 校准正在进行
-    // 3 确认校准完成
+    // ★ 2026-10-19：`gyro_cal_flag` 那套"发申请 -> 等 CM7_1 回状态"的三段式已删除。
+    //   解算在本核，标定是同步调用，不再需要跨核状态机。
 
     // 参考计时值重置
     Time_Count1 = 0;
@@ -714,50 +709,31 @@ int Debug_IMU (void)
         }
 
 
-        /* 触发命令 */
-        if (Debug_IMU_f_temp == 1 && SHARED_IMU_ADDR->cmd_gyro_calib == 0)
+        /* 触发命令（★ 2026-10-19：解算在本核，直接调用，不再走共享内存 -> CM7_1） */
+        if (Debug_IMU_f_temp == 1)
         {
-            // 发送（陀螺仪零漂）校准指令
-            SHARED_IMU_ADDR->cmd_gyro_calib = 1;
-            SHARED_IMU_WRITE_SYNC();
-            ips200_show_string(130 ,96 , "Send");
-
-            // 发送校准申请
-            gyro_cal_flag = 1;
+            /* 陀螺零偏重标：**阻塞约 5 秒**（1000 拍 × 5ms），失败内部自动重试，最多 25 秒。
+               ★ 车必须静止；一旦单轴极差超限就判"被碰过"并重来。
+               ★ 期间 ins_imu.c 的 s_calib_busy 会挡住 5ms 中断里的 ins_imu_update()，
+                 两者不会同时访问 SPI_2。 */
+            ips200_show_string(130 ,96 , "WAIT");
+            if (0 == ins_imu_calib_gyro()) { ips200_show_string(130 ,96 , "Done"); }
+            else                           { ips200_show_string(130 ,96 , "Fail"); }
         }
-        else if (Debug_IMU_f_temp == 2 && gyro_cal_flag == 0)
+        else if (Debug_IMU_f_temp == 2)
         {
-            SHARED_IMU_ADDR->cmd_reset = 1;   // 命令 CM7_1 Yaw 归零
-            SHARED_IMU_WRITE_SYNC();
-        }
-
-        // 核心1 指示（陀螺仪零漂）校准开始
-        if (gyro_cal_flag == 1 && SHARED_IMU_ADDR->cmd_gyro_calib == 2)
-        {
-            // 校准正在进行
-            gyro_cal_flag = 2;
-            ips200_show_string(130 ,96 , "ing~");
-        }
-        // 核心1 指示（陀螺仪零漂）校准完成
-        else if (gyro_cal_flag == 2 && SHARED_IMU_ADDR->cmd_gyro_calib == 3)
-        {
-            // 确认校准完成
-            gyro_cal_flag = 3;
+            ins_imu_zero_yaw();                  // 累积航向归零（不动四元数姿态）
             ips200_show_string(130 ,96 , "Done");
-
-            // 状态机重置
-            SHARED_IMU_ADDR->cmd_gyro_calib = 0;
-            SHARED_IMU_WRITE_SYNC();
-            gyro_cal_flag = 0;
         }
 
 
-        /* 显示 yaw + 光流 */
+        /* 显示 yaw（★ 直接取本核 ins_imu 的输出，不再经 Yaw_Receive 定点中转） */
         if (Time_Count1 >= 10)  // 10ms * 10显示周期
         {
             Time_Count1 = 0;
-            int16 yaw_deg = Yaw_Receive / 100;
-            int16 yaw_fra = Yaw_Receive % 100;
+            float yaw_now = ins_imu_get_yaw();
+            int16 yaw_deg = (int16)yaw_now;                             // 截断取整（与原整数除法口径一致）
+            int16 yaw_fra = (int16)((yaw_now - (float)yaw_deg) * 100.0f);
             if(yaw_fra < 0) yaw_fra = -yaw_fra;
             ips200_printf(58, 48, "%d.%02d ", yaw_deg, yaw_fra);
         }

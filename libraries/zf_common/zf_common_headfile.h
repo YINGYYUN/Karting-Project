@@ -129,7 +129,8 @@ extern uint16 Time_Count2;
 // 避免每个用到的文件各自写一份 extern（漏写就是 "identifier is undefined"）
 extern volatile uint8  wifi_spi_inited;     // WiFi-SPI 是否已初始化（定义在 main_cm7_0.c）
 extern volatile uint32 Sys_Tick_Ms;         // 1ms 全局计时（定义在 cm7_0_isr.c）
-extern volatile int16  Yaw_Receive;         // 从 CM7_1 收到的 yaw（定义在 main_cm7_0.c）
+// ★ 2026-10-19：`Yaw_Receive` 已删除 —— 它是双核共享内存时代的定点中转量。
+//   现在 yaw 由本核的 ins_imu 提供，消费者直接调 ins_imu_get_yaw()。
 //=====================================================自建代码层=====================================================
 
 #endif

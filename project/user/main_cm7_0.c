@@ -34,10 +34,8 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
-#include "IMU_Analysis.h"
+#include "ins_imu.h"
 
-// 从 CM7_1 共享内存读到的 yaw（定点，0.01°/LSB），核心 0 公用读写变量
-volatile int16 Yaw_Receive = 0;
 // WiFi 是否已初始化（未初始化时，依赖 WiFi 的功能不启用）
 volatile uint8 wifi_spi_inited = 0;
 
@@ -48,9 +46,24 @@ int main(void)
     debug_init();                       // 调试串口信息初始化
 
     Peripheral_Init();				    // 初始化外设，自行配置
+
+    /* ---- IMU 姿态解算（IMU963RA / SPI_2，本核独占）----
+       ★★ 这一步**会阻塞 5 秒**（1000 个 5ms 采样求零偏），失败最多重试 5 次 = 25 秒。
+          所以必须放在"屏幕已经能显示"之后，让现场知道是在标定、不是死机。
+          标定期间要求车辆静止：单轴极差超过 INS_CALIB_MAX_SPAN_LSB 会被判"被碰过"并重来。
+       ★ 失败不影响开车：ins_imu_update() 会走"链路坏"分支，一步都不碰 SPI_2，
+         只是 yaw 恒为 0（转向环也用不到它）。*/
+    ips200_show_string(8, 120, "IMU GYRO CALIB...");
+    ips200_show_string(8, 136, "PLEASE KEEP STILL");
+    {
+        uint8 imu_ret = ins_imu_init();         // 0 = 成功 / 1 = 器件初始化失败 / 2 = 零偏超限
+        if (0 == imu_ret) { ips200_show_string(8, 152, "IMU OK              "); }
+        else              { ips200_show_string(8, 152, "IMU FAIL, SEE UART  "); }
+    }
+
     pit_ms_init(PIT_CH0, 10);
     pit_ms_init(PIT_CH1, 10);           // 10ms：转向（角度编码器采集 + 舵机位置环，同中断）
-    pit_ms_init(PIT_CH11, 5);           // 5ms：后轮速度环
+    pit_ms_init(PIT_CH11, 5);           // 5ms：后轮速度环 + IMU 姿态解算（见 pit0_ch11_isr）
     pit_ms_init(PIT_CH10, 1);           // 1ms 定时，全局毫秒计时（编码器速度积分用）
 
     while(true)

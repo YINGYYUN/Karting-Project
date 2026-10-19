@@ -6,6 +6,7 @@
 
 
 #include "zf_common_headfile.h"
+#include "ins_imu.h"                    // 遥测里的 yaw 直接取模块输出（不再经 Yaw_Receive 中转）
 #include <float.h>
 
 
@@ -447,7 +448,7 @@ static void host_fill_channels (void)
     host_ch[HOST_CH_SERVO_EN]    = (float)Servo_Crtl_Enable;
     host_ch[HOST_CH_MOTOR_EN]    = (float)Motor_Crtl_Enable;
     host_ch[HOST_CH_SERVO_FAULT] = (float)Servo_Enc_Fault;
-    host_ch[HOST_CH_YAW_DEG]     = (float)Yaw_Receive * 0.01f;  // 共享内存里是 0.01°/LSB
+    host_ch[HOST_CH_YAW_DEG]     = ins_imu_get_yaw();           // 累积航向 deg（可超 ±360）
     host_ch[HOST_CH_HOST_EN]     = (float)host_enable;
 }
 
