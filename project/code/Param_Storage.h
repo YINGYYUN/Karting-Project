@@ -17,10 +17,11 @@ CYT4BB 适配：存储位置为 Work Flash 第 0 页（sector 参数恒为 0）�
 #define PARAM_FLASH_SECTION         (0)
 #define PARAM_FLASH_PAGE            (0)
 
-// 参数总数（2 个后轮电机 × 4 个参数 + 舵机 × 2 个参数）
-#define PARAM_COUNT                 (10)
+// 参数总数（2 个后轮电机 × 4 个参数 + 舵机 × 3 个参数）
+#define PARAM_COUNT                 (11)
 
-// 上电强制重置开关 —— 2026-10-18 起**刻意固定为 1**，不再当作"烧一次就改回"的临时开关。
+// 上电强制重置falsh参数开关
+// 1：上电强制重写参数页flash
 #define PARAM_FORCE_RESET           (0)
 
 // 参数缓冲区(Flash 读写的唯一载体)
@@ -39,9 +40,12 @@ extern float param_cache[PARAM_COUNT];
 #define MOTOR_RR_KV_IDX             6
 #define MOTOR_RR_KZ_IDX             7
 
-// 舵机 转向位置环 (8-9)
+// 舵机 转向位置环 (8-10)
+// ★ ki 是后加的，**必须放在末尾**：前面 10 个索引不能变，否则 Flash 里已有的数据会整体错位
+//   （旧的 inv_K 会被当成 u0 读进来）。
 #define SERVO_KP_IDX                8
 #define SERVO_U0_IDX                9
+#define SERVO_KI_IDX                10
 
 // 便捷访问宏
 #define MOTOR_LR_INV_K              param_cache[MOTOR_LR_INV_K_IDX]
@@ -56,6 +60,7 @@ extern float param_cache[PARAM_COUNT];
 
 #define SERVO_KP                    param_cache[SERVO_KP_IDX]
 #define SERVO_U0                    param_cache[SERVO_U0_IDX]
+#define SERVO_KI                    param_cache[SERVO_KI_IDX]
 
 void    Param_Init          (void);     // 初始化(加载或设默认值)
 void    Param_Save          (void);     // 保存当前参数到 Flash

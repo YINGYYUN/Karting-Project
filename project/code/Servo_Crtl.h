@@ -1,6 +1,6 @@
 /*******************************************************************************
 转向角测量与控制 - Servo_Crtl.h
-数据来源：绝对值角度编码器（ENC_ABS_ANG，CH0 的 10ms 中断采集，见 cm7_0_isr.c）
+数据来源：绝对值角度编码器（ENC_ABS_ANG，CH1 的 10ms 中断采集，与位置环同拍，见 cm7_0_isr.c）
 控制对象：Motor 3（MOTOR_SERVO）
 *******************************************************************************/
 #ifndef _servo_crtl_h_
@@ -44,11 +44,18 @@
 //============================== 控制参数 ==============================
 #define SERVO_KP_DEFAULT        (400.0f)        // 位置环比例增益的"上电默认值"
                                                 // 实际生效值放在 Servo_Crtl_Kp，由参数页/Flash 提供
-#define SERVO_U0_DEFAULT        (1800.0f)       // 摩擦截距前馈的"上电默认值"
+#define SERVO_U0_DEFAULT        (1700.0f)       // 摩擦截距前馈的"上电默认值"
                                                 // 实测（整车落地、不前后运动）启动阈值约 1300 （注：摩擦似乎也和当前方向盘角度有关）
                                                 // 实际生效值放在 Servo_Crtl_U0，由参数页/Flash 提供
 #define SERVO_U_MAX             (9000.0f)       // 输出限幅（与 Motor_Set 刻度一致：±10000 = ±100%）
-#define SERVO_ERR_DEADBAND_DEG  (0.2f)          // 误差死区，抑制静止抖动
+#define SERVO_ERR_DEADBAND_DEG  (0.2f)          // 误差死区：只让 Kp 与 U0 **这一拍不参与**，err 本身不清零
+
+// ---- 积分项（Ki）----
+#define SERVO_KI_DEFAULT        (50.0f)         // 积分增益（u/deg·拍），实测值
+#define SERVO_I_MAX             (1600.0f)       // 积分项**输出**上限（u，与 Servo_Out 同刻度）
+#define SERVO_I_CLR_BAND_DEG    (5.0f)          // |误差| 超过它 -> 积分项清零，不参与累加，减缓积分项导致的过冲
+#define SERVO_I_DEADBAND_DEG    (0.03f)         // 积分累加门限：比 Kp 死区小一个量级，只挡纯（偏机械性质）噪声
+                                                // 不能设 0：编码器 1 计数 ≈ 0.02°，机械振动/齿条回弹
 
 //============================== 反馈源失效保护 ==============================
 // 角度编码器掉线 / 悬空时的特征：SPI 读回全 0 或全 1，原始读数在 0 / 4095 交替。
@@ -62,7 +69,7 @@
 // 很快超过 1800（实测启动阈值约 1300~1600）
 #define SERVO_ENC_LOST_OUT      (1800)          // |Servo_Out| 超过它才算"在出力"
 #define SERVO_ENC_LOST_MS       (200)           // 连续多少 ms 读到无效值就停机（锁存，Servo_Crtl_Reset() 才清）
-#define SERVO_TICK_MS           (5)             // 节拍周期 ms，与 PIT_CH1 一致
+#define SERVO_TICK_MS           (10)            // 节拍周期 ms，与 PIT_CH1 一致
 
 //============================== 输出极性 ==============================
 // 约定：电机带动方向盘"向右"为角度正值
@@ -84,11 +91,14 @@ extern volatile int16 Servo_Out;                // 本拍实际写入电机的�
 extern volatile uint8 Servo_Crtl_Enable;        // 0 = 输出强制 0 并清状态
 extern volatile float Servo_Crtl_Kp;            // 位置环比例增益（上电默认 SERVO_KP_DEFAULT，参数页可改）
 extern volatile float Servo_Crtl_U0;            // 摩擦截距前馈（上电默认 SERVO_U0_DEFAULT，参数页可改）
+extern volatile float Servo_Crtl_Ki;            // 位置环积分增益（上电默认 SERVO_KI_DEFAULT，参数页/Flash 会覆盖）
+extern volatile float Servo_I_Sum;              // 积分累加值（deg·拍）。上限由 Servo_Crtl_Ki 与
+                                                // SERVO_I_MAX 反算，只供调试观察，外部不要写它
 extern volatile uint8 Servo_Enc_Fault;          // 1 = 反馈源失效已锁存（Servo_Crtl_Reset 才清）
 
 //============================== 接口 ==============================
 void Servo_Crtl_Init  (void);                   // 初始化（清状态、失能、输出归零）
-void Servo_Crtl_Reset (void);                   // 失能 + 清目标 / 误差 / 输出 / 故障锁存（目标归 0）
-void Servo_Crtl_Tick  (void);                   // 5ms 调用：换算 + 位置环 + 输出
+void Servo_Crtl_Reset (void);                   // 失能 + 清目标 / 误差 / 积分 / 输出 / 故障锁存（目标归 0）
+void Servo_Crtl_Tick  (void);                   // 10ms 调用：换算 + 位置环 + 输出
 
 #endif

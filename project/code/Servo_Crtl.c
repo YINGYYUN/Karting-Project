@@ -1,6 +1,6 @@
 /*******************************************************************************
 转向角测量与控制 - Servo_Crtl.c
-数据来源：绝对值角度编码器（ENC_ABS_ANG，CH0 的 10ms 中断采集，见 cm7_0_isr.c）
+数据来源：绝对值角度编码器（ENC_ABS_ANG，CH1 的 10ms 中断采集，与位置环同拍，见 cm7_0_isr.c）
 控制对象：Motor 3（MOTOR_SERVO）
 *******************************************************************************/
 
@@ -16,6 +16,8 @@ volatile int16 Servo_Out                = 0;                // 本拍实际写�
 volatile uint8 Servo_Crtl_Enable        = 0;                // 0 = 输出强制 0 并清状态
 volatile float Servo_Crtl_Kp            = SERVO_KP_DEFAULT; // 位置环比例增益（参数页/Flash 会覆盖）
 volatile float Servo_Crtl_U0            = SERVO_U0_DEFAULT; // 摩擦截距前馈（参数页/Flash 会覆盖）
+volatile float Servo_Crtl_Ki            = SERVO_KI_DEFAULT; // 位置环积分增益（参数页/Flash 会覆盖）
+volatile float Servo_I_Sum              = 0.0f;             // 积分累加值（deg·拍），只供调试观察
 volatile uint8 Servo_Enc_Fault          = 0;                // 1 = 反馈源失效已锁存
 
 //============================== 内部状态 ==============================
@@ -80,6 +82,7 @@ void Servo_Crtl_Reset (void)
     Servo_Target_Applied_Deg = 0.0f;
     Servo_Err_Deg            = 0.0f;
     Servo_Out                = 0;
+    Servo_I_Sum              = 0.0f;    // 积分累加值一起清，重新使能从 0 开始
     Servo_Enc_Fault          = 0;
     servo_invalid_ms         = 0;
 }
@@ -97,19 +100,26 @@ void Servo_Crtl_Init (void)
 }
 
 //--------------------------------------
-// 函数简介     5ms 主节拍
+// 函数简介     10ms 主节拍
 // 参数说明     void
 // 使用示例     在 PIT 中断里调用 Servo_Crtl_Tick();
 // 备注信息     顺序：角度换算 -> 反馈失效判定 -> 门控 -> 目标处理 -> 位置环 -> 限幅 -> 输出
 //              角度换算是测量量，始终更新，与舵机闭环使能无关
-//              数据源 ENC_ABS_ANG 由 CH0 的 10ms 采集段刷新（不是本函数所在的 CH1），
-//              所以反馈最多滞后两拍（10ms），位置环本身仍按 5ms 跑
+//              ★ err 在本函数里**始终保持真值**：死区与越限保护只决定"本拍哪一项不参与"，
+//                不再把 err 抹成 0（抹 0 会把积分一起杀掉，Servo_Err_Deg 也会变假值）
+//              数据源 ENC_ABS_ANG 由本函数所在的同一个中断（CH1, 10ms）在其之前采集，
+//              本拍采、本拍用，反馈零滞后 —— 不要再把采集拆到别的通道去
 //--------------------------------------
 void Servo_Crtl_Tick (void)
 {
     float tar_deg;  // 本函数内的舵机目标角度（度）
-    float err;      // 角度误差（度）
+    float err;      // 角度误差（度），**本拍真值，不再被死区抹成 0**
+    float u_p;      // 本拍 Kp 项输出
+    float u0_term;  // 本拍摩擦前馈项输出
+    float i_add;    // 本拍累加进积分的量（0 = 本拍不累加）
     float u;        // 计算中间变量
+    float u_i;      // 本拍积分项输出（u，已限幅到 SERVO_I_MAX）
+    uint8 block;    // 1 = 越限保护生效，本拍三项都不出力
 
     /* ---- 角度换算：原始读数 -> 方向盘角度（向右为正）----
        放在门控之前：闭环未启用时角度照常更新，供显示与上层使用 */
@@ -145,33 +155,78 @@ void Servo_Crtl_Tick (void)
         }
         Servo_Err_Deg    = 0.0f;
         Servo_Out        = 0;
+        Servo_I_Sum      = 0.0f;    // 失能即清积分：重新使能时不能带着上次的积分冲击
         servo_enabled    = 0;
         return;
     }
 
     err = tar_deg - Servo_Angle_Deg;
 
-    /* ---- 越限保护：实测已超出软限位、且误差仍指向限位方向 -> 不再出力 ----
-       保证即使因外部原因压到限位，电机也不会继续加力去顶限位结构 */
-    if (((Servo_Angle_Deg >  SERVO_SOFT_LIMIT_DEG) && (err > 0.0f)) ||
-        ((Servo_Angle_Deg < -SERVO_SOFT_LIMIT_DEG) && (err < 0.0f)))
+    /* ---- 越限保护：实测已超出软限位、且误差仍指向限位方向 -> 本拍不出力 ----
+       保证即使因外部原因压到限位，电机也不会继续加力去顶限位结构。
+       ★ 这里**不再把 err 抹成 0**：抹 0 会连带杀掉积分（原来的 i_sum += err 吃到的是 0），
+         而且 Servo_Err_Deg 显示的是假值。改成"三项都不参与"，err 保持真值。 */
+    block = (((Servo_Angle_Deg >  SERVO_SOFT_LIMIT_DEG) && (err > 0.0f)) ||
+             ((Servo_Angle_Deg < -SERVO_SOFT_LIMIT_DEG) && (err < 0.0f))) ? 1 : 0;
+
+    if (block)
     {
-        err = 0.0f;
+        u_p     = 0.0f;
+        u0_term = 0.0f;
+        i_add   = 0.0f;
+    }
+    else
+    {
+        /* ---- 误差死区：只让 Kp 与 U0 **这一拍不参与** ----
+           合并成一个 if 是刻意的：两者条件完全相同，分开写容易出现"以后只改了一处"的不一致。
+           ★ U0 必须跟 Kp 用同一个门限：若这里仍按 err 符号直接加，静止时 ±0.1° 的噪声
+             会让输出在 +U0 / -U0 之间整块翻转，比原来"清零"的写法更抖。 */
+        if ((err < SERVO_ERR_DEADBAND_DEG) && (err > -SERVO_ERR_DEADBAND_DEG))
+        {
+            u_p     = 0.0f;
+            u0_term = 0.0f;
+        }
+        else
+        {
+            u_p     = Servo_Crtl_Kp * err;
+            u0_term = (err > 0.0f) ? Servo_Crtl_U0 : -Servo_Crtl_U0;
+        }
+
+        /* ---- 积分累加门限：比 Kp 死区小一个量级，只挡纯噪声 ----
+           门限内的误差不累加，但 err 本身仍在，所以死区里积分不会被"清零"式地停掉，
+           小误差才有机会攒成输出、接替 U0 的摩擦补偿职责 */
+        i_add = ((err < SERVO_I_DEADBAND_DEG) && (err > -SERVO_I_DEADBAND_DEG)) ? 0.0f : err;
     }
 
-    /* ---- 误差死区：抑制静止抖动 ---- */
-    if ((err < SERVO_ERR_DEADBAND_DEG) && (err > -SERVO_ERR_DEADBAND_DEG))
+    /* ---- 积分项：|err| > SERVO_I_CLR_BAND_DEG 时直接清零、不累加 ----
+       用的是**真实 err**（不再是被死区改过的值），判据因此更准 */
+    if ((err > SERVO_I_CLR_BAND_DEG) || (err < -SERVO_I_CLR_BAND_DEG))
     {
-        err = 0.0f;
+        Servo_I_Sum = 0.0f;
+    }
+    else
+    {
+        Servo_I_Sum += i_add;
     }
 
-    /* ---- 位置环 + 摩擦前馈 + 输出限幅 ----
-       u = kp × err   ：经典Kp
-       u0 × sign(err) : 克服静摩擦与减速箱阻力
-       err 已经过死区与越限保护，等于 0 时 u0 也不加，静止不会抖 */
-    u = Servo_Crtl_Kp * err;
-    if      (err > 0.0f) { u +=  Servo_Crtl_U0; }
-    else if (err < 0.0f) { u += -Servo_Crtl_U0; }
+    u_i = Servo_Crtl_Ki * Servo_I_Sum;
+    if (u_i > SERVO_I_MAX)
+    {
+        u_i         = SERVO_I_MAX;
+        Servo_I_Sum = (Servo_Crtl_Ki > 0.0f) ? ( SERVO_I_MAX / Servo_Crtl_Ki) : 0.0f;
+    }
+    else if (u_i < -SERVO_I_MAX)
+    {
+        u_i         = -SERVO_I_MAX;
+        Servo_I_Sum = (Servo_Crtl_Ki > 0.0f) ? (-SERVO_I_MAX / Servo_Crtl_Ki) : 0.0f;
+    }
+
+    /* ---- 位置环 + 积分 + 摩擦前馈 + 输出限幅 ----
+       u_p     = kp × err    ：经典 Kp（死区内这一拍给 0）
+       u_i     = ki × Σerr   ：消除纯 P 留下的稳态误差（背隙、齿条回弹、重力分量）
+       u0_term = u0 × sign(err) ：克服静摩擦与减速箱阻力（死区内这一拍给 0）
+       三项都是"本拍要不要参与"各自判过，err 本身始终保持真值 */
+    u = u_p + u_i + u0_term;
 
     if (u >  SERVO_U_MAX) { u =  SERVO_U_MAX; }
     if (u < -SERVO_U_MAX) { u = -SERVO_U_MAX; }

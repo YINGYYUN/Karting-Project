@@ -58,16 +58,9 @@ void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务�
     SHARED_IMU_READ_SYNC();
     Yaw_Receive = SHARED_IMU_ADDR->yaw;
 
-    // ---- 角度编码器（360° 绝对式，转向柱侧）：10ms 采集一次 ----
-    // ★ 周期口径 = 10ms（2026-10-18 从 CH1 的 5ms 移回，恢复到 a772fe8 起的原始设计）。
-    //   驱动走的是**硬件 SPI_4 / SCB5 @ 8MHz**（ABSOLUTE_ENCODER_USE_SOFT_SPI = 0），
-    //   get_location() 只读 2 字节（约 2µs），get_offset() 纯计算不碰总线 —— 开销本身不大，
-    //   所以它**不是**后轮抽搐的嫌疑点（见 Remote_Crtl.c / Motor_Crtl 那条线的排查）。
-    // ★ 真正必须保持 10ms 的理由是口径：ENC_ABS_OFF = now_location - last_location，
-    //   数值跟"两次采样之间转过的角度"成正比。周期从 10ms 变 5ms 会让它整体减半，
-    //   调试页/上位机拿它当转速看时读数会跳变。改了周期就要同步改这些显示口径。
-    ENC_ABS_ANG = absolute_encoder_get_location();
-    ENC_ABS_OFF = absolute_encoder_get_offset();
+    // ★ 角度编码器采集**不在这里**：已移到 pit0_ch1_isr（与 Servo_Crtl_Tick 同中断、同 10ms）。
+    //   它和位置环必须"同拍采、同拍用"，分在两个通道会引入 0~10ms 的相位不确定性。
+    //   周期口径仍是 10ms，ENC_ABS_OFF 的数值含义不变。
 
     // 参考计时值，自增,3000清零
     Time_Count1 = (Time_Count1 >= 3000) ? 0 : Time_Count1 + 1;
@@ -78,10 +71,16 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
 {
     pit_isr_flag_clear(PIT_CH1);
     
-    // 5ms：转向相关（磁编码器 / 舵机位置环）
-    // ★ 后轮测速与速度环已移到 pit0_ch11_isr（5ms），这里不要再调，否则编码器会被读两次
-    // ★ 角度编码器（ENC_ABS_ANG / ENC_ABS_OFF）**不在这里**：已移回 CH0 的 10ms 采集。
-    //   本中断只负责"用"它（Servo_Crtl_Tick 读 ENC_ABS_ANG），不再负责"读"。
+    // 10ms：转向（角度编码器的采集 + 舵机位置环）
+    // ★ 后轮测速与速度环在 pit0_ch11_isr（5ms），这里不要再调，否则编码器会被读两次
+    // ★ 角度编码器采集和 Servo_Crtl_Tick 必须在**同一个中断**里，且采集在前：
+    //   两者同为 10ms 但分属不同通道时，谁先触发不确定，Tick 可能读到上一拍的反馈
+    //   （相位差 0~10ms 随机），白白损失相位裕度。放一起才能保证"本拍采、本拍用"。
+    //   驱动是硬件 SPI_4 / SCB5 @ 8MHz，一次读 2 字节约 2µs，开销可忽略。
+
+    // ---- 角度编码器（360° 绝对式，转向柱侧）：10ms 采集 ----
+    ENC_ABS_ANG = absolute_encoder_get_location();
+    ENC_ABS_OFF = absolute_encoder_get_offset();
 
     #if ENC_MAG_ENABLE == 1
 
@@ -105,8 +104,8 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
     #endif
 
     // ---- 转向角换算（原始读数 -> 方向盘角度）+ 舵机位置环 ----
-    // 用 CH0 十毫秒采到的 ENC_ABS_ANG：反馈最多滞后 10ms（两拍），位置环仍按 5ms 跑。
-    // 这样"慢的软 SPI 采集"和"快的控制节拍"分开，互不拖累。
+    // 反馈就是本拍刚采到的 ENC_ABS_ANG，零滞后。
+    // ★ Ki / U0 / I_MAX 都是按"10ms 一拍"整定的，改这个周期必须重新整定。
     Servo_Crtl_Tick();
 }
 

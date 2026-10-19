@@ -14,8 +14,8 @@ static const float DEFAULT_PARAMS[PARAM_COUNT] = {
     0.1548f, 0.033f, 0.164f, 2.32f,
     // 右后轮：inv_K, u0, k_v, k_z
     0.1548f, 0.033f, 0.164f, 2.32f,
-    // 舵机位置环：kp, u0
-    500.0f, 1900.0f,
+    // 舵机位置环：kp, u0, ki
+    400.0f, 1700.0f, 50.0f,
 };
 
 // 参数缓存区(菜单直接修改此数组, Flash 读写也通过此数组)
@@ -45,17 +45,22 @@ static void copy_flash_buffer_to_cache(void)
 }
 
 // 校验参数是否合法(异常值无效)
+// 采样式校验：只拿左右后轮的 inv_K 当采样目标。
 static uint8_t param_cache_is_valid(void)
 {
-    for (uint8_t i = 0; i < PARAM_COUNT; i++)
+    // 用"取反的区间判断"而不是 > || <：NaN 参与 > 和 < 比较都为假，
+    // 这样 NaN / Inf / 全 0xFF 的空白页都会被判为非法（旧写法会漏过去，之后算出 NaN 输出）
+    // 取 ±5 是宽松兜底
+    if (!((MOTOR_LR_INV_K > -5.0f) && (MOTOR_LR_INV_K < 5.0f)))
     {
-        // 范围检查（Flash 空白/损坏时读出的浮点会远超此范围）
-        // 用"取反的区间判断"而不是 > || <，这样 NaN / Inf 也会被判为非法
-        // （NaN 参与 > 和 < 比较都为假，用旧写法会漏过去，之后参与运算会算出 NaN 输出）
-        if (!((param_cache[i] > -10000.0f) && (param_cache[i] < 10000.0f)))
-            return 0;
-        // 采样性质，后续的其他参数不必都参与检查
+        return 0;
     }
+
+    if (!((MOTOR_RR_INV_K > -5.0f) && (MOTOR_RR_INV_K < 5.0f)))
+    {
+        return 0;
+    }
+
     return 1;
 }
 /**********************************************************/
@@ -131,6 +136,7 @@ void Flash_SyncTo_Param(void)
 
     Servo_Crtl_Kp = SERVO_KP;
     Servo_Crtl_U0 = SERVO_U0;
+    Servo_Crtl_Ki = SERVO_KI;
 }
 /**********************************************************/
 /*----------------------------------------[E] 外部函数 [E]*/
