@@ -18,15 +18,15 @@
 // 4 [仅输出Yaw]只使用磁力计解算             -Magnetic Yaw
 // 5 [仅输出Yaw]使用Madgwick融合解算        -Madgwick AHRS
 // 6 [仅输出Yaw]使用重力投影磁修正陀螺积分    -Madgwick AHRS
-#define DEFINE_IMU_ANALYSIS_MODE       1
+#define DEFINE_IMU_ANALYSIS_MODE       0
 
 
 // 全局变量声明
 extern volatile float Yaw_Result;    // 偏航角（Yaw）
 extern volatile float Roll_Result;   // 横滚角（Roll）
 extern volatile float Pitch_Result;  // 俯仰角（Pitch）
-// IMU 通信+解析 使能标志位
-extern volatile uint8_t IMU_D_and_A_Enable;
+// 2026-10-21：`IMU_D_and_A_Enable` 已移除，外部模块不要再引用这个符号。
+
 
 /*======================================================*/
 /*[数据读取]**********************************************/
@@ -81,12 +81,14 @@ typedef enum {
     GYRO_CALIB_STATE_DONE    = 2           // 校准完
 } Gyro_CalibState_t;
 
-// 零飘校准校准需要的样本数
-#define GYRO_CALIB_TARGET_SAMPLES    1000  
+// 零飘校准需要的样本数
+#define GYRO_CALIB_TARGET_SAMPLES    1000  // 5ms * 1000 = 5 秒 (注释更改可能有延迟，请以实际为准)
 
 extern Gyro_Calib_StructDef gyro_cal;
 
+/* 纯置陀螺仪标定启动状态 */
 void    IMU_Gyro_Calib_Start        (Gyro_Calib_StructDef *cal);
+/* 纯查询：返回 calib_state（0=未校准 1=校准中 2=校准完） */
 int     IMU_Gyro_Calib_Check        (Gyro_Calib_StructDef *cal);
 void    IMU_Gyro_Apply              (Gyro_Calib_StructDef *cal, float *gx, float *gy, float *gz);
 /*======================================================*/
@@ -129,11 +131,13 @@ typedef enum {
     MAG_CALIB_STATE_DONE    = 2           // 校准完
 } Mag_CalibState_t;
 
-#define MAG_CALIB_MINMAX_TARGET_SAMPLES    2000  // 10ms * 2000 = 20秒
+#define MAG_CALIB_MINMAX_TARGET_SAMPLES    1000  // 5ms * 1000 = 5 秒 (注释更改可能有延迟，请以实际为准)
 
 extern Mag_Calib_StructDef mag_cal;
 
+/* 纯置磁力计标定启动状态 */
 void    IMU_Mag_Calib_Start         (Mag_Calib_StructDef *cal);
+/* 纯查询：返回 calib_state（0=未校准 1=校准中 2=校准完） */
 int     IMU_Mag_Calib_Check         (Mag_Calib_StructDef *cal);
 void    IMU_Mag_Apply               (Mag_Calib_StructDef *cal, int16_t *mx, int16_t *my, int16_t *mz);
 /*======================================================*/

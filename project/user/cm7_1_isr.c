@@ -38,8 +38,7 @@
 
 #include "zf_common_headfile.h"
 
-// ★ 2026-10-19：本核中断全部为空。IMU 解算已移到 CM7_0（pit0_ch11_isr，5ms），
-//   PIT_CH2 不再使用 —— 原来这里只做一件事：置 IMU_D_and_A_Enable 让主循环去解算。
+// 2026-10-19：本核中断全部为空。IMU 解算已移到 CM7_0（pit0_ch11_isr，5ms），
 
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
@@ -57,9 +56,6 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
 void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH2);
-    
-    // ★ 已清空：原来这里是 `IMU_D_and_A_Enable = 1;`（让主循环去解算 IMU）。
-    //   解算已移到 CM7_0 的 pit0_ch11_isr，本通道不再初始化、也不再使用。
 }
 
 void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务函数（光流，30ms）

@@ -257,13 +257,13 @@
 //   所以这里**不要**直接指向 Motor_LR_Crtl.k_v 之类的运行期副本，两处默认值会打架。
 #define HOST_PARAM_TABLE(X)                                                                                                   \
     X( 0, "inv_K_l", "后轮L|前馈 1/K",    0.000f,     0.500f,    0.1548f, "-",    0.001f, &param_cache[MOTOR_LR_INV_K_IDX])      \
-    X( 1, "u0_l",    "后轮L|摩擦截距 u0", 0.000f,     0.300f,    0.033f,  "-",    0.001f, &param_cache[MOTOR_LR_U0_IDX])         \
+    X( 1, "u0_l",    "后轮L|摩擦截距 u0", 0.000f,     0.300f,    0.057f,  "-",    0.001f, &param_cache[MOTOR_LR_U0_IDX])         \
     X( 2, "k_v_l",   "后轮L|比例 k_v",    0.000f,     2.000f,    0.164f,  "-",    0.005f, &param_cache[MOTOR_LR_KV_IDX])         \
-    X( 3, "k_z_l",   "后轮L|积分 k_z",    0.000f,    20.000f,    2.320f,  "-",    0.050f, &param_cache[MOTOR_LR_KZ_IDX])         \
+    X( 3, "k_z_l",   "后轮L|积分 k_z",    0.000f,    20.000f,    0.512f,  "-",    0.010f, &param_cache[MOTOR_LR_KZ_IDX])         \
     X( 4, "inv_K_r", "后轮R|前馈 1/K",    0.000f,     0.500f,    0.1548f, "-",    0.001f, &param_cache[MOTOR_RR_INV_K_IDX])      \
-    X( 5, "u0_r",    "后轮R|摩擦截距 u0", 0.000f,     0.300f,    0.033f,  "-",    0.001f, &param_cache[MOTOR_RR_U0_IDX])         \
+    X( 5, "u0_r",    "后轮R|摩擦截距 u0", 0.000f,     0.300f,    0.057f,  "-",    0.001f, &param_cache[MOTOR_RR_U0_IDX])         \
     X( 6, "k_v_r",   "后轮R|比例 k_v",    0.000f,     2.000f,    0.164f,  "-",    0.005f, &param_cache[MOTOR_RR_KV_IDX])         \
-    X( 7, "k_z_r",   "后轮R|积分 k_z",    0.000f,    20.000f,    2.320f,  "-",    0.050f, &param_cache[MOTOR_RR_KZ_IDX])         \
+    X( 7, "k_z_r",   "后轮R|积分 k_z",    0.000f,    20.000f,    0.512f,  "-",    0.010f, &param_cache[MOTOR_RR_KZ_IDX])         \
     X( 8, "kp_s",    "舵机|比例 Kp",      0.000f,  1000.000f,  500.000f,  "-",    1.000f, &param_cache[SERVO_KP_IDX])            \
     X( 9, "u0_s",    "舵机|摩擦前馈 U0",  0.000f, 10000.000f, 1900.000f,  "-",   10.000f, &param_cache[SERVO_U0_IDX])       \
     X(10, "ki_s",    "舵机|积分 Ki",      0.000f,  1000.000f,   50.000f,  "-",    1.000f, &param_cache[SERVO_KI_IDX])

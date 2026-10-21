@@ -20,14 +20,14 @@ static void param_page_init(void)
     DynamicCreate_Menu_LimitNumber(folder_lr, "invK", &MOTOR_LR_INV_K, float_04_Box, 0, 1);
     DynamicCreate_Menu_LimitNumber(folder_lr, "u0",   &MOTOR_LR_U0,    float_03_Box, 0, 0.5);
     DynamicCreate_Menu_LimitNumber(folder_lr, "kv",   &MOTOR_LR_KV,    float_03_Box, 0, 2);
-    DynamicCreate_Menu_LimitNumber(folder_lr, "kz",   &MOTOR_LR_KZ,    float_02_Box, 0, 20);
+    DynamicCreate_Menu_LimitNumber(folder_lr, "kz",   &MOTOR_LR_KZ,    float_03_Box, 0, 20);
 
     // 右后轮 速度闭环
     Menu_Item *folder_rr = DynamicCreate_Menu_Folder(&head, "Motor_RR");
     DynamicCreate_Menu_LimitNumber(folder_rr, "invK", &MOTOR_RR_INV_K, float_04_Box, 0, 1);
     DynamicCreate_Menu_LimitNumber(folder_rr, "u0",   &MOTOR_RR_U0,    float_03_Box, 0, 0.5);
     DynamicCreate_Menu_LimitNumber(folder_rr, "kv",   &MOTOR_RR_KV,    float_03_Box, 0, 2);
-    DynamicCreate_Menu_LimitNumber(folder_rr, "kz",   &MOTOR_RR_KZ,    float_02_Box, 0, 20);
+    DynamicCreate_Menu_LimitNumber(folder_rr, "kz",   &MOTOR_RR_KZ,    float_03_Box, 0, 20);
 
     // 舵机 转向位置环
     Menu_Item *folder_sv = DynamicCreate_Menu_Folder(&head, "Servo");

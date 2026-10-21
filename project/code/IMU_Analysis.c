@@ -25,8 +25,12 @@
 volatile float Yaw_Result = 0.0f;    // 偏航角（Yaw）
 volatile float Roll_Result = 0.0f;   // 横滚角（Roll）
 volatile float Pitch_Result = 0.0f;  // 俯仰角（Pitch）
-// IMU 数据采集和分析使能标志位
-volatile uint8_t IMU_D_and_A_Enable = 0;
+
+/*  IMU 链路健康（0 = 正常，1 = 坏 / 未初始化）。
+    在imu初始化成功前，防止中断触发的姿态传感器读取引发阻塞等问题
+    上电默认置1，初始化成功置0
+*/
+static volatile uint8_t imu_link_bad = 1;
 /*******************************************************************************************************************/
 /*-----------------------------------------------------------------------------------------------[E] 通用全局变量 [E]*/
 /*******************************************************************************************************************/
@@ -48,8 +52,10 @@ uint8 IMU_init(void)
 {
     #if   DEFINE_IMU_ANALYSIS_MODE != 0 
         uint8 imu_ret = imu963ra_init();
+        imu_link_bad = (0 == imu_ret) ? 0u : 1u;    // 初始化失败 = 之后一步都不碰 SPI_2
         return imu_ret;
     #else
+        imu_link_bad = 1u;
         return 4;
     #endif
 }
@@ -136,52 +142,22 @@ void IMU_Gyro_Calib_Start(Gyro_Calib_StructDef *cal)
 }
 
 //-------------------------------------------------------------------------------------------------------------------
-// 函数简介     陀螺仪校准状态机
-// 返回参数     校准状态：0-未校准，1-校准中，2-已校准
-// 使用示例     Gyro_Calib_Check(&gyro_cal);
+// 函数简介     陀螺仪校准状态查询
+// 返回参数     校准状态：0-未校准，1-校准中，2-已校准（与 Gyro_CalibState_t 一一对应）
+// 使用示例     IMU_Gyro_Calib_Check(&gyro_cal);
+// 备注信息     只查状态
+//              采样搬到 5ms 中断里的 imu_calib_sample()（由 IMU_Update_Analysis 调用）。
 // 使用要求：
 //   - 在静止状态下进行校准，确保设备不受外部运动干扰
 //-------------------------------------------------------------------------------------------------------------------
 int IMU_Gyro_Calib_Check(Gyro_Calib_StructDef *cal)
 {
-    if(cal->calib_state == GYRO_CALIB_STATE_DONE)
+    if (NULL == cal)
     {
-        return 2; // 校准完
+        return (int)GYRO_CALIB_STATE_IDLE;
     }
 
-    if(cal->calib_state == GYRO_CALIB_STATE_IDLE)
-    {
-        return 0; // 未校准
-    }
-    
-    // 那就是状态机还是运行子状态
-    if(IMU_D_and_A_Enable)
-    {
-        IMU_Update_Data();
-        // 收集数据
-        cal->sum_x += (float)imu963ra_gyro_x;
-        cal->sum_y += (float)imu963ra_gyro_y;
-        cal->sum_z += (float)imu963ra_gyro_z;
-
-        cal->calib_count++;
-        IMU_D_and_A_Enable = 1;
-        
-        // 样本数量达成目标
-        if(cal->calib_count >= GYRO_CALIB_TARGET_SAMPLES)
-        {
-            // 计算陀螺仪浮点数偏移量
-            cal->offset_x = (float)cal->sum_x / GYRO_CALIB_TARGET_SAMPLES;
-            cal->offset_y = (float)cal->sum_y / GYRO_CALIB_TARGET_SAMPLES;
-            cal->offset_z = (float)cal->sum_z / GYRO_CALIB_TARGET_SAMPLES;
-            
-            // 更新陀螺仪校准状态为完成
-            cal->calib_state = GYRO_CALIB_STATE_DONE;
-            
-            printf("GYRO_CAL_OFFSET: X=%.2f, Y=%.2f, Z=%.2f\r\n", cal->offset_x, cal->offset_y, cal->offset_z);
-        }
-    }
-    
-    return 1; // 校准中
+    return (int)cal->calib_state;
 }
 
 //-------------------------------------------------------------------------------------------------------------------
@@ -309,65 +285,22 @@ void IMU_Mag_Calib_Start(Mag_Calib_StructDef *cal)
 //-------------------------------------------------------------------------------------------------------------------
 int IMU_Mag_Calib_Check(Mag_Calib_StructDef *cal)
 {
-    if(cal->calib_state == MAG_CALIB_STATE_DONE)
+    // 退化为纯查询
+    if (NULL == cal)
     {
-        return 2; // 校准完
+        return (int)MAG_CALIB_STATE_IDLE;
     }
-
-    if(cal->calib_state == MAG_CALIB_STATE_IDLE)
-    {
-        return 0; // 未校准
-    }
-
-    // 那就是状态机还是运行子状态
-    // 检查是否允许收集数据
-    if (IMU_D_and_A_Enable)
-    {
-        IMU_Update_Data();
-
-        // 更新最大最小值
-        if (imu963ra_mag_x > cal->max_x) cal->max_x = imu963ra_mag_x;
-        if (imu963ra_mag_x < cal->min_x) cal->min_x = imu963ra_mag_x;
-        if (imu963ra_mag_y > cal->max_y) cal->max_y = imu963ra_mag_y;
-        if (imu963ra_mag_y < cal->min_y) cal->min_y = imu963ra_mag_y;
-        if (imu963ra_mag_z > cal->max_z) cal->max_z = imu963ra_mag_z;
-        if (imu963ra_mag_z < cal->min_z) cal->min_z = imu963ra_mag_z;
-
-        cal->calib_count++;
-        IMU_D_and_A_Enable = 0;
-
-        // 样本数量达成目标
-        if (cal->calib_count >= MAG_CALIB_MINMAX_TARGET_SAMPLES)
-        {
-            // 计算硬铁偏移（椭球中心）
-            cal->offset_x = (float)(cal->max_x + cal->min_x) / 2.0f;
-            cal->offset_y = (float)(cal->max_y + cal->min_y) / 2.0f;
-            cal->offset_z = (float)(cal->max_z + cal->min_z) / 2.0f;
-
-            // 计算软铁缩放因子
-            float half_range_x = (float)(cal->max_x - cal->min_x) / 2.0f;   
-            float half_range_y = (float)(cal->max_y - cal->min_y) / 2.0f;
-            float half_range_z = (float)(cal->max_z - cal->min_z) / 2.0f;
-            
-            float max_half_range = half_range_x;
-            if (half_range_y > max_half_range) max_half_range = half_range_y;
-            if (half_range_z > max_half_range) max_half_range = half_range_z;
-            
-            if (half_range_x > 1.0f) cal->scale_x = max_half_range / half_range_x;
-            if (half_range_y > 1.0f) cal->scale_y = max_half_range / half_range_y;
-            if (half_range_z > 1.0f) cal->scale_z = max_half_range / half_range_z;
-
-            cal->calib_state = MAG_CALIB_STATE_DONE;
-            printf("MAG_CAL_OFFSET: X=%.2f, Y=%.2f, Z=%.2f\r\n", cal->offset_x, cal->offset_y, cal->offset_z);
-            printf("MAG_CAL_SCALE: X=%.2f, Y=%.2f, Z=%.2f\r\n", cal->scale_x, cal->scale_y, cal->scale_z);
-        }
-    }
-
-    return 1; // 校准中
+    return (int)cal->calib_state;
 }
 #endif
 
 #if MAG_CALIB_METHOD == 2 // 应用椭球拟合法
+/* ⚠⚠ 本分支**未随 2026-10-21 的"采样进中断"重构更新**，仍依赖 IMU_D_and_A_Enable 传节拍。
+ *     它当前不参与编译（MAG_CALIB_METHOD == 1）。要切到椭球法，必须先把它的采样段
+ *     像 Min-Max 那样搬进 imu_calib_sample()，否则那个标志位没有任何生产者
+ *     ⇒ 标定会永远停在 RUNNING。这里留一个本地定义，只是让本分支"切过去能编译过"，
+ *     不代表它可用。 */
+volatile uint8_t IMU_D_and_A_Enable = 0;
 //-------------------------------------------------------------------------------------------------------------------
 // 函数简介     磁力计校准状态机(椭球拟合法)
 // 返回参数     校准状态：0-未校准，1-校准中，2-校准完
@@ -660,6 +593,91 @@ void IMU_Mag_Apply(Mag_Calib_StructDef *cal, int16_t *mx, int16_t *my, int16_t *
 /*======================================================*/
 
 
+/*======================================================*/
+/*[标定采样（中断内）]**************************************/
+/*======================================================*/
+
+//-------------------------------------------------------------------------------------------------------------------
+// 函数简介     中断内标定采样（本拍的 IMU 原始数据已经读好，这里只做累加/结算）
+// 返回参数     1 = 本拍被标定占用（调用方不要再解算）；0 = 当前没有标定在跑
+// 使用示例     仅由 IMU_Update_Analysis() 调用，外部不要调
+// 备注信息     固定作用在 `gyro_cal` / `mag_cal` 两个全局实例上，不传指针
+//             中断中调用，⚠ 不要在里面 printf
+//             ⚠ 两者同时 RUNNING 时陀螺优先
+//-------------------------------------------------------------------------------------------------------------------
+static uint8 imu_calib_sample(void)
+{
+    /* ---- 陀螺零偏：累加原始 LSB，满点数后算均值 ---- */
+    if (GYRO_CALIB_STATE_RUNNING == gyro_cal.calib_state)
+    {
+        gyro_cal.sum_x += (float)imu963ra_gyro_x;
+        gyro_cal.sum_y += (float)imu963ra_gyro_y;
+        gyro_cal.sum_z += (float)imu963ra_gyro_z;
+        gyro_cal.calib_count ++;
+
+        if (gyro_cal.calib_count >= GYRO_CALIB_TARGET_SAMPLES)
+        {
+            gyro_cal.offset_x = gyro_cal.sum_x / (float)GYRO_CALIB_TARGET_SAMPLES;
+            gyro_cal.offset_y = gyro_cal.sum_y / (float)GYRO_CALIB_TARGET_SAMPLES;
+            gyro_cal.offset_z = gyro_cal.sum_z / (float)GYRO_CALIB_TARGET_SAMPLES;
+
+            /* ★ 状态**最后**写：主循环看到 DONE 时，offset 一定已经就绪 */
+            gyro_cal.calib_state = GYRO_CALIB_STATE_DONE;
+        }
+        return 1u;
+    }
+
+#if MAG_CALIB_METHOD == 1
+    /* ---- 磁力计 Min-Max：只更新极值，满点数后算偏移/缩放 ---- */
+    if (MAG_CALIB_STATE_RUNNING == mag_cal.calib_state)
+    {
+        if (imu963ra_mag_x > mag_cal.max_x) { mag_cal.max_x = imu963ra_mag_x; }
+        if (imu963ra_mag_x < mag_cal.min_x) { mag_cal.min_x = imu963ra_mag_x; }
+        if (imu963ra_mag_y > mag_cal.max_y) { mag_cal.max_y = imu963ra_mag_y; }
+        if (imu963ra_mag_y < mag_cal.min_y) { mag_cal.min_y = imu963ra_mag_y; }
+        if (imu963ra_mag_z > mag_cal.max_z) { mag_cal.max_z = imu963ra_mag_z; }
+        if (imu963ra_mag_z < mag_cal.min_z) { mag_cal.min_z = imu963ra_mag_z; }
+
+        mag_cal.calib_count ++;
+
+        if (mag_cal.calib_count >= MAG_CALIB_MINMAX_TARGET_SAMPLES)
+        {
+            float half_range_x;
+            float half_range_y;
+            float half_range_z;
+            float max_half_range;
+
+            /* 硬铁偏移 = 椭球中心 */
+            mag_cal.offset_x = (float)(mag_cal.max_x + mag_cal.min_x) / 2.0f;
+            mag_cal.offset_y = (float)(mag_cal.max_y + mag_cal.min_y) / 2.0f;
+            mag_cal.offset_z = (float)(mag_cal.max_z + mag_cal.min_z) / 2.0f;
+
+            /* 软铁缩放 = 最大半量程 / 本轴半量程 */
+            half_range_x = (float)(mag_cal.max_x - mag_cal.min_x) / 2.0f;
+            half_range_y = (float)(mag_cal.max_y - mag_cal.min_y) / 2.0f;
+            half_range_z = (float)(mag_cal.max_z - mag_cal.min_z) / 2.0f;
+
+            max_half_range = half_range_x;
+            if (half_range_y > max_half_range) { max_half_range = half_range_y; }
+            if (half_range_z > max_half_range) { max_half_range = half_range_z; }
+
+            if (half_range_x > 1.0f) { mag_cal.scale_x = max_half_range / half_range_x; }
+            if (half_range_y > 1.0f) { mag_cal.scale_y = max_half_range / half_range_y; }
+            if (half_range_z > 1.0f) { mag_cal.scale_z = max_half_range / half_range_z; }
+
+            mag_cal.calib_state = MAG_CALIB_STATE_DONE;
+        }
+        return 1u;
+    }
+#endif
+
+    return 0u;
+}
+/*======================================================*/
+/**************************************[标定采样（中断内）]*/
+/*======================================================*/
+
+
 
 
 
@@ -699,7 +717,9 @@ float fast_sqrt(float x)
 /*[S] [仅输出Yaw]三轴 [S]-------------------------------------------------------------------------------------------*/
 /*******************************************************************************************************************/
 
-float CYCLE_T                       =0.01f;                              // 三轴四元数采样周期
+/* 三轴四元数积分步长（秒），必须与调用周期一致（现挂 PIT_CH11 的 5ms）。
+   ⚠ 改中断周期必须同步改这里，写错不报错、只会让 yaw 整体差一倍。 */
+float CYCLE_T                       =0.005f;                             // 三轴四元数采样周期
 #define PI                          3.14159265358979f
 
 static float      q_3dof[4] = {1.0f, 0.0f, 0.0f, 0.0f};                     // 初始单位四元数（三轴解算专用）
@@ -1902,7 +1922,37 @@ void TiltMagYaw_Reset(TiltMagYaw_StructDef *ahrs)
 //-------------------------------------------------------------------------------------------------------------------
 void IMU_Update_Analysis(void)
 {
-    IMU_Update_Data();                  // 读原始数据
+    /* ★★ 第一道门：链路坏 / 还没初始化成功 ⇒ 一步都不碰 SPI_2。
+       本函数跑在 5ms 中断里，而 SPI 读寄存器是"发字节等接收 FIFO"的忙等；
+       IMU 没接好时每一拍都白等超时（单字节最坏约 300 µs）⇒ 同一个中断里的
+       后轮速度环被拖长、占空比周期性塌陷，表现成"车一卡一卡"。
+       宁可让 yaw 停在最后一个有效值，也不要把控制环拖坏。 */
+    if (0u != imu_link_bad)
+    {
+        return;
+    }
+
+    /* ★ 第二道门：按模式取数据。
+       MODE 1 只用陀螺，就不白读 acc / 磁力计 —— imu963ra_get_mag() 一次要 4 个
+       SPI 事务（写 FUNC_CFG → 读 STATUS → 读 6B → 写回），是 get_gyro() 的两倍，
+       每 5ms 白读一次纯属浪费中断时间。
+       唯一例外：磁标定正在跑时必须读磁，否则采到的是旧值、标定永远算不出结果。 */
+    #if   DEFINE_IMU_ANALYSIS_MODE == 1
+        imu963ra_get_gyro();
+        if (MAG_CALIB_STATE_RUNNING == mag_cal.calib_state)
+        {
+            imu963ra_get_mag();
+        }
+    #elif DEFINE_IMU_ANALYSIS_MODE != 0
+        IMU_Update_Data();              // 多轴模式仍按原样全读
+    #endif
+
+    /* ★ 第三道门：标定占用本拍 —— 只采样，不解算。
+       判据是 calib_state 本身，不是外部的使能标志（见 imu_calib_sample 的说明）。 */
+    if (imu_calib_sample())
+    {
+        return;
+    }
 
     // 0 关闭
     // 1 三轴

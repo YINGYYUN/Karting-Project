@@ -35,13 +35,8 @@
 
 #include "zf_common_headfile.h"
 
-/* ★★ 2026-10-19：本核**不再承担任何业务**。
- *
+/* 2026-10-19：本核不再承担任何业务
  *   姿态解算（原 IMU_Analysis + 共享内存 yaw）已整体换成 CM7_0 的 `ins_imu` 模块，
- *   这里是刻意保留的空壳 —— IAR 的双核工程结构要求两个 .ewp 各有一个 main，
- *   直接删文件会让 CM7_1 的链接配置失效。
- *
- *   原实现留档：project/code/IMU_Analysis-已停用.txt
  */
 
 int main(void)

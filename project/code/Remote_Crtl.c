@@ -180,8 +180,8 @@ void Remote_Crtl_Apply (void)
             Servo_Crtl_Enable    = 1;
             Motor_Crtl_Enable    = 1;
             Servo_Target_Deg     = RC_Steer_Deg;
-            Motor_LR_Crtl.target = tgt;
-            Motor_RR_Crtl.target = tgt;
+            // 电子差速：用实测方向盘角分配（目标角有滞后，会让后轮提前分速）
+            Motor_Diff_Alloc(tgt, Servo_Angle_Deg, &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
             break;
 
         case RC_ENGAGE_STANDBY:         // 待命：双闭环使能，但目标 0（遥控还没接管）

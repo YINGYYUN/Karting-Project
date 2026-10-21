@@ -11,9 +11,9 @@
 // 默认参数值
 static const float DEFAULT_PARAMS[PARAM_COUNT] = {
     // 左后轮：inv_K, u0, k_v, k_z（口径 v=rps、u=归一化占空比）
-    0.1548f, 0.033f, 0.164f, 2.32f,
+    0.1548f, 0.057f, 0.164f, 0.512f,
     // 右后轮：inv_K, u0, k_v, k_z
-    0.1548f, 0.033f, 0.164f, 2.32f,
+    0.1548f, 0.057f, 0.164f, 0.512f,
     // 舵机位置环：kp, u0, ki
     400.0f, 1700.0f, 50.0f,
 };

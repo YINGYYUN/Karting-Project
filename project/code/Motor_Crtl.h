@@ -53,13 +53,13 @@
 #define MOTOR_CRTL_CPR              (1858.0f)
 
 /* ---- 四个主增益 ----
-   来源：本车台架实测 2026-10-01，K = 6.46 rps/占空比、u0 = 0.033，
-        按 PM=60° / α=6 反解后整体砍半。
-   注意：只对**装在后轮上的那台电机**成立，与转向电机（K≈215）差 33 倍，不能互抄。 */
-#define MOTOR_CRTL_INV_K_DEFAULT    (0.1548f)       /* 1/K，占空比/rps */
-#define MOTOR_CRTL_U0_DEFAULT       (0.033f)        /* 摩擦截距（归一化占空比） */
+   与队友工程 10 同源同车，u0 / k_z 取户外落地值（原 0.033 / 2.32 是空转台架值）。
+   ★ u0 与 k_z 成对整定，不要单独改其中一个。
+   只适用于后轮电机，与转向电机（K≈215）差 33 倍，不能互抄。 */
+#define MOTOR_CRTL_INV_K_DEFAULT    (0.1548f)       /* 1/K，占空比/rps（台架空载值） */
+#define MOTOR_CRTL_U0_DEFAULT       (0.057f)        /* 摩擦截距（归一化占空比） */
 #define MOTOR_CRTL_K_V_DEFAULT      (0.164f)        /* 比例增益 u/rps */
-#define MOTOR_CRTL_K_Z_DEFAULT      (2.32f)         /* 积分增益 u/(rps·s) */
+#define MOTOR_CRTL_K_Z_DEFAULT      (0.512f)        /* 积分增益 u/(rps·s) */
 
 /* ============================================================================
    [保护参数] 四条，集中定义于此，便于对照与调参
@@ -80,7 +80,7 @@
       避免 ①前馈瞬间打满 ②阶跃期间积分攒一堆；20 ⇒ 0→1.5rps 用 75ms */
 #define MOTOR_CRTL_SLEW             (20.0f)
 
-/* 4) 大跳变清积分阈值 rps：目标跳变超过它就清 z，
+/* 4) 大跳变清积分阈值 rps：相邻两拍指令之差超过它就清 z，
       防止旧设定值的"悬念"留在积分里 */
 #define MOTOR_CRTL_INT_CLR_STEP     (0.30f)
 
@@ -111,11 +111,22 @@
    |out| 超过 MOTOR_CRTL_ENC_LOST_OUT、且本路编码器连续 MOTOR_CRTL_ENC_LOST_MS
    一点不动（单拍增量为 0）-> 判定反馈失效，锁存停机（Motor_Crtl_Reset 才清）。
    MOTOR_CRTL_ENC_LOST_OUT = 0.3（= 30% 占空比 = 3000/PWM_DUTY_MAX）的依据：
-     正常巡航（1.0 rps）前馈约 1.0×0.1548 + 0.033 = 0.188，低于门限；
+     正常巡航（1.0 rps）前馈约 0.21，低于门限；
      反馈一旦失效，误差恒为 r，积分会把输出一路顶到限幅（0.5），很快突破门限。
    副作用：真被外力堵住的轮子同样满足判据 -> 一起停（观测量分不开，宁停勿冲）。 */
 #define MOTOR_CRTL_ENC_LOST_OUT     (0.3f)
 #define MOTOR_CRTL_ENC_LOST_MS      (200)
+
+/* ---- 电子差速（阿克曼）----
+   按实测方向盘角把目标转速分配到左右轮：左 = v(1+r)、右 = v(1-r)，平均仍等于 v。
+   与队友工程 10 同源同车，L / W / MAX 用他的实测值。 */
+#define MOTOR_DIFF_ENABLE           (1)         // 0 = 关闭差速（两轮同速）
+#define MOTOR_DIFF_L                (0.66f)     // 有效轴距 m（方向盘角 -> 曲率的等效值）
+#define MOTOR_DIFF_L_MIN            (0.30f)     // 轴距小于它视为无效，不差速
+#define MOTOR_DIFF_W                (0.605f)    // 轮距 m（左右轮心距）
+#define MOTOR_DIFF_MAX              (0.85f)     // 单侧偏差上限（内侧最低保留 15%），必须 < 1
+#define MOTOR_DIFF_V_MIN            (0.024f)    // 死区半宽：|v| 低于它不分速 rps（≈0.02 m/s）
+#define MOTOR_DIFF_DEG2RAD          (0.0174532925f)
 
 /**********************************************************/
 /*----------------------------------------[E] 默认参数 [E]*/
@@ -140,6 +151,7 @@ typedef struct
 
     /* --- 运行状态 --- */
     float   target;             // 目标转速 rps（由调试页/上层写）
+    float   target_prev;        // 上一拍指令（LimitTarget 后、斜坡前），判跳变清积分用
     float   target_app;         // 斜坡之后的实际目标 rps
     float   actual;             // 实测转速 rps（本拍编码器增量换算）
     float   e;                  // 本拍误差 rps
@@ -177,6 +189,8 @@ void    Motor_Crtl_Reset    (void);
 void    Motor_Crtl_Tick     (void);
 // 单路控制计算（通用函数写法，与 PID 基础函数同一风格）
 void    Motor_Crtl_Update   (Motor_Crtl_t *p);
+// 电子差速：按实测方向盘角分配左右轮目标 rps（|v| 低于死区不分配）
+void    Motor_Diff_Alloc    (float v_rps, float delta_deg, float *vl, float *vr);
 // 心跳：由正在监督电机运行的循环每圈调用（见 MOTOR_CRTL_HB_TIMEOUT_MS 的说明）
 void    Motor_Crtl_HB_Feed  (void);
 // 距上次喂心跳的毫秒数（调试页显示用）

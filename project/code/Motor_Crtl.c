@@ -5,6 +5,7 @@
 
 
 #include "zf_common_headfile.h"
+#include <math.h>
 
 
 /**********************************************************/
@@ -149,17 +150,19 @@ static void Motor_Crtl_EncCheck (Motor_Crtl_t *p, float delta)
 //--------------------------------------
 void Motor_Crtl_Reset (void)
 {
-    Motor_LR_Crtl.target     = 0.0f;
-    Motor_LR_Crtl.target_app = 0.0f;
-    Motor_LR_Crtl.z          = 0.0f;
-    Motor_LR_Crtl.zero_ms    = 0;
-    Motor_LR_Crtl.enc_fault  = 0;
+    Motor_LR_Crtl.target      = 0.0f;
+    Motor_LR_Crtl.target_prev = 0.0f;
+    Motor_LR_Crtl.target_app  = 0.0f;
+    Motor_LR_Crtl.z           = 0.0f;
+    Motor_LR_Crtl.zero_ms     = 0;
+    Motor_LR_Crtl.enc_fault   = 0;
 
-    Motor_RR_Crtl.target     = 0.0f;
-    Motor_RR_Crtl.target_app = 0.0f;
-    Motor_RR_Crtl.z          = 0.0f;
-    Motor_RR_Crtl.zero_ms    = 0;
-    Motor_RR_Crtl.enc_fault  = 0;
+    Motor_RR_Crtl.target      = 0.0f;
+    Motor_RR_Crtl.target_prev = 0.0f;
+    Motor_RR_Crtl.target_app  = 0.0f;
+    Motor_RR_Crtl.z           = 0.0f;
+    Motor_RR_Crtl.zero_ms     = 0;
+    Motor_RR_Crtl.enc_fault   = 0;
 }
 
 //--------------------------------------
@@ -229,6 +232,7 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
         }
         p->e          = 0.0f;
         p->z          = 0.0f;
+        p->target_prev = 0.0f;      // 与 target_app 同步归零
         p->target_app = 0.0f;
         p->u_ff       = 0.0f;
         p->u_cmd      = 0.0f;
@@ -240,11 +244,13 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
 
     r = Motor_Crtl_LimitTarget(p, p->target);
 
-    /* ---- 目标斜坡 + 大跳变清积分 ----
-       直接写 target 等于灌阶跃：不处理会 1.前馈瞬间打满 2.积分攒一堆 -> 大超调 */
+    /* ---- 目标斜坡 + 指令大跳变清积分 ----
+       直接写 target 等于灌阶跃：不处理会 1.前馈瞬间打满 2.积分攒一堆 -> 大超调
+       跳变判据用相邻两拍指令之差，不能用 target_app（斜坡期间会每拍都清） */
     {
-        float d   = r - p->target_app;
-        float lim = MOTOR_CRTL_SLEW * MOTOR_CRTL_T_S;
+        float r_in = r;                                 // 本拍指令（斜坡限幅之前）
+        float d    = r_in - p->target_prev;             // 与上一拍指令比
+        float lim  = MOTOR_CRTL_SLEW * MOTOR_CRTL_T_S;
 
         if (MOTOR_CRTL_INT_CLR_STEP > 0.0f)
         {
@@ -253,6 +259,8 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
                 p->z = 0.0f;
             }
         }
+
+        p->target_prev = r_in;
 
         if (lim > 0.0f)
         {
@@ -311,3 +319,38 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
 /**********************************************************/
 /*----------------------------------------[E] 接口实现 [E]*/
 /**********************************************************/
+
+//--------------------------------------
+// 函数简介     电子差速分配（阿克曼）
+// 参数说明     v_rps       两轮平均目标转速 rps
+//              delta_deg   实测方向盘角度（度，向右为正）
+//              vl / vr     输出：左 / 右轮目标 rps
+// 使用示例     Motor_Diff_Alloc(tgt, Servo_Angle_Deg, &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
+// 备注信息     右转（delta > 0）左轮在外侧 -> 快；前进 / 倒车同一公式。
+//              |r| < MOTOR_DIFF_MAX < 1，保证两轮恒与 v 同向。
+//              软限位 ±28° 不跨编码器 0 点，直接用原始偏差即可。
+//--------------------------------------
+void Motor_Diff_Alloc (float v_rps, float delta_deg, float *vl, float *vr)
+{
+    *vl = v_rps;
+    *vr = v_rps;
+
+#if MOTOR_DIFF_ENABLE
+    {
+        float k;            // 曲率 1/m
+        float r;            // 单侧相对偏差
+
+        if ((v_rps < MOTOR_DIFF_V_MIN) && (v_rps > -MOTOR_DIFF_V_MIN)) { return; }
+        if (MOTOR_DIFF_L < MOTOR_DIFF_L_MIN) { return; }    // 轴距没配好：宁可不差速
+
+        k = tanf(delta_deg * MOTOR_DIFF_DEG2RAD) / MOTOR_DIFF_L;
+        r = k * MOTOR_DIFF_W * 0.5f;
+
+        if (r >  MOTOR_DIFF_MAX) { r =  MOTOR_DIFF_MAX; }
+        if (r < -MOTOR_DIFF_MAX) { r = -MOTOR_DIFF_MAX; }
+
+        *vl = v_rps * (1.0f + r);
+        *vr = v_rps * (1.0f - r);
+    }
+#endif
+}
