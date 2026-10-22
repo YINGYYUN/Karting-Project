@@ -15,7 +15,13 @@ static const float DEFAULT_PARAMS[PARAM_COUNT] = {
     // 右后轮：inv_K, u0, k_v, k_z
     0.1548f, 0.057f, 0.164f, 0.512f,
     // 舵机位置环：kp, u0, ki
-    400.0f, 1700.0f, 50.0f,
+    400.0f, 1700.0f, 25.0f,
+    // 路表：录制采样点距 m
+    INS_ROUTE_DS_DEFAULT,
+    // 回放：车速 m/s、前视距离 m、转向通道 0=航向 / 1=直给 δ
+    PB_V_DEFAULT, PB_LD_DEFAULT, PB_SMODE_DEFAULT,
+    // 遥测档案选择：0 = 全量 41 路（上电默认） / 1 = 标定精简 18 路
+    TEL_SEL_DEFAULT,
 };
 
 // 参数缓存区(菜单直接修改此数组, Flash 读写也通过此数组)
@@ -63,6 +69,53 @@ static uint8_t param_cache_is_valid(void)
 
     return 1;
 }
+
+//--------------------------------------
+// 函数简介     末尾新增参数的缺省修复
+// 备注信息     旧参数页没有这几项，读出来是空白值；只补它们，不动前面的参数
+//--------------------------------------
+static void fix_appended_params (void)
+{
+    uint8 fix = 0;
+
+    if (!((ROUTE_DS >= INS_ROUTE_DS_MIN) && (ROUTE_DS <= INS_ROUTE_DS_MAX)))
+    {
+        ROUTE_DS = INS_ROUTE_DS_DEFAULT;
+        fix = 1;
+    }
+
+    if (!((ROUTE_PB_V >= PB_V_MIN) && (ROUTE_PB_V <= PB_V_MAX)))
+    {
+        ROUTE_PB_V = PB_V_DEFAULT;
+        fix = 1;
+    }
+
+    if (!((ROUTE_PB_LD >= PB_LD_MIN) && (ROUTE_PB_LD <= PB_LD_MAX)))
+    {
+        ROUTE_PB_LD = PB_LD_DEFAULT;
+        fix = 1;
+    }
+
+    if (!((ROUTE_PB_SMODE >= 0.0f) && (ROUTE_PB_SMODE <= 1.0f)))
+    {
+        ROUTE_PB_SMODE = PB_SMODE_DEFAULT;
+        fix = 1;
+    }
+
+    // 遥测档案选择：旧参数页的 index 15 是空白区（0xFF），读出来是 NaN/巨值
+    // ★ 取反写法（!区间）能连 NaN 一起拦住 —— 与 param_cache_is_valid 同源
+    if (!((TEL_SEL >= 0.0f) && (TEL_SEL <= 1.0f)))
+    {
+        TEL_SEL = TEL_SEL_DEFAULT;
+        fix = 1;
+    }
+
+    if (0 != fix)
+    {
+        copy_cache_to_flash_buffer();
+        flash_write_page_from_buffer(PARAM_FLASH_SECTION, PARAM_FLASH_PAGE, PARAM_COUNT);
+    }
+}
 /**********************************************************/
 /*----------------------------------------[E] 内部函数 [E]*/
 /**********************************************************/
@@ -94,6 +147,10 @@ void Param_Init(void)
             load_default();
             copy_cache_to_flash_buffer();
             flash_write_page_from_buffer(PARAM_FLASH_SECTION, PARAM_FLASH_PAGE, PARAM_COUNT);
+        }
+        else
+        {
+            fix_appended_params();
         }
     }
     else
@@ -137,6 +194,8 @@ void Flash_SyncTo_Param(void)
     Servo_Crtl_Kp = SERVO_KP;
     Servo_Crtl_U0 = SERVO_U0;
     Servo_Crtl_Ki = SERVO_KI;
+
+    ins_route_ds = ROUTE_DS;
 }
 /**********************************************************/
 /*----------------------------------------[E] 外部函数 [E]*/

@@ -117,13 +117,14 @@ void Motor_SET_Zero_ALL(void)
 // 编码器计数值全局变量 （单周期增量，已含方向符号与滑动平均）
 int16 ENC_LR_CNT = 0;               // 左后轮（整数计数，四舍五入）
 int16 ENC_RR_CNT = 0;               // 右后轮（整数计数，四舍五入）
+int16 ENC_LR_DLT = 0;               // 左后轮（单拍原始增量，航位推算用）
+int16 ENC_RR_DLT = 0;               // 右后轮（单拍原始增量，航位推算用）
 float ENC_LR_CNT_F = 0.0f;          // 左后轮（浮点原值，保留 1/n 计数分辨力）
 float ENC_RR_CNT_F = 0.0f;          // 右后轮（浮点原值，保留 1/n 计数分辨力）
 
-// 编码器累加值全局变量 （累计值，整数计数）
-// 更多在于调试性质的观测
-int32 ENC_LR_SUM = 0;               // 左后轮
-int32 ENC_RR_SUM = 0;               // 右后轮
+// 带符号累计计数（cnt，复标 cpr / m_per_rev 用）
+int32 ENC_LR_POS = 0;               // 左后轮
+int32 ENC_RR_POS = 0;               // 右后轮
 
 // 两路读取状态（引脚在这里落地）
 Enc_Read_t Enc_LR_Read =
@@ -163,6 +164,7 @@ static void ENC_Read_Reset (Enc_Read_t *e)
 // 函数简介     一路方向编码器读取
 // 参数说明     e	该路读取状态
 // 参数说明     invert	测速取反（0/1）
+// 参数说明     dlt	输出本拍原始增量（整数，已含方向与极性，未经滑动平均）
 // 返回参数     float	本拍计数增量的窗口均值（已含方向符号与滑动平均）
 // 备注信息     逐飞 encoder_dir_init 把 TCPWM 配成"每条脉冲 +1"的单向计数器，
 //              方向由 encoder_get_count() 按 DIR 电平定符号。这里每拍读一次就清计数，
@@ -170,7 +172,7 @@ static void ENC_Read_Reset (Enc_Read_t *e)
 //              全程浮点：低速时窗口均值不足 1 计数，整数除法会把它截断成 0，
 //              反馈恒为 0 会让速度环积分失去回复力，必须在源头保留小数。
 //--------------------------------------
-static float ENC_Read_One (Enc_Read_t *e, uint8 invert)
+static float ENC_Read_One (Enc_Read_t *e, uint8 invert, int16 *dlt)
 {
     float delta;            // 本拍增量（方向由驱动给出）
     uint8 n;                // 实际使用的窗口长度
@@ -185,6 +187,8 @@ static float ENC_Read_One (Enc_Read_t *e, uint8 invert)
     {
         delta = -delta;
     }
+
+    *dlt = (int16)delta;    // 航位推算要的单拍原始增量（未滤波）
 
     // 滑动平均（窗口 ENC_WIN_DEFAULT）
     n = ENC_WIN_DEFAULT;
@@ -237,19 +241,20 @@ void ENC_Read_Init (void)
     ENC_Read_Reset(&Enc_RR_Read);
 
     ENC_LR_CNT = 0; ENC_RR_CNT = 0;
+    ENC_LR_DLT = 0; ENC_RR_DLT = 0;
     ENC_LR_CNT_F = 0.0f; ENC_RR_CNT_F = 0.0f;
-    ENC_LR_SUM = 0; ENC_RR_SUM = 0;
+    ENC_LR_POS = 0; ENC_RR_POS = 0;
 }
 
 //--------------------------------------
 // 函数简介     左后轮 5ms 读取更新
-// 使用示例     在 PIT 中断里调用，内部已累加进 ENC_LR_SUM
+// 使用示例     在 PIT 中断里调用
 //--------------------------------------
 void ENC_LR_Update (void)
 {
-    ENC_LR_CNT_F = ENC_Read_One(&Enc_LR_Read, ENC_LR_INVERT);   // 浮点原值（速度环用）
-    ENC_LR_CNT   = ENC_ToInt(ENC_LR_CNT_F);                     // 整数计数（显示/累计/判据用）
-    ENC_LR_SUM  += ENC_LR_CNT;
+    ENC_LR_CNT_F = ENC_Read_One(&Enc_LR_Read, ENC_LR_INVERT, &ENC_LR_DLT);  // 浮点均值（速度环）/ 原始增量（航位推算）
+    ENC_LR_CNT   = ENC_ToInt(ENC_LR_CNT_F);                                 // 整数计数（显示/判据用）
+    ENC_LR_POS  += ENC_LR_DLT;                                              // 累计计数（原始增量直接累加）
 }
 
 //--------------------------------------
@@ -257,9 +262,9 @@ void ENC_LR_Update (void)
 //--------------------------------------
 void ENC_RR_Update (void)
 {
-    ENC_RR_CNT_F = ENC_Read_One(&Enc_RR_Read, ENC_RR_INVERT);   // 浮点原值（速度环用）
-    ENC_RR_CNT   = ENC_ToInt(ENC_RR_CNT_F);                     // 整数计数（显示/累计/判据用）
-    ENC_RR_SUM  += ENC_RR_CNT;
+    ENC_RR_CNT_F = ENC_Read_One(&Enc_RR_Read, ENC_RR_INVERT, &ENC_RR_DLT);  // 浮点均值（速度环）/ 原始增量（航位推算）
+    ENC_RR_CNT   = ENC_ToInt(ENC_RR_CNT_F);                                 // 整数计数（显示/判据用）
+    ENC_RR_POS  += ENC_RR_DLT;                                              // 累计计数（原始增量直接累加）
 }
 
 //============================ 磁编码器 （MENC15A，转向减速箱高速侧） ============================
@@ -315,8 +320,9 @@ void ENC_All_Clear(void)
     ENC_Read_Reset(&Enc_RR_Read);
 
     ENC_LR_CNT = 0; ENC_RR_CNT = 0;
+    ENC_LR_DLT = 0; ENC_RR_DLT = 0;
     ENC_LR_CNT_F = 0.0f; ENC_RR_CNT_F = 0.0f;
-    ENC_LR_SUM = 0; ENC_RR_SUM = 0;
+    ENC_LR_POS = 0; ENC_RR_POS = 0;
 
     ENC_MAG_ANG = 0; ENC_MAG_OFF = 0; ENC_MAG_SPD = 0; ENC_MAG_REV = 0;
     ENC_ABS_ANG = 0; ENC_ABS_OFF = 0;

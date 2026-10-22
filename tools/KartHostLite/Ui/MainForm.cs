@@ -52,19 +52,28 @@ public sealed class MainForm : Form
 
     // ---- 波形（1 / 2 / 4 张，跟队友一样用 TableLayoutPanel 拼）----
     private Panel _waveHost;
+    private Panel _waveDock;        // 波形分图的容器（TrackPanel 显示时整块隐藏）
     private WavePanel[] _waves;
     private int _layout = 4;
     private ComboBox _cbWindow;
     private Button _btnPause;
+    private Button _btnTrack;
     private CheckBox _ckAutoY;
     private Button _btnRec;
+
+    // ---- odom 轨迹图（只读；与波形共用同一份 ChannelStore）----
+    private TrackPanel _track;
+    private Button _btnTrackClear, _btnTrackPause;
+    private CheckBox _ckTrackIsometric;
+    private bool _trackMode;
 
     // ---- 右侧栏：实时值 + 通道勾选 ----
     private Panel _valHost;
     private readonly Dictionary<int, Label> _valLabels = new();
     private FlowLayoutPanel _chkHost;
     private readonly Dictionary<int, CheckBox> _chkBoxes = new();
-    /// <summary>整窗共用一个提示框：每个通道勾选框挂一条中文说明（见 <see cref="Defaults.ChannelTips"/>）</summary>
+    private Label _lbProfile, _lbSideSub;
+    /// <summary>整窗共用一个提示框：每个通道勾选框挂一条中文说明（见 <see cref="ChannelProfile.Tips"/>）</summary>
     private readonly ToolTip _tip = new() { ShowAlways = true, InitialDelay = 350, ReshowDelay = 150, AutoPopDelay = 30000 };
 
     // ---- 左栏参数脚注 ----
@@ -83,11 +92,19 @@ public sealed class MainForm : Form
     private ushort _tok = 1;
     private long _frames, _lost, _crcBad;
     private int _lastSeq = -1;
-    private int _warnedCnt = -1;
+
+    /// <summary>当前档案里"识别不出来"的那个 COUNT（-1 = 正常）。用来去抖：只在 COUNT 变化时提示一次。</summary>
+    private int _unknownCnt = -1;
+
+    /// <summary>因档案未知被丢弃的帧数（状态栏显示；丢帧是明确的动作，不能悄悄吞掉）</summary>
+    private long _droppedUnknown;
+
     private int _frameChCount;
     private long _bytesAtStat;
     private long _framesAtStat;
     private double _tAtStat;
+
+    private ToolStripStatusLabel _stProfile;
 
     public MainForm()
     {
@@ -101,7 +118,7 @@ public sealed class MainForm : Form
         CreateHandle();
         Dpi.Init(DeviceDpi);
 
-        Text = $"卡丁快跑 · 轻量上位机 — {Defaults.ProfileName}（{Defaults.ChannelNames.Length} 通道）";
+        UpdateProfileTexts();
 
         // ★ 窗口尺寸不许超出工作区（150% 缩放下 1440 逻辑像素 = 2160 物理像素，会顶出版面）
         var wa = Screen.FromControl(this).WorkingArea;
@@ -163,9 +180,9 @@ public sealed class MainForm : Form
             Checked = false,     // ★ 默认关：车端当前不依赖心跳（见 Host_Crtl.h 的 monitor 决定）
         };
 
-        var lbProfile = new Label
+        _lbProfile = new Label
         {
-            Text = $"通道表：{Defaults.ProfileName}（{Defaults.ChannelNames.Length}）",
+            Text = ProfileShortText(),
             AutoSize = true,
             Location = new Point(Dpi.Px(474), Dpi.Px(15)),
             ForeColor = Theme.TextDim,
@@ -174,13 +191,13 @@ public sealed class MainForm : Form
         var lbHint = new Label
         {
             // ⚠ AutoSize 标签太长会顶出父容器。整窗 1440 逻辑像素，这里从 664 起 → 最多 ~48 汉字。
-            Text = "提示：车端是 UDP 客户端，本机只负责绑定端口收包，不用去“连接”车",
+            Text = "提示：车端是 UDP 客户端，本机只负责绑定端口收包；档案按帧头 COUNT 自动切（41 / 18）",
             AutoSize = true,
             Location = new Point(Dpi.Px(664), Dpi.Px(15)),
             ForeColor = Theme.TextDim,
         };
 
-        bar.Controls.AddRange(new Control[] { _lampLink, lbPort, _numPort, _btnConn, _ckHb, lbProfile, lbHint });
+        bar.Controls.AddRange(new Control[] { _lampLink, lbPort, _numPort, _btnConn, _ckHb, _lbProfile, lbHint });
         Controls.Add(bar);
     }
 
@@ -224,13 +241,14 @@ public sealed class MainForm : Form
         _stLoss = new ToolStripStatusLabel("丢包 --") { ForeColor = Theme.TextDim };
         _stBw = new ToolStripStatusLabel("带宽 --") { ForeColor = Theme.TextDim };
         _stCrc = new ToolStripStatusLabel("CRC 错 0") { ForeColor = Theme.TextDim };
+        _stProfile = new ToolStripStatusLabel("档案 --") { ForeColor = Theme.TextDim };
         _stDirty = new ToolStripStatusLabel("参数改动 0") { ForeColor = Theme.Warn };
 
         _status.Items.AddRange(new ToolStripItem[]
         {
             _stLink, new ToolStripSeparator(), _stRate, new ToolStripSeparator(),
             _stLoss, new ToolStripSeparator(), _stBw, new ToolStripSeparator(),
-            _stCrc, new ToolStripSeparator(), _stDirty,
+            _stCrc, new ToolStripSeparator(), _stProfile, new ToolStripSeparator(), _stDirty,
         });
         Controls.Add(_status);
     }
@@ -343,7 +361,45 @@ public sealed class MainForm : Form
         _btnRec = new Button { Text = "录制 CSV", Location = new Point(Dpi.Px(494), Dpi.Px(4)), Width = Dpi.Px(96), Height = Dpi.Px(26) };
         _btnRec.Click += (_, __) => ToggleRecord();
 
-        waveBar.Controls.AddRange(new Control[] { lbLayout, b1, b2, b4, lbWin, _cbWindow, _ckAutoY, _btnPause, _btnRec });
+        // ★ 轨迹图 / 波形图 切换：轨迹图是**只读**视图，与波形共用同一份 ChannelStore，
+        //   不新增任何下发命令（没有"清空车端"这种动作，清空只清本机显示）。
+        _btnTrack = new Button { Text = "轨迹图", Location = new Point(Dpi.Px(600), Dpi.Px(4)), Width = Dpi.Px(66), Height = Dpi.Px(26) };
+        _btnTrack.Click += (_, __) => SetTrackMode(!_trackMode);
+
+        waveBar.Controls.AddRange(new Control[] { lbLayout, b1, b2, b4, lbWin, _cbWindow, _ckAutoY, _btnPause, _btnRec, _btnTrack });
+
+        // 波形与轨迹叠在同一块区域里，靠 Visible 切换（各自 Dock=Fill）
+        _waveDock = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
+
+        _track = new TrackPanel { Dock = DockStyle.Fill, Visible = false, OdomXy = Defaults.Current.OdomXy };
+
+        _btnTrackClear = new Button { Text = "清空", Width = Dpi.Px(52), Height = Dpi.Px(24), Visible = false, Parent = _waveHost };
+        _btnTrackPause = new Button { Text = "暂停", Width = Dpi.Px(52), Height = Dpi.Px(24), Visible = false, Parent = _waveHost };
+        _ckTrackIsometric = new CheckBox { Text = "等比 1:1", Checked = true, AutoSize = true, Visible = false, Parent = _waveHost, ForeColor = Theme.Text, BackColor = Theme.Bg };
+        _btnTrackClear.Click += (_, __) => _track.Clear();
+        _btnTrackPause.Click += (_, __) =>
+        {
+            _track.Paused = !_track.Paused;
+            _btnTrackPause.Text = _track.Paused ? "继续" : "暂停";
+        };
+        _ckTrackIsometric.CheckedChanged += (_, __) => _track.Isometric = _ckTrackIsometric.Checked;
+        // 三个小控件挂在 _waveHost 上、锚在右上角（不放 bar 里，免得把 bar 挤爆）
+        _btnTrackClear.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _btnTrackPause.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _ckTrackIsometric.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        void placeTrackBar()
+        {
+            int right = _waveHost.ClientSize.Width - Dpi.Px(8);
+            int y = Dpi.Px(38);
+            _ckTrackIsometric.Location = new Point(right - Dpi.Px(80), y + Dpi.Px(4));
+            _btnTrackPause.Location = new Point(right - Dpi.Px(80) - Dpi.Px(58), y);
+            _btnTrackClear.Location = new Point(right - Dpi.Px(80) - Dpi.Px(58) - Dpi.Px(58), y);
+        }
+        _waveHost.Resize += (_, __) => { if (_trackMode) placeTrackBar(); };
+        _waveHost.Layout += (_, __) => { if (_trackMode) placeTrackBar(); };
+
+        _waveHost.Controls.Add(_waveDock);   // Fill 先加
+        _waveHost.Controls.Add(_track);
 
         _rightSplit.Panel1.Controls.Add(_waveHost);   // Fill 先加
         _rightSplit.Panel1.Controls.Add(waveBar);     // Top 后加
@@ -362,18 +418,19 @@ public sealed class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Theme.Text,
         });
-        // 副标题：回答"这些是不是固定的"。25 路是车端按 HOST_CH_* 顺序发的固定表，
-        // 帧里带 COUNT 自描述 —— 通道数变了不会解析失败，但**名字会整体错位**。
-        sideHead.Controls.Add(new Label
+        // 副标题：回答"这些是不是固定的"。通道表是**两套**（全量 41 / 标定 18），
+        // 帧里带 COUNT 自描述 ⇒ 按 COUNT 自动选档案；未知 COUNT 直接丢帧（不猜）。
+        _lbSideSub = new Label
         {
-            Text = "  车→上位机 固定 25 路（下标即协议）",
+            Text = SideSubText(),
             Location = new Point(0, Dpi.Px(21)),
             Size = Dpi.Sz(232, 18),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Theme.TextDim,
             Font = new Font("微软雅黑", 8f),
-        });
+        };
+        sideHead.Controls.Add(_lbSideSub);
 
         _valHost = new Panel { Dock = DockStyle.Top, Height = Dpi.Px(200), BackColor = Theme.Panel };
         BuildValueBoxes(_valHost);
@@ -442,8 +499,8 @@ public sealed class MainForm : Form
     private void ApplyLayout(int n)
     {
         _layout = n;
-        _waveHost.SuspendLayout();
-        _waveHost.Controls.Clear();
+        _waveDock.SuspendLayout();
+        _waveDock.Controls.Clear();
         foreach (var w in _waves ?? Array.Empty<WavePanel>()) w?.Dispose();
 
         _waves = new WavePanel[n];
@@ -473,25 +530,27 @@ public sealed class MainForm : Form
             grid.Controls.Add(wp, grid.ColumnCount == 1 ? 0 : i % 2, grid.RowCount == 1 ? 0 : i / 2);
         }
 
-        _waveHost.Controls.Add(grid);
-        _waveHost.ResumeLayout();
+        _waveDock.Controls.Add(grid);
+        _waveDock.ResumeLayout();
 
         // 把当前勾选分配下去；多图模式下再按预设覆盖分组
         foreach (var kv in _chkBoxes) OnChannelToggled(kv.Key, kv.Value.Checked);
         if (_layout > 1) ApplyPlotPresets();
         UpdateWaveTitles();
-        UpdateChannelMatch();
+
+        if (_track != null) _track.OdomXy = Defaults.Current.OdomXy;
     }
 
     private void ApplyPlotPresets()
     {
         if (_waves == null || _waves.Length <= 1) return;
-        var ps = _waves.Length == 2 ? Defaults.PlotPresets2 : Defaults.PlotPresets4;
+        var ps = _waves.Length == 2 ? Defaults.Current.Presets2 : Defaults.Current.Presets4;
         for (int i = 0; i < _waves.Length; i++)
         {
             _waves[i].Shown.Clear();
             if (i < ps.Length)
-                foreach (int c in ps[i].Ch) _waves[i].Shown.Add(c);
+                foreach (int c in ps[i].Ch)
+                    if (c >= 0 && c < Defaults.Current.Count) _waves[i].Shown.Add(c);
         }
         UpdateWaveTitles();
     }
@@ -499,13 +558,66 @@ public sealed class MainForm : Form
     private void UpdateWaveTitles()
     {
         if (_waves == null) return;
-        var ps = _waves.Length == 2 ? Defaults.PlotPresets2 : Defaults.PlotPresets4;
+        var ps = _waves.Length == 2 ? Defaults.Current.Presets2 : Defaults.Current.Presets4;
         for (int i = 0; i < _waves.Length; i++)
         {
             _waves[i].Title = _waves.Length == 1
                 ? "全部勾选通道"
                 : (i < ps.Length ? ps[i].Name : "图 " + (i + 1));
         }
+    }
+
+    // ==================================================================
+    // 档案（全量 41 / 标定 18）
+    // ==================================================================
+    private string ProfileShortText() => $"通道表：{Defaults.Current.Name}（{Defaults.Current.Count}）";
+
+    private string SideSubText() => $"  车→上位机 {Defaults.Current.Count} 路（下标即协议）";
+
+    /// <summary>档案相关的几处文字，一处改全改（标题 / 顶栏 / 右栏副标题 / 状态栏）。</summary>
+    private void UpdateProfileTexts()
+    {
+        Text = $"卡丁快跑 · 轻量上位机 — {Defaults.Current.Name}（{Defaults.Current.Count} 通道）";
+        if (_lbProfile != null) _lbProfile.Text = ProfileShortText();
+        if (_lbSideSub != null) _lbSideSub.Text = SideSubText();
+        if (_stProfile != null && _unknownCnt < 0)
+        {
+            _stProfile.Text = $"档案 {Defaults.Current.Name}（{Defaults.Current.Count}）";
+            _stProfile.ForeColor = Theme.TextDim;
+        }
+    }
+
+    /// <summary>
+    /// 车端换了档案（帧头 COUNT 变了）—— **必须把界面与数据一起换掉**：
+    /// 6 号之后的每一路含义都不同，留着旧数据画新名字就是"不报错但全错"。
+    /// 调用点：ParseTelemetry 检测到 COUNT 与当前档案不符时（已切到 UI 线程）。
+    /// </summary>
+    private void OnProfileChanged(ChannelProfile p)
+    {
+        // ① 停录：两种列义绝不能混进同一个 CSV 文件（这是已知代价里最贵的一条）
+        if (_rec.IsRecording)
+        {
+            long rows = _rec.Stop();
+            _btnRec.Text = "录制 CSV";
+            _btnRec.BackColor = Theme.PanelAlt;
+            Log($"档案切换 → CSV 已停止（{_rec.Path}，{rows} 行）。换档案后列义不同，必须另起一个文件。");
+        }
+
+        // ② 数据清零：旧档案的值留在环里会按新名字画出来
+        _store.Reset();
+        _lastSeq = -1;
+
+        UpdateProfileTexts();
+
+        // ③ 重建右侧勾选框 + 实时值格子（下标与项数都变了）
+        RebuildChannelChecks();
+        BuildValueBoxes(_valHost);
+        UpdateValueLabels();
+
+        // ④ 分图预设与轨迹通道
+        ApplyLayout(_layout);
+
+        Log($"★ 已切到档案「{p.Name}」（{p.Count} 路）—— 车端 tel_sel 变了，本机按帧头 COUNT 自动跟随。");
     }
 
     // ==================================================================
@@ -517,7 +629,7 @@ public sealed class MainForm : Form
         _valLabels.Clear();
         host.Controls.Clear();
 
-        var vb = Defaults.ValueBoxes;
+        var vb = Defaults.Current.ValueBoxes;
         for (int i = 0; i < vb.Length; i++)
         {
             int col = i % 2, row = i / 2;
@@ -566,13 +678,13 @@ public sealed class MainForm : Form
 
     private void BuildChannelChecks()
     {
-        for (int i = 0; i < Defaults.ChannelNames.Length; i++)
+        for (int i = 0; i < Defaults.Current.Count; i++)
         {
             int ch = i;
             var ck = new CheckBox
             {
-                // ★ 英文名 + 中文简称（" 5  lr_v      左轮实测转速"）。
-                //   宽度 216 是按「9 字符英文 + 6 个汉字 + 勾选标记」估的，
+                // ★ 英文名 + 中文简称（" 5  v_l        左轮实测转速"）。
+                //   宽度 216 是按「11 字符英文 + 6 个汉字 + 勾选标记」估的，
                 //   再挤就会裁字（WinForms 不报错，只是看不到后半句）。
                 Text = Defaults.ChannelText(i),
                 Width = Dpi.Px(216),
@@ -587,6 +699,26 @@ public sealed class MainForm : Form
         }
     }
 
+    /// <summary>档案变了就整块重建勾选框（项数与下标都不同，复用旧控件只会错位）。</summary>
+    private void RebuildChannelChecks()
+    {
+        _chkHost.SuspendLayout();
+        foreach (var ck in _chkBoxes.Values)
+        {
+            _tip.SetToolTip(ck, null);
+            ck.Parent?.Controls.Remove(ck);
+            ck.Dispose();
+        }
+        _chkBoxes.Clear();
+        _chkHost.Controls.Clear();
+
+        BuildChannelChecks();
+        _chkHost.ResumeLayout();
+
+        // 新控件是新建的，颜色/勾选/预设都要重新上一遍（Theme.Apply 已经跑过了）
+        PaintChannelColors();
+    }
+
     /// <summary>
     /// ★ 通道字色必须放在 <see cref="Theme.Apply"/> **之后**再刷一遍 ——
     /// 那个方法会把所有 CheckBox 的 ForeColor 统一成 <see cref="Theme.Text"/>，
@@ -595,11 +727,11 @@ public sealed class MainForm : Form
     private void PaintChannelColors()
     {
         foreach (var kv in _chkBoxes) kv.Value.ForeColor = Theme.CurveOf(kv.Key);
-        foreach (int i in Defaults.DefaultShown)
+        foreach (int i in Defaults.Current.DefaultShown)
             if (_chkBoxes.TryGetValue(i, out var ck)) ck.Checked = true;
 
         // ★ 勾默认通道会逐条触发 OnChannelToggled（把通道塞进每一张图），
-        //   所以**多图模式下必须在勾完之后再套一次预设** —— 否则分图预设会被这 6 条默认勾选冲掉，
+        //   所以**多图模式下必须在勾完之后再套一次预设** —— 否则分图预设会被这几条默认勾选冲掉，
         //   四张图看起来一模一样（每张都画全部默认通道）。
         if (_layout > 1) ApplyPlotPresets();
     }
@@ -652,6 +784,7 @@ public sealed class MainForm : Form
         _uiTimer.Tick += (_, __) =>
         {
             if (_waves != null) foreach (var w in _waves) w?.Tick();
+            _track?.Tick();                     // 轨迹图也按同一节拍重绘（隐藏时只 Invalidate，几乎无开销）
             UpdateValueLabels();
             UpdateDirtyLabel();
             if (_rec.IsRecording) _rec.Tick(_sw.Elapsed.TotalSeconds);
@@ -781,6 +914,37 @@ public sealed class MainForm : Form
         int cnt = Proto.GetU16(b, o + 8);
         if (cnt <= 0 || cnt > Proto.MAX_CHANNELS) return;
 
+        // ★★ 按帧头 COUNT 选档案。其它值 = 未知档案 ⇒ **丢弃该帧**并在状态栏提示。
+        //    绝不能"猜一个最接近的档案"去套名字：那会把数据标错名，而且不报错、不越界，
+        //    现场表现是"波形在动、名字也在、单位也对"，根本查不出来。
+        var prof = Defaults.ByCount(cnt);
+        if (prof == null)
+        {
+            _droppedUnknown++;
+            if (_unknownCnt != cnt)
+            {
+                _unknownCnt = cnt;
+                int bad = cnt;
+                BeginInvoke(new Action(() =>
+                {
+                    _stProfile.Text = $"⚠ 未知档案 COUNT={bad}，已丢弃 {_droppedUnknown} 帧（本机只认 41 / 18）";
+                    _stProfile.ForeColor = Theme.Err;
+                    Log($"⚠⚠ 帧头 COUNT={bad}，既不是全量 41 也不是标定 18 —— 该帧已丢弃。"
+                      + "请确认车端 Host_Crtl.h 的通道表与工具 Channels.cs 对齐，或 tel_sel 是不是被拖到了中间值。");
+                }));
+            }
+            return;
+        }
+
+        // COUNT 能认出来 ⇒ 恢复正常显示（并切档案，若与当前不符）
+        bool switched = Defaults.Select(prof);
+        if (_unknownCnt >= 0)
+        {
+            _unknownCnt = -1;
+            BeginInvoke(new Action(UpdateProfileTexts));
+        }
+        if (switched) BeginInvoke(new Action(() => OnProfileChanged(prof)));
+
         var ch = new float[cnt];
         for (int i = 0; i < cnt; i++) ch[i] = Proto.GetF32(b, o + 10 + i * 4);
 
@@ -804,38 +968,7 @@ public sealed class MainForm : Form
         _store.Append(ch, cnt, _sw.Elapsed.TotalSeconds, mask);
         _ = Proto.GetU32(b, o + 2);
 
-        // 帧里通道数与本地名字表不符 ⇒ 通道名整体错位（不越界、不报错、数字还挺像）
-        if (cnt != Defaults.ChannelNames.Length && cnt != _warnedCnt)
-        {
-            _warnedCnt = cnt;
-            Log($"⚠⚠ 帧里 {cnt} 通道，本机名字表 {Defaults.ChannelNames.Length} 通道 —— **名字会整体错位**。"
-              + "改 Channels.cs 的数组与车端对齐。");
-            BeginInvoke(new Action(() =>
-            {
-                string w = $"⚠ 帧 {cnt} 通道 ≠ 名字表 {Defaults.ChannelNames.Length} 通道，通道名错位";
-                if (_waves != null) foreach (var wp in _waves) if (wp != null) wp.WarnText = w;
-            }));
-        }
-        else if (cnt == Defaults.ChannelNames.Length && _warnedCnt >= 0)
-        {
-            _warnedCnt = -1;
-            BeginInvoke(new Action(() =>
-            {
-                if (_waves != null) foreach (var wp in _waves) if (wp != null) wp.WarnText = null;
-            }));
-        }
-
         _frameChCount = cnt;
-    }
-
-    /// <summary>通道数对不上时把红条贴回新建的波形上（改一下分图它就没了，必须补）</summary>
-    private void UpdateChannelMatch()
-    {
-        if (_waves == null) return;
-        string w = _warnedCnt >= 0
-            ? $"⚠ 帧 {_warnedCnt} 通道 ≠ 名字表 {Defaults.ChannelNames.Length} 通道，通道名错位"
-            : null;
-        foreach (var wp in _waves) if (wp != null) wp.WarnText = w;
     }
 
     private void ParseParamMeta(byte[] b, int o)
@@ -881,14 +1014,16 @@ public sealed class MainForm : Form
         }
 
         var chans = new List<int>();
-        for (int i = 0; i < Defaults.ChannelNames.Length; i++)
+        for (int i = 0; i < Defaults.Current.Count; i++)
             if (_chkBoxes.TryGetValue(i, out var ck) && ck.Checked) chans.Add(i);
         if (chans.Count == 0) { Log("没有勾选任何通道，无法录制"); return; }
 
+        // ★ 文件名里带档案短名（full41 / calib18）：两种列义绝不能靠"用户记得"来区分，
+        //   否则过几天拿 Excel 打开一堆 kart_2026xxxx.csv，谁也不知道哪份是哪套列。
         using var dlg = new SaveFileDialog
         {
             Filter = "CSV|*.csv",
-            FileName = $"kart_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
+            FileName = $"kart_{Defaults.Current.Short}_{DateTime.Now:yyyyMMdd_HHmmss}.csv",
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
@@ -896,7 +1031,7 @@ public sealed class MainForm : Form
         {
             _btnRec.Text = "停止录制";
             _btnRec.BackColor = Theme.Err;
-            Log($"CSV 开始：{dlg.FileName}（{chans.Count} 通道 / 20ms）");
+            Log($"CSV 开始：{dlg.FileName}（档案 {Defaults.Current.Name} / {chans.Count} 通道 / 20ms）");
         }
         else Log("CSV 启动失败：" + err);
     }
@@ -923,7 +1058,7 @@ public sealed class MainForm : Form
         _stRate.Text = $"帧率 {fps:0.0} fps（{_frames} 帧）";
         _stLoss.Text = $"丢包 {_lost}（{lossPct:0.00}%）";
         _stBw.Text = $"带宽 {kbs:0.0} KB/s";
-        _stCrc.Text = $"CRC 错 {_crcBad}";
+        _stCrc.Text = $"CRC 错 {_crcBad}" + (_droppedUnknown > 0 ? $"（丢弃 {_droppedUnknown} 帧未知档案）" : "");
     }
 
     private void Log(string s)
@@ -936,6 +1071,37 @@ public sealed class MainForm : Form
     // ==================================================================
     // 自查用
     // ==================================================================
+    /// <summary>
+    /// 波形 ⇄ 轨迹图 切换。轨迹图是**只读**视图：清空只清本机显示（不动 ChannelStore，
+    /// 波形还要用那份数据），也没有任何下发命令 —— 这个按钮不会让车动一下。
+    /// </summary>
+    private void SetTrackMode(bool on)
+    {
+        if (_waveDock == null || _track == null) return;
+
+        _trackMode = on;
+        _waveDock.Visible = !on;
+        _track.Visible = on;
+        _btnTrack.Text = on ? "波形图" : "轨迹图";
+
+        _btnTrackClear.Visible = on;
+        _btnTrackPause.Visible = on;
+        _ckTrackIsometric.Visible = on;
+
+        if (on)
+        {
+            _track.OdomXy = Defaults.Current.OdomXy;
+            int right = _waveHost.ClientSize.Width - Dpi.Px(8);
+            int y = Dpi.Px(38);
+            _ckTrackIsometric.Location = new Point(right - Dpi.Px(80), y + Dpi.Px(4));
+            _btnTrackPause.Location = new Point(right - Dpi.Px(80) - Dpi.Px(58), y);
+            _btnTrackClear.Location = new Point(right - Dpi.Px(80) - Dpi.Px(58) - Dpi.Px(58), y);
+            _btnTrackClear.BringToFront();
+            _btnTrackPause.BringToFront();
+            _ckTrackIsometric.BringToFront();
+        }
+    }
+
     /// <summary>布局自查（--shot-form 用）：把关键尺寸打出来，避免"看着像坏的"和"真坏了"分不清</summary>
     internal string DumpLayout()
     {
@@ -972,61 +1138,103 @@ public sealed class MainForm : Form
     /// </summary>
     internal void DemoFill()
     {
-        var ch = new float[Defaults.ChannelNames.Length];
+        var p = Defaults.Current;
+
+        // 按**名字**找下标 —— 两套档案的排列不同，写死数字的话换档案就填错了
+        int Ix(string n) { int i = Array.IndexOf(p.Names, n); return i; }
+
+        var ch = new float[p.Count];
         _store.Ensure(ch.Length);       // ★ 必须先把环扩到 N，否则 Append 会把 count 夹成 0（什么都不进）
+
         for (int k = 0; k < 900; k++)
         {
             double t = k * 0.02;
             double sq = Math.Sin(2 * Math.PI * 0.25 * t) > 0 ? 1 : -1;
-            ch[0] = (float)(8 * Math.Sin(2 * Math.PI * 0.5 * t));            // 舵机目标
-            ch[1] = (float)(8 * Math.Sin(2 * Math.PI * 0.5 * t - 0.18));     // 舵机实际（滞后）
-            ch[2] = (float)(1200 * Math.Sin(2 * Math.PI * 0.5 * t - 0.3));
-            ch[3] = (float)(2048 + 300 * Math.Sin(t));
-            ch[4] = (float)(20 * sq);                                        // L 目标（方波阶跃）
-            ch[5] = (float)(20 * sq * (1 - Math.Exp(-t * 3) * 0.6) + 0.5 * Math.Sin(t * 9));
-            ch[6] = ch[4] * 0.02f;                                           // L 输出（归一化）
-            ch[7] = ch[4] * 0.01f;
-            ch[8] = ch[4];                                                   // R 目标
-            ch[9] = (float)(ch[4] * 0.94 + 0.4 * Math.Sin(t * 7));
-            ch[10] = ch[9] * 0.02f;
-            ch[11] = ch[9] * 0.01f;
-            ch[12] = (float)(992 + 120 * Math.Sin(2 * Math.PI * 0.5 * t));
-            ch[13] = (float)(992 + 200 * Math.Sin(2 * Math.PI * 0.25 * t));
-            ch[14] = (float)(8 * Math.Sin(2 * Math.PI * 0.5 * t));
-            ch[15] = (float)(sq * 0.6);
-            ch[16] = 2; ch[17] = 1;
-            ch[18] = 1; ch[19] = (float)(3 + 2 * Math.Abs(Math.Sin(t)));
-            ch[20] = 1; ch[21] = 1;
-            ch[23] = (float)(30 * Math.Sin(2 * Math.PI * 0.1 * t));
-            ch[24] = 3;
+
+            // ---- 后轮：目标方波 / 实测滞后 / 输出（%！）/ 前馈（%）----
+            float vL = (float)(1.0 * sq);
+            float vR = (float)(0.94 * sq);
+            Set(ch, Ix("target_l"), vL);
+            Set(ch, Ix("v_l"), (float)(vL * (1 - Math.Exp(-t * 3) * 0.6) + 0.03 * Math.Sin(t * 9)));
+            Set(ch, Ix("u_l"), 100f * (float)(0.21 * sq + 0.02 * Math.Sin(t * 7)));   // ★ 百分数
+            Set(ch, Ix("uff_l"), 100f * 0.21f * vL);
+            Set(ch, Ix("z_l"), 0.4f * vL);
+            Set(ch, Ix("target_r"), vR);
+            Set(ch, Ix("v_r"), (float)(vR * (1 - Math.Exp(-t * 3) * 0.6) + 0.03 * Math.Sin(t * 8)));
+            Set(ch, Ix("u_r"), 100f * (float)(0.20 * sq + 0.02 * Math.Sin(t * 7)));
+            Set(ch, Ix("uff_r"), 100f * 0.20f * vR);
+            Set(ch, Ix("z_r"), 0.38f * vR);
+            Set(ch, Ix("pos_l"), 400f * (float)(k % 120));
+            Set(ch, Ix("pos_r"), 390f * (float)(k % 120));
+
+            // ---- 舵机：目标正弦 / 实际滞后 ----
+            float st = (float)(8 * Math.Sin(2 * Math.PI * 0.5 * t));
+            Set(ch, Ix("steer_tgt"), st);
+            Set(ch, Ix("steer_deg"), (float)(8 * Math.Sin(2 * Math.PI * 0.5 * t - 0.18)));
+            Set(ch, Ix("steer_u"), 1200f * (float)Math.Sin(2 * Math.PI * 0.5 * t - 0.3));
+            Set(ch, Ix("steer_en"), 1);
+            Set(ch, Ix("steer_st"), 1);
+
+            // ---- 链路 / 遥控 / 增益 ----
+            Set(ch, Ix("online"), 1);
+            Set(ch, Ix("age_ms"), (float)(3 + 2 * Math.Abs(Math.Sin(t))));
+            Set(ch, Ix("en_bits"), 6);
+            Set(ch, Ix("safety"), 0);
+            Set(ch, Ix("rc_eng"), 2);
+            Set(ch, Ix("rc_ch1"), (float)(992 + 120 * Math.Sin(2 * Math.PI * 0.5 * t)));
+            Set(ch, Ix("rc_ch2"), (float)(992 + 200 * Math.Sin(2 * Math.PI * 0.25 * t)));
+            Set(ch, Ix("rc_frames"), (float)(k * 10));
+            Set(ch, Ix("k_v"), 0.164f);
+            Set(ch, Ix("k_z"), 0.512f);
+
+            // ---- 惯导：一个 8 字轨迹（同时验证轨迹图的"车头朝上"与等比缩放）----
+            if (p.HasOdom)
+            {
+                double ax = 3.0 * Math.Sin(2 * Math.PI * 0.07 * t);
+                double ay = 2.0 * Math.Sin(4 * Math.PI * 0.07 * t);
+                Set(ch, p.OdomXy[0], (float)ax);
+                Set(ch, p.OdomXy[1], (float)ay);
+                Set(ch, Ix("ins_dist"), (float)(k * 0.012));
+                Set(ch, Ix("yaw"), (float)(30 * Math.Sin(2 * Math.PI * 0.1 * t)));
+                Set(ch, Ix("gz"), (float)(12 * Math.Cos(2 * Math.PI * 0.1 * t)));
+            }
+
             _store.Append(ch, ch.Length, t, 0xFFFF);
         }
 
-        // 参数表按车端 HOST_PARAM_TABLE 的 10 项造（顺序/量程一致，便于核对显示）
+        // 参数表按车端 HOST_PARAM_TABLE 造（顺序/量程一致，便于核对显示，含末尾的 tel_sel）
         var ps = new (byte Id, string Name, string Group, string Label, float Lo, float Hi, float Def, float Step, string Unit)[]
         {
             (0, "inv_K_l", "后轮L", "前馈 1/K",    0.000f,   0.500f,   0.1548f, 0.001f, "-"),
-            (1, "u0_l",    "后轮L", "摩擦截距 u0", 0.000f,   0.300f,   0.0330f, 0.001f, "-"),
+            (1, "u0_l",    "后轮L", "摩擦截距 u0", 0.000f,   0.300f,   0.0570f, 0.001f, "-"),
             (2, "k_v_l",   "后轮L", "比例 k_v",    0.000f,   2.000f,   0.1640f, 0.005f, "-"),
-            (3, "k_z_l",   "后轮L", "积分 k_z",    0.000f,  20.000f,   2.3200f, 0.050f, "-"),
+            (3, "k_z_l",   "后轮L", "积分 k_z",    0.000f,  20.000f,   0.5120f, 0.010f, "-"),
             (4, "inv_K_r", "后轮R", "前馈 1/K",    0.000f,   0.500f,   0.1548f, 0.001f, "-"),
-            (5, "u0_r",    "后轮R", "摩擦截距 u0", 0.000f,   0.300f,   0.0330f, 0.001f, "-"),
+            (5, "u0_r",    "后轮R", "摩擦截距 u0", 0.000f,   0.300f,   0.0570f, 0.001f, "-"),
             (6, "k_v_r",   "后轮R", "比例 k_v",    0.000f,   2.000f,   0.1640f, 0.005f, "-"),
-            (7, "k_z_r",   "后轮R", "积分 k_z",    0.000f,  20.000f,   2.3200f, 0.050f, "-"),
-            (8, "kp_s",    "舵机",  "比例 Kp",     0.000f, 1000.000f, 500.000f, 1.000f, "-"),
-            (9, "u0_s",    "舵机",  "摩擦前馈 U0", 0.000f, 10000.000f,1900.000f,10.000f,"-"),
+            (7, "k_z_r",   "后轮R", "积分 k_z",    0.000f,  20.000f,   0.5120f, 0.010f, "-"),
+            (8, "kp_s",    "舵机",  "比例 Kp",     0.000f, 1000.000f, 400.000f, 1.000f, "-"),
+            (9, "u0_s",    "舵机",  "摩擦前馈 U0", 0.000f,10000.000f,1700.000f,10.000f, "-"),
+            (10,"ki_s",    "舵机",  "积分 Ki",     0.000f, 1000.000f,  25.000f, 1.000f, "-"),
+            (15,"tel_sel", "遥测",  "档案 0全量41 1标定18", 0.000f, 1.000f, 0.000f, 1.000f, "-"),
         };
         var list = new List<ParamMeta>();
-        foreach (var p in ps)
+        foreach (var x in ps)
         {
             list.Add(new ParamMeta
             {
-                Id = p.Id, Name = p.Name, Group = p.Group, Label = p.Label,
-                Lo = p.Lo, Hi = p.Hi, Def = p.Def, Step = p.Step, Unit = p.Unit, Value = p.Def,
+                Id = x.Id, Name = x.Name, Group = x.Group, Label = x.Label,
+                Lo = x.Lo, Hi = x.Hi, Def = x.Def, Step = x.Step, Unit = x.Unit, Value = x.Def,
             });
         }
         _param.MergeTable(list);
         UpdateValueLabels();
+    }
+
+    /// <summary>假数据填充小工具：下标为负（该档案没有这一路）就跳过</summary>
+    private static void Set(float[] ch, int i, float v)
+    {
+        if (i >= 0 && i < ch.Length) ch[i] = v;
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)

@@ -1122,22 +1122,49 @@
             <name>$PROJ_DIR$\..\..\code\common_menu.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\ins_imu.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\ins_imu.h</name>
-        </file>
-        <file>
             <name>$PROJ_DIR$\..\..\code\Debug.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Debug.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\flash_map.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Head_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Head_Crtl.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\Host_Crtl.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Host_Crtl.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_imu.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_imu.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_odom.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_odom.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_route.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_route.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\route_pb.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\route_pb.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Menu.c</name>
@@ -1170,22 +1197,22 @@
             <name>$PROJ_DIR$\..\..\code\Param_Storage.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\PID.c</name>
+            <name>$PROJ_DIR$\..\..\code\Remote_Crtl.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\PID.h</name>
+            <name>$PROJ_DIR$\..\..\code\Remote_Crtl.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Route_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Route_Crtl.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Servo_Crtl.c</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Servo_Crtl.h</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\Remote_Crtl.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\Remote_Crtl.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>

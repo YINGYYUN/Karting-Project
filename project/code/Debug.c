@@ -38,7 +38,7 @@ void Debug_MOTOR_UI(void)
     ips200_show_string(10 ,112, "ENC: ");
     ips200_show_string(10 ,128, "LR:###        RR:###");
     // 空行
-    ips200_show_string(10 ,176, "SUM:");
+    ips200_show_string(10 ,176, "POS:");
     ips200_show_string(10 ,192, "LR:###");
     ips200_show_string(10 ,208, "RR:###");
 }
@@ -57,7 +57,7 @@ void Debug_Motor_PID_UI(void)
     ips200_show_string(10 ,112, "PWM LR:###");
     ips200_show_string(10 ,128, "PWM RR:###");
     // 空行
-    ips200_show_string(10 ,192, "SUM:");
+    ips200_show_string(10 ,192, "POS:");
     ips200_show_string(10 ,208, "LR:###");
     ips200_show_string(10 ,224, "RR:###");
 }
@@ -428,8 +428,8 @@ int Debug_Motor (void)
                     
                     ips200_printf(34 ,128, "%d   ", ENC_LR_CNT);
                     ips200_printf(146,128, "%d   ", ENC_RR_CNT);
-                    ips200_printf(34 ,192, "%d     ", ENC_LR_SUM);
-                    ips200_printf(34 ,208, "%d     ", ENC_RR_SUM);
+                    ips200_printf(34 ,192, "%d     ", ENC_LR_POS);
+                    ips200_printf(34 ,208, "%d     ", ENC_RR_POS);
                 }
             }
         }
@@ -442,8 +442,8 @@ int Debug_Motor (void)
             
             ips200_printf(34 ,128, "%d   ", ENC_LR_CNT);
             ips200_printf(146,128, "%d   ", ENC_RR_CNT);
-            ips200_printf(34 ,192, "%d     ", ENC_LR_SUM);
-            ips200_printf(34 ,208, "%d     ", ENC_RR_SUM);
+            ips200_printf(34 ,192, "%d     ", ENC_LR_POS);
+            ips200_printf(34 ,208, "%d     ", ENC_RR_POS);
         }
 
 
@@ -591,6 +591,8 @@ int Debug_Motor_PID (void)
                     ips200_printf(58 ,80 , "%d    ", (int)Motor_Crtl_HB_Age_Ms());
                     ips200_printf(66 ,96 , "%d ", Motor_LR_Crtl.enc_fault);
                     ips200_printf(114,96 , "%d ", Motor_RR_Crtl.enc_fault);
+                    ips200_printf(34 ,208, "%d     ", ENC_LR_POS);
+                    ips200_printf(34 ,224, "%d     ", ENC_RR_POS);
                 }
 
                 if (Time_Count2 >= 1)// 10ms * 1 周期
@@ -622,6 +624,8 @@ int Debug_Motor_PID (void)
             ips200_printf(58 ,80 , "%d    ", (int)Motor_Crtl_HB_Age_Ms());
             ips200_printf(66 ,96 , "%d ", Motor_LR_Crtl.enc_fault);
             ips200_printf(114,96 , "%d ", Motor_RR_Crtl.enc_fault);
+            ips200_printf(34 ,208, "%d     ", ENC_LR_POS);
+            ips200_printf(34 ,224, "%d     ", ENC_RR_POS);
         }
 
         if (Time_Count2 >= 1)// 10ms * 1 周期

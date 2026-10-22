@@ -139,14 +139,46 @@ static Host_Wifi_t host_wifi_list[] = { HOST_WIFI_LIST(HOST_WIFI_ENTRY) };
 
 #define HOST_WIFI_COUNT     ((uint8)(sizeof(host_wifi_list) / sizeof(host_wifi_list[0])))
 
-// 发送缓冲。遥测整帧 = 11 + 10 + HOST_CH_COUNT*4 = 121 字节，留 32 字节余量。
+// 发送缓冲。全量档整帧 = 11 + 10 + 41*4 = 185 字节，留 32 字节余量（缓冲按 41 路开，
+// 标定档 18 路时只用前 93+11 字节 —— 不另开第二条缓冲，省得两处长度各错一次）。
 // 单线程（只在页面/主菜单的 while(1) 里）使用，不重入 —— 所以用 static 省栈。
-#define HOST_TEL_BUF_SIZE       (32 + HOST_CH_COUNT * 4)
+#define HOST_TEL_BUF_SIZE       (32 + HOST_CH_COUNT_MAX * 4)
 #define HOST_FRM_BUF_SIZE       (128)       // 其它帧：参数表元数据最大 11 + 73 = 84
 static uint8    host_telbuf[HOST_TEL_BUF_SIZE];
 static uint8    host_frmbuf[HOST_FRM_BUF_SIZE];
 static uint8    host_rxbuf[256];
-static float    host_ch[HOST_CH_COUNT];
+static float    host_ch[HOST_CH_COUNT_MAX];
+
+// ★★ 本帧实际要发的通道数（运行期变量，不再是编译期常量）：
+//    41 = 全量档 / 18 = 标定档，每帧由参数 `tel_sel` 现算（见 host_tel_pick_count）。
+//    帧头 COUNT 也跟着它变 —— 上位机按 COUNT 自动切档案，所以这个变量**必须**和
+//    实际写进帧里的循环上界同源，不能一处 41 一处 18。
+static uint16   host_ch_count = HOST_CH_COUNT_MAX;
+
+// ★ 标定档 18 路 → 全量档 41 路的下标映射（下标严格照 teammate motor_link.h 的 CT_*）。
+//   0xFF = 我方无对应物，固定发 0（**非等价**，不要拿别的量去凑）。
+//   ⚠ 这张表和 Host_Crtl.h 的 HOST_CT_* 必须逐项对齐；顺序即协议。
+static const uint8 host_calib_from_full[HOST_CT_COUNT] =
+{
+    HOST_CH_TARGET_L,       // CT_TARGET_L     0
+    HOST_CH_V_L,            // CT_V_L          1
+    HOST_CH_U_L,            // CT_U_L          2
+    HOST_CH_TARGET_R,       // CT_TARGET_R     3
+    HOST_CH_V_R,            // CT_V_R          4
+    HOST_CH_U_R,            // CT_U_R          5
+    HOST_CH_STEER_TGT,      // CT_STEER_TGT    6
+    HOST_CH_STEER_DEG,      // CT_STEER_DELTA  7
+    HOST_CH_STEER_U,        // CT_STEER_U      8
+    HOST_CH_ONLINE,         // CT_ONLINE       9
+    HOST_CH_EN_BITS,        // CT_ENABLE      10
+    HOST_CH_SAFETY,         // CT_SAFETY      11
+    HOST_CH_STEER_EN,       // CT_STEER_EN    12
+    HOST_CH_STEER_ST,       // CT_STEER_ST    13
+    0xFF,                   // CT_OL_EN       14 —— ★ 我方没有开环档，固定 0（非等价）
+    0xFF,                   // CT_RESV0       15 —— 预留位，固定 0
+    HOST_CH_K_V,            // CT_K_V         16
+    HOST_CH_K_Z,            // CT_K_Z         17
+};
 
 // 收到的字节先攒进累加器再解析。上限 = 一次最多读 256 字节 + 不足一帧的尾巴(14)，
 // 288 留足余量。解析完把尾巴搬到开头，所以它永远是"很小"的。
@@ -410,46 +442,172 @@ static void host_param_table_tick (void)
 /**********************************************************/
 
 //--------------------------------------
-// 函数简介     把各模块的实时量灌进通道数组
+// 函数简介     合成 SAFETY 位图（HOST_CH_SAFETY）
+// 参数说明     void
+// 返回参数     uint16 位图（0 = 一切正常）
+// 使用示例     内部调用（host_fill_channels）
+// 备注信息     ★★ **只做映射，不新增任何安全判据**。逐位含义见 Host_Crtl.h 的 HOST_SAFETY_*，
+//              那里写清了哪几位是"我方有依据的近似"、哪几位恒 0（我方无对应判据）。
+//              所以这个值和队友的 SAFETY **不等价**，上位机只当"0 = 正常"用。
+//              0x0002 / 0x0010 故意不置 —— 宁可不报，也不要拿不相干的量去凑一个假报警。
+//--------------------------------------
+static uint16 host_safety_bits (void)
+{
+    uint16 b = 0;
+
+    if (0 == host_ever_rx)                              { b |= HOST_SAFETY_NEVER_RX; }
+    if (0 != Host_Lost)                                 { b |= HOST_SAFETY_LOST; }
+    if (Motor_Crtl_HB_Age_Ms() > MOTOR_CRTL_HB_TIMEOUT_MS) { b |= HOST_SAFETY_HB_LOST; }
+    if ((0 != Motor_LR_Crtl.sat) || (0 != Motor_RR_Crtl.sat)) { b |= HOST_SAFETY_SAT; }
+    if (RC_ENGAGE_ON == RC_Engage)                      { b |= HOST_SAFETY_RC_ON; }
+    if (RC_ENGAGE_ESTOP == RC_Engage)                   { b |= HOST_SAFETY_RC_ESTOP; }
+
+    return b;
+}
+
+//--------------------------------------
+// 函数简介     合成路表状态位（HOST_CH_RT_ST）
+// 参数说明     void
+// 返回参数     uint16 低 8 位 = 状态位，bit8..11 = 当前槽号
+// 使用示例     内部调用（host_fill_channels）
+// 备注信息     定义见 Host_Crtl.h 的 HOST_RT_ST_*。bit7 恒 0。
+//              队友把这个值当"位图 + 槽号"混合体用，上位机按整数显示即可。
+//--------------------------------------
+static uint16 host_route_status_bits (void)
+{
+    uint16 b = 0;
+    uint8  f = ins_route_flags();
+
+    if (0 != (f & INS_ROUTE_ST_RUNNING))  { b |= HOST_RT_ST_RUNNING; }
+    if (0 != (f & INS_ROUTE_ST_FULL))     { b |= HOST_RT_ST_FULL; }
+    if (ins_route_get_count() > 0)        { b |= HOST_RT_ST_HAS; }
+    if (0 != ins_route_flash_busy())      { b |= HOST_RT_ST_SAVING; }
+    if (2 == ins_route_flash_last_rc())   { b |= HOST_RT_ST_SAVE_FAIL; }      // 2 = 写失败
+    if (0 != route_pb_active())           { b |= HOST_RT_ST_PLAYBACK; }
+    if (0 != ins_route_flash_loaded())    { b |= HOST_RT_ST_FROM_FLASH; }
+
+    b |= (uint16)(((uint16)ins_route_slot_active() & 0x000Fu) << 8);          // 槽号放 bit8..11
+
+    return b;
+}
+
+//--------------------------------------
+// 函数简介     把各模块的实时量灌进通道数组（全量 41 路）
 // 参数说明     void
 // 使用示例     内部调用
 // 备注信息     直接从模块全局量取值，不需要 main 每圈来填 —— 少一处漏填的机会。
-//              单位口径：deg / rps / 归一化占空比，不做定点缩放（帧里本来就是 float32）
+//              ★ 下标/单位/位义与队友 motor_link.h **逐项对齐**，
+//                对照表写在 Host_Crtl.h 的"队友下标 → 我方来源"注释里（41 行）。
+//              ★ 单位口径：
+//                  · rps / deg / m 直接用物理量，不做缩放；
+//                  · **电机 out / u_ff 我方是归一化 ±1，队友是 %，所以这里必须 ×100** ——
+//                    漏了这个乘，上位机看到的输出只有 ±0.5 而不是 ±50，波形像是"没出力"；
+//                  · 位置是编码器累计计数（cnt），不是米。
 //--------------------------------------
 static void host_fill_channels (void)
 {
-    host_ch[HOST_CH_SERVO_TGT]   = Servo_Target_Applied_Deg;    // ★ 用"施加值"而不是 Servo_Target_Deg：
-    host_ch[HOST_CH_SERVO_ANG]   = Servo_Angle_Deg;             //   后者是用户设定值，命令超过软限位时它仍
-    host_ch[HOST_CH_SERVO_OUT]   = (float)Servo_Out;            //   显示 ±30°，拿 目标-实际 反推误差会看到
-    host_ch[HOST_CH_SERVO_RAW]   = (float)Servo_Ang_Raw;        //   约 2° 的假误差（实际早已进死区）
+    // ---- 后轮速度环（0~11）----
+    host_ch[HOST_CH_TARGET_L]   = Motor_LR_Crtl.target_app;     // 斜坡之后的实际目标，不是 target
+    host_ch[HOST_CH_V_L]        = Motor_LR_Crtl.actual;
+    host_ch[HOST_CH_U_L]        = Motor_LR_Crtl.out * 100.0f;   // ★ 归一化 → %
+    host_ch[HOST_CH_TARGET_R]   = Motor_RR_Crtl.target_app;
+    host_ch[HOST_CH_V_R]        = Motor_RR_Crtl.actual;
+    host_ch[HOST_CH_U_R]        = Motor_RR_Crtl.out * 100.0f;   // ★ 归一化 → %
+    host_ch[HOST_CH_UFF_L]      = Motor_LR_Crtl.u_ff * 100.0f;  // ★ 归一化 → %
+    host_ch[HOST_CH_UFF_R]      = Motor_RR_Crtl.u_ff * 100.0f;  // ★ 归一化 → %
+    host_ch[HOST_CH_Z_L]        = Motor_LR_Crtl.z;
+    host_ch[HOST_CH_Z_R]        = Motor_RR_Crtl.z;
+    host_ch[HOST_CH_POS_L]      = (float)ENC_LR_POS;
+    host_ch[HOST_CH_POS_R]      = (float)ENC_RR_POS;
 
-    host_ch[HOST_CH_LR_TGT_APP]  = Motor_LR_Crtl.target_app;
-    host_ch[HOST_CH_LR_V]        = Motor_LR_Crtl.actual;
-    host_ch[HOST_CH_LR_OUT]      = Motor_LR_Crtl.out;
-    host_ch[HOST_CH_LR_UFF]      = Motor_LR_Crtl.u_ff;
+    // ---- 链路（12~15）----
+    host_ch[HOST_CH_ONLINE]     = (HOST_ST_ACTIVE == Host_Crtl_State()) ? 1.0f : 0.0f;
+    host_ch[HOST_CH_RX_AGE_MS]  = (0 == host_ever_rx)
+                                ? -1.0f                                   // 从未收到过 = -1
+                                : (float)(uint32)(Sys_Tick_Ms - host_alive_ms);
+    host_ch[HOST_CH_EN_BITS]    = (float)(host_enable & 0x0006);         // bit1 电机 / bit2 总使能
+    host_ch[HOST_CH_SAFETY]     = (float)host_safety_bits();             // ★ 近似映射，见函数注释
 
-    host_ch[HOST_CH_RR_TGT_APP]  = Motor_RR_Crtl.target_app;
-    host_ch[HOST_CH_RR_V]        = Motor_RR_Crtl.actual;
-    host_ch[HOST_CH_RR_OUT]      = Motor_RR_Crtl.out;
-    host_ch[HOST_CH_RR_UFF]      = Motor_RR_Crtl.u_ff;
+    // ---- 转向（16~20）----
+    // ★ 用"施加值"而不是 Servo_Target_Deg：后者是用户设定值，命令超过软限位时它仍显示 ±30°，
+    //   拿 目标-实际 反推误差会看到约 2° 的假误差（实际早已进死区）
+    host_ch[HOST_CH_STEER_TGT]  = Servo_Target_Applied_Deg;
+    host_ch[HOST_CH_STEER_DEG]  = Servo_Angle_Deg;
+    host_ch[HOST_CH_STEER_U]    = (float)Servo_Out;
+    host_ch[HOST_CH_STEER_EN]   = (float)Servo_Crtl_Enable;
+    // bit0 = 自检通过 / bit1 = 反馈失效 / bit2 = 顶死或反转（我方无顶死判据，恒 0 —— 非等价）
+    host_ch[HOST_CH_STEER_ST]   = (0 != Servo_Enc_Fault)
+                                ? (float)0x0002
+                                : (float)0x0001;
 
-    host_ch[HOST_CH_RC_CH1]      = (float)RC_Raw_Ch1;
-    host_ch[HOST_CH_RC_CH2]      = (float)RC_Raw_Ch2;
-    host_ch[HOST_CH_RC_STEER]    = RC_Steer_Deg;
-    host_ch[HOST_CH_RC_THR]      = RC_Throttle;
-    host_ch[HOST_CH_RC_ENGAGE]   = (float)RC_Engage;
-    host_ch[HOST_CH_RC_ONLINE]   = (float)RC_Online;
+    // ---- 遥控（21~24）----
+    host_ch[HOST_CH_RC_ENG]     = (float)RC_Engage;
+    host_ch[HOST_CH_RC_CH1]     = (float)RC_Raw_Ch1;
+    host_ch[HOST_CH_RC_CH2]     = (float)RC_Raw_Ch2;
+    host_ch[HOST_CH_RC_FRAMES]  = (float)RC_Frames;                      // ★ 全局量，见 Remote_Crtl.h
 
-    host_ch[HOST_CH_HOST_LINK]   = (HOST_ST_ACTIVE == Host_Crtl_State()) ? 1.0f : 0.0f;
-    host_ch[HOST_CH_HOST_AGE_MS] = (0 == host_ever_rx)
-                                 ? -1.0f
-                                 : (float)(uint32)(Sys_Tick_Ms - host_alive_ms);
+    // ---- 增益回读（25~26）：两轮同源整定，取左轮 ----
+    host_ch[HOST_CH_K_V]        = Motor_LR_Crtl.k_v;
+    host_ch[HOST_CH_K_Z]        = Motor_LR_Crtl.k_z;
 
-    host_ch[HOST_CH_SERVO_EN]    = (float)Servo_Crtl_Enable;
-    host_ch[HOST_CH_MOTOR_EN]    = (float)Motor_Crtl_Enable;
-    host_ch[HOST_CH_SERVO_FAULT] = (float)Servo_Enc_Fault;
-    host_ch[HOST_CH_YAW_DEG]     = ins_imu_get_yaw();           // 累积航向 deg（可超 ±360）
-    host_ch[HOST_CH_HOST_EN]     = (float)host_enable;
+    // ---- 惯导（27~32）----
+    host_ch[HOST_CH_YAW]        = ins_imu_get_yaw();                     // 累积航向 deg（可超 ±360）
+    host_ch[HOST_CH_GZ]         = ins_imu_get_gyro_z_dps();
+    host_ch[HOST_CH_INS_X]      = ins_odom_get_x();
+    host_ch[HOST_CH_INS_Y]      = ins_odom_get_y();
+    host_ch[HOST_CH_INS_DIST]   = ins_odom_get_dist();
+    host_ch[HOST_CH_INS_FLAGS]  = (float)ins_imu_flags();                // INS_ST_* 惯导状态位
+
+    // ---- 路表/回放（33~35）----
+    host_ch[HOST_CH_RT_CNT]     = (float)ins_route_get_count();
+    host_ch[HOST_CH_RT_ST]      = (float)host_route_status_bits();
+    host_ch[HOST_CH_PB_ELAT]    = route_pb_elat();
+
+    // ---- 航向测试（36~37）----
+    host_ch[HOST_CH_TAR_YAW]    = Head_Crtl_Get_Target();
+    host_ch[HOST_CH_HT_SEG]     = 0.0f;      // ★ 非等价：我方无 head_test 模块（未迁移），固定 0
+
+    // ---- 诊断三件套（38~40）----
+    host_ch[HOST_CH_TICK_MS]    = (float)Sys_Tick_Ms;                    // 车端上电毫秒数
+    host_ch[HOST_CH_INS_FRZ]    = ins_imu_zupt_frz_deg();
+    host_ch[HOST_CH_INS_STATIC] = (0 != (ins_imu_flags() & INS_ST_STATIC)) ? 1.0f : 0.0f;
+}
+
+//--------------------------------------
+// 函数简介     本帧该发几路（读参数 tel_sel）
+// 参数说明     void
+// 返回参数     uint16 HOST_CH_COUNT_MAX(41) 或 HOST_CT_COUNT(18)
+// 使用示例     内部调用（host_send_telemetry 组帧之前）
+// 备注信息     ★ 每帧现算，所以**切换档案不用重启**：上位机把 tel_sel 从 0 拖到 1，
+//              下一帧的 COUNT 就变成 18，上位机按 COUNT 自动换档案。
+//              ★ 参数是连续浮点（滑条 0~1），这里先二值化再用，避免 0.5 这种中间值
+//                让 COUNT 变成"既不是 41 也不是 18"的第三个值 —— 上位机会直接把帧丢掉。
+//--------------------------------------
+static uint16 host_tel_pick_count (void)
+{
+    return (TEL_SEL >= HOST_TEL_SEL_THRESH) ? (uint16)HOST_CT_COUNT
+                                            : (uint16)HOST_CH_COUNT_MAX;
+}
+
+//--------------------------------------
+// 函数简介     取本帧第 i 路的数值（按当前档案解引用）
+// 参数说明     i 当前档案内的下标（0..host_ch_count-1）
+// 返回参数     float 通道值
+// 使用示例     内部调用（host_send_telemetry 的填充循环）
+// 备注信息     ★ 标定档里"我方无对应物"的那两路（ol_en / resv）固定返回 0，
+//                不是在 host_ch[] 里随便找个位置顶替 —— 那是造假数据。
+//--------------------------------------
+static float host_tel_value (uint16 i)
+{
+    uint8 src;
+
+    if (HOST_CT_COUNT == host_ch_count)
+    {
+        src = host_calib_from_full[i];
+        return (0xFF == src) ? 0.0f : host_ch[src];
+    }
+
+    return host_ch[i];
 }
 
 //--------------------------------------
@@ -457,14 +615,19 @@ static void host_fill_channels (void)
 // 参数说明     void
 // 使用示例     内部调用
 // 备注信息     PAYLOAD = SEQ(2) + TS(4) + MASK(2) + COUNT(2) + float32×COUNT
+//              ★ 帧格式、MAGIC、CRC、4 字节尾一律不动（与队友 motor_link.c 逐字节一致）；
+//                变的只有 COUNT 与数据段长度（41 或 18）。
 //--------------------------------------
 static void host_send_telemetry (void)
 {
     uint16 n  = 0;
-    uint16 pl = (uint16)(10 + HOST_CH_COUNT * 4);
+    uint16 pl;
     uint16 i;
 
-    host_fill_channels();
+    host_fill_channels();                       // 全量 41 路一律填满（标定档只是挑着发）
+
+    host_ch_count = host_tel_pick_count();      // ★ 每帧现算档案，切完不用重启
+    pl = (uint16)(10 + host_ch_count * 4);      // SEQ+TS+MASK+CNT+DATA
 
     host_telbuf[n ++] = HOST_MAGIC_UP_0;
     host_telbuf[n ++] = HOST_MAGIC_UP_1;
@@ -474,14 +637,14 @@ static void host_send_telemetry (void)
     n = host_put_u32(host_telbuf, n, Sys_Tick_Ms);
 
     // VALID_MASK：0xFFFF = **全部有效**（哨兵值，不是逐位图）。
-    // ⚠ 字段只有 16 位而通道有 25 个，按位根本表达不下 —— 所以约定"全 1 = 全部有效"，
+    // ⚠ 字段只有 16 位而通道有 41 个，按位根本表达不下 —— 所以约定"全 1 = 全部有效"，
     //   上位机 ChannelStore.IsValid() 也按这条解释。真要做逐通道有效性必须先扩成 u32（改协议）。
     n = host_put_u16(host_telbuf, n, 0xFFFF);
-    n = host_put_u16(host_telbuf, n, HOST_CH_COUNT);
+    n = host_put_u16(host_telbuf, n, host_ch_count);
 
-    for (i = 0; i < HOST_CH_COUNT; i ++)
+    for (i = 0; i < host_ch_count; i ++)
     {
-        n = host_put_f32(host_telbuf, n, host_ch[i]);
+        n = host_put_f32(host_telbuf, n, host_tel_value(i));
     }
 
     n = host_put_u16(host_telbuf, n, host_crc16(host_telbuf + 2, (uint16)(HOST_CRC_SPAN + pl)));
@@ -1361,7 +1524,7 @@ static const char *host_rc_text (void)
     return (HOST_AUTH_REMOTE == Host_Auth) ? "DRIVE  " : "READY  ";
 }
 
-// LINK 的四种文字。★ 与遥测通道 HOST_CH_HOST_LINK 不同源，理由见 Host_Crtl.h 的 HOST_ST_* 段
+// LINK 的四种文字。★ 与遥测通道 HOST_CH_ONLINE 不同源，理由见 Host_Crtl.h 的 HOST_ST_* 段
 static const char *host_link_text (void)
 {
     if (HOST_LINK_OFF == Host_Link)  { return "IDLE   "; }

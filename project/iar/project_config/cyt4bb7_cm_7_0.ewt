@@ -1441,6 +1441,30 @@
             <name>$PROJ_DIR$\..\..\code\Debug.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\Head_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Head_Crtl.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Host_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Host_Crtl.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_imu.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_imu.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_odom.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ins_odom.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\Menu.c</name>
         </file>
         <file>
@@ -1451,6 +1475,12 @@
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Motor.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Motor_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Motor_Crtl.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Param_Page.c</name>
@@ -1465,10 +1495,16 @@
             <name>$PROJ_DIR$\..\..\code\Param_Storage.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\PID.c</name>
+            <name>$PROJ_DIR$\..\..\code\Remote_Crtl.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\PID.h</name>
+            <name>$PROJ_DIR$\..\..\code\Remote_Crtl.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Servo_Crtl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\Servo_Crtl.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>
@@ -2268,6 +2304,12 @@
     </group>
     <group>
         <name>zf_device</name>
+        <file>
+            <name>$PROJ_DIR$\..\..\..\libraries\zf_device\zf_device_absolute_encoder.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\..\libraries\zf_device\zf_device_absolute_encoder.h</name>
+        </file>
         <file>
             <name>$PROJ_DIR$\..\..\..\libraries\zf_device\zf_device_ble6a20.c</name>
         </file>

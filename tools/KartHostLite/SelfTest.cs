@@ -102,35 +102,82 @@ internal static class SelfTest
         string gl = Proto.GetStr(meta, 41, 32);
         Check(gl == "舵机|比例 Kp" && gl.Contains('|'), "组名|中文标签回读", gl);
 
-        Section("通道表");
-        Check(Defaults.ChannelNames.Length == Defaults.ChannelUnits.Length,
-              "通道名与单位数量一致",
-              $"{Defaults.ChannelNames.Length} vs {Defaults.ChannelUnits.Length}");
-        Check(Defaults.ChannelNames.Length == Defaults.ChannelCn.Length,
-              "通道名与中文简称数量一致",
-              $"{Defaults.ChannelNames.Length} vs {Defaults.ChannelCn.Length}");
-        Check(Defaults.ChannelNames.Length == Defaults.ChannelTips.Length,
-              "通道名与悬停说明数量一致",
-              $"{Defaults.ChannelNames.Length} vs {Defaults.ChannelTips.Length}");
-        // 中文简称超宽会被勾选框裁掉（不报错），这里提前拦一次。
-        // ⚠ 不能按 .Length 算：「遥控CH1原始」是 7 个字符，但显示宽度只有 4 汉字 + 3 半角 ≈ 5.5 汉字宽，
-        //   按字符数会误报。所以换算成"半角单位"（全角算 2），上限 12 = 6 个汉字。
-        var longCn = new List<string>();
-        for (int i = 0; i < Defaults.ChannelCn.Length; i++)
+        Section("通道表 · 两套档案");
+        Check(Defaults.Full41.Count == 41, "全量档案 = 41 路（与车端 HOST_CH_COUNT_MAX 一致）",
+              Defaults.Full41.Count.ToString());
+        Check(Defaults.Calib18.Count == 18, "标定档案 = 18 路（与车端 HOST_CT_COUNT 一致）",
+              Defaults.Calib18.Count.ToString());
+
+        // 两套各 4 张平行表都要长度一致 —— 少一张就整体错位，而 WinForms/GDI 不会报错
+        foreach (var prof in new[] { Defaults.Full41, Defaults.Calib18 })
         {
-            int w = 0;
-            foreach (char c in Defaults.ChannelCn[i]) w += c < 0x2E80 ? 1 : 2;
-            if (w > 12) longCn.Add($"{i}:{Defaults.ChannelCn[i]}({w})");
+            string tag = prof.Short;
+            Check(prof.Names.Length == prof.Units.Length, $"[{tag}] 名字与单位数量一致",
+                  $"{prof.Names.Length} vs {prof.Units.Length}");
+            Check(prof.Names.Length == prof.Cn.Length, $"[{tag}] 名字与中文简称数量一致",
+                  $"{prof.Names.Length} vs {prof.Cn.Length}");
+            Check(prof.Names.Length == prof.Tips.Length, $"[{tag}] 名字与悬停说明数量一致",
+                  $"{prof.Names.Length} vs {prof.Tips.Length}");
+
+            var dup = prof.Names.GroupBy(s => s).Where(g => g.Count() > 1).Select(g => g.Key).ToArray();
+            Check(dup.Length == 0, $"[{tag}] 通道名无重复",
+                  dup.Length == 0 ? prof.Names.Length.ToString() : string.Join(",", dup));
+
+            // 中文简称超宽会被勾选框裁掉（不报错），这里提前拦一次。
+            // ⚠ 不能按 .Length 算：「CH1方向盘」是 7 个字符，但显示宽度只有 3 半角 + 3 汉字 ≈ 9，
+            //   按字符数会误报。所以换算成"半角单位"（全角算 2），上限 12 = 6 个汉字。
+            var longCn = new List<string>();
+            for (int i = 0; i < prof.Cn.Length; i++)
+            {
+                int w = 0;
+                foreach (char c in prof.Cn[i]) w += c < 0x2E80 ? 1 : 2;
+                if (w > 12) longCn.Add($"{i}:{prof.Cn[i]}({w})");
+            }
+            Check(longCn.Count == 0, $"[{tag}] 中文简称显示宽度 ≤ 12 半角单位（≈6 个汉字，否则勾选框会裁字）",
+                  longCn.Count == 0 ? "ok" : string.Join(" ", longCn));
+
+            // 下标类配置也不能越界（越界不会抛，只会显示空白/错位）
+            bool idxOk = true;
+            foreach (int i in prof.DefaultShown) if (i < 0 || i >= prof.Count) idxOk = false;
+            foreach (var (_, chs) in prof.Presets2) foreach (int c in chs) if (c < 0 || c >= prof.Count) idxOk = false;
+            foreach (var (_, chs) in prof.Presets4) foreach (int c in chs) if (c < 0 || c >= prof.Count) idxOk = false;
+            foreach (var (c, _, _) in prof.ValueBoxes) if (c < 0 || c >= prof.Count) idxOk = false;
+            foreach (int c in prof.OdomXy) if (c < 0 || c >= prof.Count) idxOk = false;
+            Check(idxOk, $"[{tag}] 默认勾选 / 分图预设 / 实时值 / 轨迹图的下标都在范围内");
+
+            Check(prof.DefaultShown.Length > 0, $"[{tag}] 有默认勾选的通道", prof.DefaultShown.Length.ToString());
         }
-        Check(longCn.Count == 0, "中文简称显示宽度 ≤ 12 半角单位（≈6 个汉字，否则勾选框会裁字）",
-              longCn.Count == 0 ? "ok" : string.Join(" ", longCn));
-        Check(Defaults.ChannelNames.Length == 25, "通道数 = 25（与车端 HOST_CH_COUNT 一致）",
-              Defaults.ChannelNames.Length.ToString());
-        var uniq = new HashSet<string>(Defaults.ChannelNames);
-        Check(uniq.Count == Defaults.ChannelNames.Length, "通道名无重复", uniq.Count.ToString());
-        bool idxOk = true;
-        foreach (int i in Defaults.DefaultShown) if (i < 0 || i >= Defaults.ChannelNames.Length) idxOk = false;
-        Check(idxOk, "默认勾选下标都在范围内");
+
+        // 轨迹图：全量档必须有 ins_x/ins_y，标定档必须没有（没有就显示 N/A）
+        Check(Defaults.Full41.HasOdom && Defaults.Full41.OdomXy[0] == 29 && Defaults.Full41.OdomXy[1] == 30,
+              "全量档案的 odom 轨迹用 ins_x(29) / ins_y(30)");
+        Check(!Defaults.Calib18.HasOdom, "标定档案没有 ins_x/ins_y ⇒ 轨迹图显示 N/A");
+
+        // 关键下标与车端 motor_link.h 逐项核对（顺序即协议，写这几个最容易错位的）
+        Check(Defaults.Full41.Names[0] == "target_l" && Defaults.Full41.Names[2] == "u_l",
+              "全量档 0/2 = target_l / u_l");
+        Check(Defaults.Full41.Names[15] == "safety" && Defaults.Full41.Names[16] == "steer_tgt",
+              "全量档 15/16 = safety / steer_tgt（转向段从 16 起）");
+        Check(Defaults.Full41.Names[24] == "rc_frames" && Defaults.Full41.Names[25] == "k_v",
+              "全量档 24/25 = rc_frames / k_v");
+        Check(Defaults.Full41.Names[40] == "ins_static", "全量档末位 40 = ins_static");
+        Check(Defaults.Calib18.Names[6] == "steer_tgt" && Defaults.Calib18.Names[17] == "k_z",
+              "标定档 6 / 17 = steer_tgt / k_z");
+        Check(Defaults.Calib18.Names[14] == "ol_en" && Defaults.Calib18.Names[15] == "resv",
+              "标定档 14/15 = ol_en / resv（车端固定发 0）");
+
+        // u_l / u_r / uff 是**百分数**（车端 ×100），单位表里必须写 %，不能再当 ±1 画
+        Check(Defaults.Full41.UnitOf(2) == "%" && Defaults.Full41.UnitOf(5) == "%"
+              && Defaults.Full41.UnitOf(6) == "%" && Defaults.Full41.UnitOf(7) == "%",
+              "u_l / u_r / uff_l / uff_r 的单位是 %（车端已 ×100）");
+        Check(Defaults.Calib18.UnitOf(2) == "%" && Defaults.Calib18.UnitOf(5) == "%",
+              "标定档 u_l / u_r 的单位是 %");
+
+        Section("档案选择（按帧头 COUNT）");
+        Check(ReferenceEquals(Defaults.ByCount(41), Defaults.Full41), "COUNT = 41 → 全量档案");
+        Check(ReferenceEquals(Defaults.ByCount(18), Defaults.Calib18), "COUNT = 18 → 标定档案");
+        Check(Defaults.ByCount(30) == null && Defaults.ByCount(0) == null && Defaults.ByCount(40) == null,
+              "其它 COUNT → 未知档案（返回 null，调用方必须丢帧）");
 
         _sb.Append($"\r\n通过 {_pass} 项，失败 {_fail} 项。\r\n");
 

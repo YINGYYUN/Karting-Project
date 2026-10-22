@@ -61,8 +61,11 @@ int main(void)
         else              { ips200_show_string(8, 152, "IMU FAIL, SEE UART  "); }
     }
 
+    // 位姿基准：把起点设成 (0,0)，航向取当前 IMU 值（IMU 失败时就是 0）
+    ins_odom_init();
+
     pit_ms_init(PIT_CH0, 10);
-    pit_ms_init(PIT_CH1, 10);           // 10ms：转向（角度编码器采集 + 舵机位置环，同中断）
+    pit_ms_init(PIT_CH1, 5);            // 5ms：转向（角度编码器采集 + 舵机位置环，同中断）
     pit_ms_init(PIT_CH11, 5);           // 5ms：后轮速度环 + IMU 姿态解算（见 pit0_ch11_isr）
     pit_ms_init(PIT_CH10, 1);           // 1ms 定时，全局毫秒计时（编码器速度积分用）
 

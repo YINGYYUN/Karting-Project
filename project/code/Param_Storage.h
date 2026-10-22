@@ -17,8 +17,8 @@ CYT4BB 适配：存储位置为 Work Flash 第 0 页（sector 参数恒为 0）�
 #define PARAM_FLASH_SECTION         (0)
 #define PARAM_FLASH_PAGE            (0)
 
-// 参数总数（2 个后轮电机 × 4 个参数 + 舵机 × 3 个参数）
-#define PARAM_COUNT                 (11)
+// 参数总数（2 个后轮电机 × 4 + 舵机 × 3 + 路表 × 4 + 遥测档案 × 1）
+#define PARAM_COUNT                 (16)
 
 // 上电强制重置falsh参数开关
 // 1：上电强制重写参数页flash
@@ -47,6 +47,18 @@ extern float param_cache[PARAM_COUNT];
 #define SERVO_U0_IDX                9
 #define SERVO_KI_IDX                10
 
+// 路表 (11-14)：录制点距 / 回放车速 / 前视距离 / 转向通道
+#define ROUTE_DS_IDX                11
+#define PB_V_IDX                    12
+#define PB_LD_IDX                   13
+#define PB_SMODE_IDX                14
+
+// ★ 遥测档案选择 (15)：0 = 全量 41 路 / 1 = 标定精简 18 路（2026-10-22 新增）
+//   同样是"只准往后加"：它必须排在最后，否则 Flash 里已有的 15 项会整体错位。
+//   语义与消费者见 Host_Crtl.h 的 HOST_TEL_SEL_*；本参数**不经过** Flash_SyncTo_Param
+//   （没有对应的控制器副本），由 Host_Crtl.c 每帧直接读 param_cache[TEL_SEL_IDX]。
+#define TEL_SEL_IDX                 15
+
 // 便捷访问宏
 #define MOTOR_LR_INV_K              param_cache[MOTOR_LR_INV_K_IDX]
 #define MOTOR_LR_U0                 param_cache[MOTOR_LR_U0_IDX]
@@ -61,6 +73,15 @@ extern float param_cache[PARAM_COUNT];
 #define SERVO_KP                    param_cache[SERVO_KP_IDX]
 #define SERVO_U0                    param_cache[SERVO_U0_IDX]
 #define SERVO_KI                    param_cache[SERVO_KI_IDX]
+
+#define ROUTE_DS                    param_cache[ROUTE_DS_IDX]
+#define ROUTE_PB_V                  param_cache[PB_V_IDX]
+#define ROUTE_PB_LD                 param_cache[PB_LD_IDX]
+#define ROUTE_PB_SMODE              param_cache[PB_SMODE_IDX]
+
+// 遥测档案选择：0.0 = 全量 41 路 / 1.0 = 标定精简 18 路（默认 0）
+#define TEL_SEL_DEFAULT             (0.0f)
+#define TEL_SEL                     param_cache[TEL_SEL_IDX]
 
 void    Param_Init          (void);     // 初始化(加载或设默认值)
 void    Param_Save          (void);     // 保存当前参数到 Flash

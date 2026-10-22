@@ -1,6 +1,6 @@
 /*******************************************************************************
 转向角测量与控制 - Servo_Crtl.c
-数据来源：绝对值角度编码器（ENC_ABS_ANG，CH1 的 10ms 中断采集，与位置环同拍，见 cm7_0_isr.c）
+数据来源：绝对值角度编码器（ENC_ABS_ANG，CH1 的 5ms 中断采集，与位置环同拍，见 cm7_0_isr.c）
 控制对象：Motor 3（MOTOR_SERVO）
 *******************************************************************************/
 
@@ -22,6 +22,7 @@ volatile uint8 Servo_Enc_Fault          = 0;                // 1 = 反馈源失�
 
 //============================== 内部状态 ==============================
 static uint8 servo_enabled          = 0;                    // （上一拍）是否为启用状态（用于失能时只清一次输出）
+static int8  Servo_U0_Dir           = 0;                    // 摩擦前馈的三态门：+1 / -1 / 0（关）
 static uint32 servo_invalid_ms      = 0;                    // 电机在出力、却连续读到无效角度的累计时间
 
 //--------------------------------------
@@ -83,6 +84,7 @@ void Servo_Crtl_Reset (void)
     Servo_Err_Deg            = 0.0f;
     Servo_Out                = 0;
     Servo_I_Sum              = 0.0f;    // 积分累加值一起清，重新使能从 0 开始
+    Servo_U0_Dir             = 0;       // 前馈三态门一起清
     Servo_Enc_Fault          = 0;
     servo_invalid_ms         = 0;
 }
@@ -100,20 +102,21 @@ void Servo_Crtl_Init (void)
 }
 
 //--------------------------------------
-// 函数简介     10ms 主节拍
+// 函数简介     5ms 主节拍
 // 参数说明     void
 // 使用示例     在 PIT 中断里调用 Servo_Crtl_Tick();
 // 备注信息     顺序：角度换算 -> 反馈失效判定 -> 门控 -> 目标处理 -> 位置环 -> 限幅 -> 输出
 //              角度换算是测量量，始终更新，与舵机闭环使能无关
 //              ★ err 在本函数里**始终保持真值**：死区与越限保护只决定"本拍哪一项不参与"，
 //                不再把 err 抹成 0（抹 0 会把积分一起杀掉，Servo_Err_Deg 也会变假值）
-//              数据源 ENC_ABS_ANG 由本函数所在的同一个中断（CH1, 10ms）在其之前采集，
+//              数据源 ENC_ABS_ANG 由本函数所在的同一个中断（CH1, 5ms）在其之前采集，
 //              本拍采、本拍用，反馈零滞后 —— 不要再把采集拆到别的通道去
 //--------------------------------------
 void Servo_Crtl_Tick (void)
 {
     float tar_deg;  // 本函数内的舵机目标角度（度）
     float err;      // 角度误差（度），**本拍真值，不再被死区抹成 0**
+    float ae;       // |err|
     float u_p;      // 本拍 Kp 项输出
     float u0_term;  // 本拍摩擦前馈项输出
     float i_add;    // 本拍累加进积分的量（0 = 本拍不累加）
@@ -156,6 +159,7 @@ void Servo_Crtl_Tick (void)
         Servo_Err_Deg    = 0.0f;
         Servo_Out        = 0;
         Servo_I_Sum      = 0.0f;    // 失能即清积分：重新使能时不能带着上次的积分冲击
+        Servo_U0_Dir     = 0;       // 前馈门也复位，重新使能从"关"开始
         servo_enabled    = 0;
         return;
     }
@@ -171,31 +175,35 @@ void Servo_Crtl_Tick (void)
 
     if (block)
     {
-        u_p     = 0.0f;
-        u0_term = 0.0f;
-        i_add   = 0.0f;
+        u_p      = 0.0f;
+        u0_term  = 0.0f;
+        i_add    = 0.0f;
+        Servo_U0_Dir = 0;               // 越限时把前馈门也关掉，解除后再重新开
     }
     else
     {
-        /* ---- 误差死区：只让 Kp 与 U0 **这一拍不参与** ----
-           合并成一个 if 是刻意的：两者条件完全相同，分开写容易出现"以后只改了一处"的不一致。
-           ★ U0 必须跟 Kp 用同一个门限：若这里仍按 err 符号直接加，静止时 ±0.1° 的噪声
-             会让输出在 +U0 / -U0 之间整块翻转，比原来"清零"的写法更抖。 */
-        if ((err < SERVO_ERR_DEADBAND_DEG) && (err > -SERVO_ERR_DEADBAND_DEG))
+        ae = (err >= 0.0f) ? err : -err;
+
+        /* ---- 摩擦前馈三态滞环：> BRK 开 / <= DB 关 / 中间保持上一拍 ----
+           单门限（|err| < DB 就撤 U0）在慢变目标时会每穿一次 DB 翻一次，输出跳 2×U0；
+           滞环让门在带内"开住"，输出连续。方向每拍重取 sign(err)，不沿用上一拍
+           ——峰值 50°/s 时一拍能走 0.25°，沿用旧方向会出现"满前馈往反方向推" */
         {
-            u_p     = 0.0f;
-            u0_term = 0.0f;
-        }
-        else
-        {
-            u_p     = Servo_Crtl_Kp * err;
-            u0_term = (err > 0.0f) ? Servo_Crtl_U0 : -Servo_Crtl_U0;
+            int8 s = (err >= 0.0f) ? 1 : -1;        // 本拍方向，0 归"+"侧
+
+            if (ae > SERVO_BRK_DEG)                 { Servo_U0_Dir = s; }   // 开门
+            else if (ae <= SERVO_ERR_DEADBAND_DEG)  { Servo_U0_Dir = 0; }   // 关门
+            else if (0 != Servo_U0_Dir)             { Servo_U0_Dir = s; }   // 带内门开着，只更新方向
+            /* 带内且门是关的 -> 继续关着（这就是滞环的作用） */
         }
 
-        /* ---- 积分累加门限：比 Kp 死区小一个量级，只挡纯噪声 ----
+        u_p     = (ae < SERVO_ERR_DEADBAND_DEG) ? 0.0f : (Servo_Crtl_Kp * err);
+        u0_term = (0 != Servo_U0_Dir) ? (Servo_Crtl_U0 * (float)Servo_U0_Dir) : 0.0f;
+
+        /* ---- 积分累加门限：只挡纯噪声 ----
            门限内的误差不累加，但 err 本身仍在，所以死区里积分不会被"清零"式地停掉，
            小误差才有机会攒成输出、接替 U0 的摩擦补偿职责 */
-        i_add = ((err < SERVO_I_DEADBAND_DEG) && (err > -SERVO_I_DEADBAND_DEG)) ? 0.0f : err;
+        i_add = (ae < SERVO_I_DEADBAND_DEG) ? 0.0f : err;
     }
 
     /* ---- 积分项：|err| > SERVO_I_CLR_BAND_DEG 时直接清零、不累加 ----
@@ -222,9 +230,9 @@ void Servo_Crtl_Tick (void)
     }
 
     /* ---- 位置环 + 积分 + 摩擦前馈 + 输出限幅 ----
-       u_p     = kp × err    ：经典 Kp（死区内这一拍给 0）
-       u_i     = ki × Σerr   ：消除纯 P 留下的稳态误差（背隙、齿条回弹、重力分量）
-       u0_term = u0 × sign(err) ：克服静摩擦与减速箱阻力（死区内这一拍给 0）
+       u_p     = kp × err         ：经典 Kp（死区内这一拍给 0）
+       u_i     = ki × Σerr        ：消除纯 P 留下的稳态误差（背隙、齿条回弹、重力分量）
+       u0_term = u0 × 三态门方向  ：克服静摩擦，门由 BRK/DB 滞环决定，方向跟 err
        三项都是"本拍要不要参与"各自判过，err 本身始终保持真值 */
     u = u_p + u_i + u0_term;
 

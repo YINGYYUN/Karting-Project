@@ -35,14 +35,43 @@ static void param_page_init(void)
     DynamicCreate_Menu_LimitNumber(folder_sv, "u0", &SERVO_U0, float_01_Box, 0, 3000);
     DynamicCreate_Menu_LimitNumber(folder_sv, "ki", &SERVO_KI, float_01_Box, 0, 1000);
 
+    // 路表
+    Menu_Item *folder_rt = DynamicCreate_Menu_Folder(&head, "Route");
+    DynamicCreate_Menu_LimitNumber(folder_rt, "ds", &ROUTE_DS, float_03_Box,
+                                   INS_ROUTE_DS_MIN, INS_ROUTE_DS_MAX);
+    DynamicCreate_Menu_LimitNumber(folder_rt, "v",  &ROUTE_PB_V,  float_02_Box, PB_V_MIN,  PB_V_MAX);
+    DynamicCreate_Menu_LimitNumber(folder_rt, "ld", &ROUTE_PB_LD, float_02_Box, PB_LD_MIN, PB_LD_MAX);
+    DynamicCreate_Menu_LimitNumber(folder_rt, "sm", &ROUTE_PB_SMODE, float_01_Box, 0, 1);
+
+    // 遥测（顶层文件夹）：档案选择 0 = 全量 41 路 / 1 = 标定精简 18 路
+    // ★ 切换后**无需重启**：Host_Crtl.c 每帧按 tel_sel 现算通道数与表，
+    //   帧头 COUNT 随之变化，上位机按 COUNT 自动切档案。
+    Menu_Item *folder_tel = DynamicCreate_Menu_Folder(&head, "Tele");
+    DynamicCreate_Menu_LimitNumber(folder_tel, "sel", &TEL_SEL, float_01_Box, 0, 1);
+
     key = head.first_son;   // 光标移到第一项
 }
 
 
-// 参数设置页面主入口
-int Param_Page_Menu(void)
+// 只构路表参数（Route 页的入口）
+static void param_route_page_init(void)
 {
-    param_page_init();          // 构建菜单
+    menu_reset();
+
+    Menu_Item *folder_rt = DynamicCreate_Menu_Folder(&head, "Route");
+    DynamicCreate_Menu_LimitNumber(folder_rt, "ds", &ROUTE_DS, float_03_Box,
+                                   INS_ROUTE_DS_MIN, INS_ROUTE_DS_MAX);
+    DynamicCreate_Menu_LimitNumber(folder_rt, "v",  &ROUTE_PB_V,  float_02_Box, PB_V_MIN,  PB_V_MAX);
+    DynamicCreate_Menu_LimitNumber(folder_rt, "ld", &ROUTE_PB_LD, float_02_Box, PB_LD_MIN, PB_LD_MAX);
+    DynamicCreate_Menu_LimitNumber(folder_rt, "sm", &ROUTE_PB_SMODE, float_01_Box, 0, 1);
+
+    key = head.first_son;
+}
+
+
+// 参数页公共循环（进入前菜单已建好）
+static int param_page_loop(void)
+{
     menu_show_all();            // 清屏 + 刷新
 
     while(1)
@@ -88,4 +117,20 @@ int Param_Page_Menu(void)
             }
         }
     }
+}
+
+
+// 参数设置页面主入口
+int Param_Page_Menu(void)
+{
+    param_page_init();
+    return param_page_loop();
+}
+
+
+// 路表参数入口（Route 页调用）
+int Param_Page_Route(void)
+{
+    param_route_page_init();
+    return param_page_loop();
 }

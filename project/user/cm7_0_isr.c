@@ -55,12 +55,6 @@ void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务�
     // 10ms
     key_scanner();
 
-    // ★ yaw 在 pit0_ch11_isr 里更新，这里不再处理
-
-    // ★ 角度编码器采集**不在这里**：已移到 pit0_ch1_isr（与 Servo_Crtl_Tick 同中断、同 10ms）。
-    //   它和位置环必须"同拍采、同拍用"，分在两个通道会引入 0~10ms 的相位不确定性。
-    //   周期口径仍是 10ms，ENC_ABS_OFF 的数值含义不变。
-
     // 参考计时值，自增,3000清零
     Time_Count1 = (Time_Count1 >= 3000) ? 0 : Time_Count1 + 1;
     Time_Count2 = (Time_Count2 >= 3000) ? 0 : Time_Count2 + 1;
@@ -70,14 +64,9 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
 {
     pit_isr_flag_clear(PIT_CH1);
     
-    // 10ms：转向（角度编码器的采集 + 舵机位置环）
-    // ★ 后轮测速与速度环在 pit0_ch11_isr（5ms），这里不要再调，否则编码器会被读两次
-    // ★ 角度编码器采集和 Servo_Crtl_Tick 必须在**同一个中断**里，且采集在前：
-    //   两者同为 10ms 但分属不同通道时，谁先触发不确定，Tick 可能读到上一拍的反馈
-    //   （相位差 0~10ms 随机），白白损失相位裕度。放一起才能保证"本拍采、本拍用"。
-    //   驱动是硬件 SPI_4 / SCB5 @ 8MHz，一次读 2 字节约 2µs，开销可忽略。
+    // 5ms：转向（角度编码器的采集 + 舵机位置环）
 
-    // ---- 角度编码器（360° 绝对式，转向柱侧）：10ms 采集 ----
+    // ---- 角度编码器（360° 绝对式，转向柱侧）：5ms 采集 ----
     ENC_ABS_ANG = absolute_encoder_get_location();
     ENC_ABS_OFF = absolute_encoder_get_offset();
 
@@ -103,8 +92,6 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
     #endif
 
     // ---- 转向角换算（原始读数 -> 方向盘角度）+ 舵机位置环 ----
-    // 反馈就是本拍刚采到的 ENC_ABS_ANG，零滞后。
-    // ★ Ki / U0 / I_MAX 都是按"10ms 一拍"整定的，改这个周期必须重新整定。
     Servo_Crtl_Tick();
 }
 
@@ -141,6 +128,10 @@ void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务
        必须排在 Motor_Crtl_Tick() 之后：控制律不能因 IMU 的 SPI 事务被推后。
        只更新姿态，不参与控制（yaw 目前只做显示与遥测 HOST_CH_YAW_DEG）。 */
     ins_imu_update();
+
+    /* ---- 航位推算（5ms）----
+       必须在编码器更新与 ins_imu_update() 之后：本拍要用的就是本拍的计数增量与航向。 */
+    ins_odom_update();
 
 
     ins_diag_isr_leave();       // 必须最后一句：统计的是"整条 5ms 槽"的耗时

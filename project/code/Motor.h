@@ -93,13 +93,17 @@ extern Enc_Read_t   Enc_RR_Read;            // 右后轮
 //     反馈一旦恒为 0，积分就没有回复力，表现为零目标下的低速蠕动。
 extern int16 ENC_LR_CNT;                    // 左后轮（整数计数）
 extern int16 ENC_RR_CNT;                    // 右后轮（整数计数）
+
+// 编码器单拍原始增量（整数，已含方向符号与极性，未经滑动平均）
+//   ★ 航位推算必须用这一对：滑动平均会滞后 (窗口-1)/2 拍，里程滞后于航向会让轨迹晚转
+extern int16 ENC_LR_DLT;                    // 左后轮
+extern int16 ENC_RR_DLT;                    // 右后轮
 extern float ENC_LR_CNT_F;                  // 左后轮（浮点原值，1/n 计数分辨力）
 extern float ENC_RR_CNT_F;                  // 右后轮（浮点原值，1/n 计数分辨力）
 
-// 编码器累加值全局变量 （累计值，整数计数）
-// 更多在于调试性质的观测
-extern int32 ENC_LR_SUM;                    // 左后轮
-extern int32 ENC_RR_SUM;                    // 右后轮
+// 带符号累计计数（cnt，复标 cpr / m_per_rev 用）
+extern int32 ENC_LR_POS;                    // 左后轮
+extern int32 ENC_RR_POS;                    // 右后轮
 
 // ---- 磁编码器 （SPI通信）----
 

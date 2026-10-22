@@ -108,7 +108,10 @@
    ① 参数表：队友 34 项，含 PWM 极性 / 编码器取反这类**装机时定一次**的量；
       本工程的习惯是"板载菜单测出来、代码里写死" → 参数表只留 `param_cache[]` 那 10 项
       （真正需要在线整肃的增益）。X-Macro 格式照抄，**要加参数只加一行**。
-   ② 遥测档案：队友全量档 39 通道；本模块 25 个，够看波形即可，同样只准往后加。
+   ② 遥测档案：**已与队友完全对齐**（2026-10-22）—— 全量 41 路 / 标定 18 路，
+      下标、顺序、单位、位义都照 motor_link.h，运行期由参数 `tel_sel` 切换。
+      ⚠ 也就是说"裁剪到 25 路"那个阶段结束了：本模块的通道表就是队友的表，
+      要加通道请先改队友那份（顺序即协议），再同步上位机 Channels.cs。
    ③ CMD 模式**只到"远程使能/失能"**：下行还没有"设目标"的命令，所以上位机目前还开不了车。
       骨架已齐（Mode + Link + 心跳锁存 + 刹停），将来要开车只在 host_drive_tick() 里
       多写两行目标赋值即可，**帧类型码 0x10~0x12 留给路表，别占用**。
@@ -199,37 +202,198 @@
 /*[S] 遥测通道表 [S]--------------------------------------*/
 /**********************************************************/
 
+// ★★ 2026-10-22：通道表**整套换成队友 motor_link.h 的那一套**（全量 41 路 + 标定 18 路），
+//    不再做"双档案兼容"—— 历史 30 列 CSV 作废是已知代价（见文件头"有意差异"②）。
+//    权威定义：zjc_kart_cyt4bb7-main/.../route_pp_wifi/code/motor_link.h 第 152~266 行。
+//
 // ★ 下标即协议：必须与上位机「档案」下拉框里那一档逐项对齐，**改顺序 = 改协议**。
 //   只准往后加，老下标一个不动（否则历史 CSV 的列义会整体错位）。
-//   单位一律用物理量本身的单位（deg / rps / 归一化占空比），不做定点缩放 ——
+//   单位一律用物理量本身的单位（deg / rps / % / m），不做定点缩放 ——
 //   帧里是 float32，缩放只会平白引入"口径"这一层要记的东西。
-#define HOST_CH_COUNT           (25)
+//
+// ★★ 运行期档案切换：实际发送数在 host_ch_count 里（41 或 18），由参数 `tel_sel` 每帧选：
+//      tel_sel = 0 -> 全量 41 路（下表 HOST_CH_*）
+//      tel_sel = 1 -> 标定 18 路（下表 HOST_CT_*，就是全量档里挑出的 18 项）
+//    帧头 COUNT 随之变化，上位机按 COUNT 自动切档案。切换后**无需重启**。
+#define HOST_CH_COUNT_MAX       (41)    // 全量档案通道数（缓冲按它开）
 
-#define HOST_CH_SERVO_TGT       (0)     // 舵机 施加目标角 deg（软限位夹紧 + 斜坡之后，非用户设定值）
-#define HOST_CH_SERVO_ANG       (1)     // 舵机 实际角 deg（向右为正）
-#define HOST_CH_SERVO_OUT       (2)     // 舵机 PWM duty（±10000 = ±100%）
-#define HOST_CH_SERVO_RAW       (3)     // 舵机 绝对编码器原始角 0 ~ 4095
-#define HOST_CH_LR_TGT_APP      (4)     // 后轮L 斜坡后实际目标 rps
-#define HOST_CH_LR_V            (5)     // 后轮L 实测转速 rps
-#define HOST_CH_LR_OUT          (6)     // 后轮L 输出（归一化占空比，1.0 = 100%）
-#define HOST_CH_LR_UFF          (7)     // 后轮L 前馈分量（归一化）
-#define HOST_CH_RR_TGT_APP      (8)     // 后轮R 斜坡后实际目标 rps
-#define HOST_CH_RR_V            (9)     // 后轮R 实测转速 rps
-#define HOST_CH_RR_OUT          (10)    // 后轮R 输出（归一化占空比）
-#define HOST_CH_RR_UFF          (11)    // 后轮R 前馈分量（归一化）
-#define HOST_CH_RC_CH1          (12)    // 遥控 CH1 原始值（方向盘，回中 ≈ 992）
-#define HOST_CH_RC_CH2          (13)    // 遥控 CH2 原始值（油门）
-#define HOST_CH_RC_STEER        (14)    // 遥控 方向盘指令角 deg
-#define HOST_CH_RC_THR          (15)    // 遥控 归一化油门 -1.0 ~ +1.0
-#define HOST_CH_RC_ENGAGE       (16)    // 遥控 介入状态 0 OFF / 1 STANDBY / 2 ON / 3 FAILSAFE / 4 ESTOP
-#define HOST_CH_RC_ONLINE       (17)    // 遥控 接收机状态 0/1
-#define HOST_CH_HOST_LINK       (18)    // 本链路 0 = 空闲/掉线，1 = 进行中
-#define HOST_CH_HOST_AGE_MS     (19)    // 距上次收到下行帧 ms（从未收到过 = -1）
-#define HOST_CH_SERVO_EN        (20)    // 舵机闭环使能 0/1
-#define HOST_CH_MOTOR_EN        (21)    // 后轮闭环总使能 0/1
-#define HOST_CH_SERVO_FAULT     (22)    // 舵机反馈失效锁存 0/1
-#define HOST_CH_YAW_DEG         (23)    // 偏航角 deg（来自 CM7_1 共享内存，0.01°/LSB 换算后）
-#define HOST_CH_HOST_EN         (24)    // 上位机下发的使能位图原值（见 HOST_EN_*）
+/*===================================================================================================================
+ *  ★ 队友下标 → 我方来源 对照表（41 行，逐行对齐 motor_link.h 的 CH_* 与 motor_link.c 的口径）
+ *
+ *  下标  队友宏             单位     我方来源 / 换算
+ *  ---- ------------------ -------- ------------------------------------------------------------------------------
+ *    0   CH_TARGET_L        rps      Motor_LR_Crtl.target_app
+ *    1   CH_V_L             rps      Motor_LR_Crtl.actual
+ *    2   CH_U_L             %        Motor_LR_Crtl.out    * 100.0f      ← 我方 out 是归一化 ±1，**必须 ×100**
+ *    3   CH_TARGET_R        rps      Motor_RR_Crtl.target_app
+ *    4   CH_V_R             rps      Motor_RR_Crtl.actual
+ *    5   CH_U_R             %        Motor_RR_Crtl.out    * 100.0f
+ *    6   CH_UFF_L           %        Motor_LR_Crtl.u_ff   * 100.0f
+ *    7   CH_UFF_R           %        Motor_RR_Crtl.u_ff   * 100.0f
+ *    8   CH_Z_L             rps*s    Motor_LR_Crtl.z
+ *    9   CH_Z_R             rps*s    Motor_RR_Crtl.z
+ *   10   CH_POS_L           cnt      ENC_LR_POS                    （Motor.c 的带符号累计计数）
+ *   11   CH_POS_R           cnt      ENC_RR_POS
+ *   12   CH_ONLINE          0/1      (HOST_ST_ACTIVE == Host_Crtl_State()) ? 1 : 0
+ *   13   CH_RX_AGE_MS       ms       距上次收到下行帧 ms；从未收到 = -1
+ *   14   CH_ENABLE_BITS     位图     (float)(host_enable & 0x0006)  → bit1 电机 / bit2 总使能
+ *   15   CH_SAFETY          位图     合成值，见下面 HOST_SAFETY_*（★ 近似，非等价，见注释）
+ *   16   CH_STEER_TARGET    deg      Servo_Target_Applied_Deg      （施加值，不是用户设定值）
+ *   17   CH_STEER_DELTA     deg      Servo_Angle_Deg
+ *   18   CH_STEER_U         duty     Servo_Out                     （±10000 刻度）
+ *   19   CH_STEER_EN        0/1      Servo_Crtl_Enable
+ *   20   CH_STEER_STATUS    位图     bit0 = !Servo_Enc_Fault / bit1 = Servo_Enc_Fault / bit2 = 0（无顶死判据）
+ *   21   CH_RC_ENGAGE       0~4      RC_Engage
+ *   22   CH_RC_CH1          cnt      RC_Raw_Ch1
+ *   23   CH_RC_CH2          cnt      RC_Raw_Ch2
+ *   24   CH_RC_FRAMES       计数     RC_Frames                     （Remote_Crtl.c 的全局量，见 Remote_Crtl.h）
+ *   25   CH_K_V             -        Motor_LR_Crtl.k_v
+ *   26   CH_K_Z             -        Motor_LR_Crtl.k_z
+ *   27   CH_INS_YAW         deg      ins_imu_get_yaw()
+ *   28   CH_INS_GZ          dps      ins_imu_get_gyro_z_dps()
+ *   29   CH_INS_X           m        ins_odom_get_x()               （右为正）
+ *   30   CH_INS_Y           m        ins_odom_get_y()               （前为正）
+ *   31   CH_INS_DIST        m        ins_odom_get_dist()            （累计，含倒车）
+ *   32   CH_INS_FLAGS       位图     ins_imu_flags()                （INS_ST_* 惯导状态位）
+ *   33   CH_RT_CNT          -        ins_route_get_count()
+ *   34   CH_RT_ST           位图     RT_ST 合成，见下面 HOST_RT_ST_*（低 8 位状态位 + bit8..11 槽号）
+ *   35   CH_PB_ELAT         m        route_pb_elat()
+ *   36   CH_TAR_YAW         deg      Head_Crtl_Get_Target()
+ *   37   CH_HT_SEG          -        0                             ★ 无此模块（head_test 未迁移），固定 0，非等价
+ *   38   CH_TICK_MS         ms       Sys_Tick_Ms
+ *   39   CH_INS_FRZ         deg      ins_imu_zupt_frz_deg()
+ *   40   CH_INS_STATIC      0/1      (ins_imu_flags() & INS_ST_STATIC) ? 1 : 0
+ *=================================================================================================================*/
+#define HOST_CH_TARGET_L        (0)     // 目标转速 左轮 rps
+#define HOST_CH_V_L             (1)     // 实测转速 左轮 rps
+#define HOST_CH_U_L             (2)     // 实际输出 左轮 %（带符号；我方 out×100）
+#define HOST_CH_TARGET_R        (3)     // 目标转速 右轮 rps
+#define HOST_CH_V_R             (4)     // 实测转速 右轮 rps
+#define HOST_CH_U_R             (5)     // 实际输出 右轮 %
+#define HOST_CH_UFF_L           (6)     // 前馈分量 左轮 %
+#define HOST_CH_UFF_R           (7)     // 前馈分量 右轮 %
+#define HOST_CH_Z_L             (8)     // 积分状态 左轮 rps*s
+#define HOST_CH_Z_R             (9)     // 积分状态 右轮 rps*s
+#define HOST_CH_POS_L           (10)    // 带符号累计计数 左轮 cnt
+#define HOST_CH_POS_R           (11)    // 带符号累计计数 右轮 cnt
+#define HOST_CH_ONLINE          (12)    // 1 = 链路活着
+#define HOST_CH_RX_AGE_MS       (13)    // 距上次收到下行帧 ms（从未收到 = -1）
+#define HOST_CH_EN_BITS         (14)    // 使能位图 bit1=电机 bit2=总使能
+#define HOST_CH_SAFETY          (15)    // 保护状态位图（0 = 一切正常）；★ 近似映射，见 HOST_SAFETY_*
+
+// --- 转向(16~20) ---
+#define HOST_CH_STEER_TGT       (16)    // ★ 实际施加的目标转角 deg（软限位夹紧 + 斜坡之后）
+#define HOST_CH_STEER_DEG       (17)    // 实测转角 deg（向右为正）
+#define HOST_CH_STEER_U         (18)    // 转向电机输出 duty（±10000）
+#define HOST_CH_STEER_EN        (19)    // 转向内环使能 0/1
+#define HOST_CH_STEER_ST        (20)    // 转向状态 bit0 自检通过 / bit1 反馈失效 / bit2 顶死（我方位2恒 0）
+
+// --- 遥控(21~24) ---
+#define HOST_CH_RC_ENG          (21)    // 接管状态 0 OFF/1 STANDBY/2 ON/3 FAILSAFE/4 ESTOP
+#define HOST_CH_RC_CH1          (22)    // CH1 原始值（方向盘，回中≈992）
+#define HOST_CH_RC_CH2          (23)    // CH2 原始值（油门）
+#define HOST_CH_RC_FRAMES       (24)    // 累计接收机帧数（不涨 = 接收机没在发）
+
+// --- 增益回读(25~26) ---
+#define HOST_CH_K_V             (25)    // 本拍实际生效的比例增益 k_v（取左轮，两轮同源整定）
+#define HOST_CH_K_Z             (26)    // 本拍实际生效的积分增益 k_z
+
+// --- 惯导(27~32) ---
+#define HOST_CH_YAW             (27)    // 累积航向 deg（可超 ±360）
+#define HOST_CH_GZ              (28)    // 陀螺 Z 角速度 dps（去零偏后）
+#define HOST_CH_INS_X           (29)    // 航位推算 x m（向右为正）
+#define HOST_CH_INS_Y           (30)    // 航位推算 y m（向前为正）
+#define HOST_CH_INS_DIST        (31)    // 累计里程 m（只累加绝对值，倒车也增）
+#define HOST_CH_INS_FLAGS       (32)    // 惯导状态位图（INS_ST_*）
+
+// --- 路表/回放(33~35) ---
+#define HOST_CH_RT_CNT          (33)    // 路表点数（当前 RAM 里的表）
+#define HOST_CH_RT_ST           (34)    // 路表状态位 | (槽号 << 8)
+#define HOST_CH_PB_ELAT         (35)    // 回放横向误差 m（正 = 车在参考线右侧）
+
+// --- 航向测试(36~37) ---
+#define HOST_CH_TAR_YAW         (36)    // ★ 本拍目标航向 deg（航向外环的输入）
+#define HOST_CH_HT_SEG          (37)    // 航向测试段号 —— ★ 我方无此模块（head_test 未迁移），固定 0，非等价
+
+// --- 诊断三件套(38~40) ---
+#define HOST_CH_TICK_MS         (38)    // 车端上电毫秒数（Sys_Tick_Ms）
+#define HOST_CH_INS_FRZ         (39)    // ZUPT 冻结期间被丢弃的转角 deg（累计，只读不清）
+#define HOST_CH_INS_STATIC      (40)    // 1 = 本拍被判"静止"（航向正在被冻结）
+
+/*===================================================================================================================
+ *  ★ SAFETY 位图（HOST_CH_SAFETY）—— **近似映射，非等价**
+ *
+ *  队友的 spd_safety 有一套完整判据；本工程只做"把已有的量映射成同名的位"，
+ *  **不新增任何安全判据**。因此下面几位的含义只是"我方有依据的近似"：
+ *      0x0001 上电以来没收到过下行帧      !host_ever_rx
+ *      0x0002 ★ 固定 0 —— 我方无对应判据（原义与队友不同，宁可不置）
+ *      0x0004 失联（CMD 模式心跳超时锁存） Host_Lost
+ *      0x0008 主循环心跳丢失              Motor_Crtl_HB_Age_Ms() > MOTOR_CRTL_HB_TIMEOUT_MS
+ *      0x0010 ★ 固定 0 —— 我方无对应判据
+ *      0x0020 本拍被限幅                  Motor_LR_Crtl.sat || Motor_RR_Crtl.sat
+ *      0x0040 遥控接管中                  RC_ENGAGE_ON == RC_Engage
+ *      0x0080 遥控急停                    RC_ENGAGE_ESTOP == RC_Engage
+ *  其余位一律 0。上位机只按"0 = 一切正常"使用，逐位含义请对照本表，**不要当成队友那套**。
+ *=================================================================================================================*/
+#define HOST_SAFETY_NEVER_RX    (0x0001)    // 上电以来没收到过下行帧
+#define HOST_SAFETY_RESV_0002   (0x0002)    // ★ 固定 0（我方无对应判据）
+#define HOST_SAFETY_LOST        (0x0004)    // 失联（Host_Lost 锁存）
+#define HOST_SAFETY_HB_LOST     (0x0008)    // 主循环心跳丢失
+#define HOST_SAFETY_RESV_0010   (0x0010)    // ★ 固定 0（我方无对应判据）
+#define HOST_SAFETY_SAT         (0x0020)    // 本拍被限幅
+#define HOST_SAFETY_RC_ON       (0x0040)    // 遥控接管中
+#define HOST_SAFETY_RC_ESTOP    (0x0080)    // 遥控急停
+
+/*===================================================================================================================
+ *  ★ 路表状态位（HOST_CH_RT_ST）—— 低 8 位状态位 + bit8..11 槽号
+ *      0x0001 录制中 / 0x0002 FULL / 0x0004 有表 / 0x0008 写盘中 /
+ *      0x0010 写失败 / 0x0020 回放中 / 0x0040 表来自 Flash / 0x0080 固定 0
+ *      bit8..11 = (slot & 0x0F)
+ *=================================================================================================================*/
+#define HOST_RT_ST_RUNNING      (0x0001)
+#define HOST_RT_ST_FULL         (0x0002)
+#define HOST_RT_ST_HAS          (0x0004)
+#define HOST_RT_ST_SAVING       (0x0008)
+#define HOST_RT_ST_SAVE_FAIL    (0x0010)
+#define HOST_RT_ST_PLAYBACK     (0x0020)
+#define HOST_RT_ST_FROM_FLASH   (0x0040)
+#define HOST_RT_ST_RESV_0080    (0x0080)    // 固定 0
+
+/*===================================================================================================================
+ *  ★ 标定精简档案（18 路）—— 下标严格照队友 motor_link.h 的 CT_*
+ *
+ *  只在"实车落地标定"时用，由参数 `tel_sel = 1` 切进来：18 路 = 93 B/帧，
+ *  同样的链路能把周期压到 5~10 ms（全量 41 路是 185 B）。
+ *
+ *  ⚠ 下标就是协议：上位机的「标定·精简」档案必须与这张表逐项对齐。
+ *  ⚠ 来源与全量档**完全一致**，只是挑出这 18 项（Host_Crtl.c 的 host_calib_from_full 表）。
+ *  ⚠ 预留位(15) 先留着：以后要加"电流 / 母线电压 / 舵机温度"这类就往后放，不要插队。
+ *=================================================================================================================*/
+#define HOST_CT_COUNT           (18)
+
+#define HOST_CT_TARGET_L        (0)     // 速度环目标转速 左轮 rps
+#define HOST_CT_V_L             (1)     // 速度环实际转速 左轮 rps
+#define HOST_CT_U_L             (2)     // 左电机实际 PWM %（带符号）
+#define HOST_CT_TARGET_R        (3)     // 速度环目标转速 右轮 rps
+#define HOST_CT_V_R             (4)     // 速度环实际转速 右轮 rps
+#define HOST_CT_U_R             (5)     // 右电机实际 PWM %
+#define HOST_CT_STEER_TGT       (6)     // ★ 舵机角度环实际施加的目标角 deg（不是上位机写的命令）
+#define HOST_CT_STEER_DELTA     (7)     // 舵机角度环实际角 deg
+#define HOST_CT_STEER_U         (8)     // 舵机 PWM（duty，-10000~10000）
+#define HOST_CT_ONLINE          (9)     // 链路在线 0/1
+#define HOST_CT_ENABLE          (10)    // 使能位图
+#define HOST_CT_SAFETY          (11)    // 保护位图（0x40 = 本地(遥控)接管中）
+#define HOST_CT_STEER_EN        (12)    // 转向内环使能 0/1
+#define HOST_CT_STEER_ST        (13)    // 转向状态：bit0 自检通过 / bit1 反馈失效 / bit2 顶死
+#define HOST_CT_OL_EN           (14)    // 开环模式 0/1 —— ★ 我方无开环档，固定发 0（非等价）
+#define HOST_CT_RESV0           (15)    // 预留位（扩展用，别占用）—— 固定发 0
+#define HOST_CT_K_V             (16)    // 本拍实际生效的比例增益 k_v
+#define HOST_CT_K_Z             (17)    // 本拍实际生效的积分增益 k_z
+
+// `tel_sel` 的取值（参数表 ID 15，见下面 HOST_PARAM_TABLE 与 Param_Storage.h 的 TEL_SEL_IDX）
+#define HOST_TEL_SEL_FULL       (0.0f)  // 0 = 全量 41 路
+#define HOST_TEL_SEL_CALIB      (1.0f)  // 1 = 标定精简 18 路
+#define HOST_TEL_SEL_THRESH     (0.5f)  // ≥ 它就算"标定档"（参数是连续浮点，先二值化再用）
 
 /**********************************************************/
 /*----------------------------------------[E] 遥测通道表 [E]*/
@@ -255,6 +419,10 @@
 // ★ 来源是 `param_cache[]`（见 Param_Storage.h），**ID 就用缓存的索引**：
 //   SET_PARAM 写完之后调 Flash_SyncTo_Param() 推到实际控制器 —— 那是本工程既定的唯一同步点。
 //   所以这里**不要**直接指向 Motor_LR_Crtl.k_v 之类的运行期副本，两处默认值会打架。
+//
+// ★ 最后一项 tel_sel 是**遥测档案选择**（0 = 全量 41 路 / 1 = 标定 18 路）：
+//   它不经过 Flash_SyncTo_Param（没有对应的控制器副本），由 Host_Crtl.c 每帧直接读 param_cache。
+//   上位机拖这个滑条就能让车端切档案，切完 COUNT 立刻变，无需重启。
 #define HOST_PARAM_TABLE(X)                                                                                                   \
     X( 0, "inv_K_l", "后轮L|前馈 1/K",    0.000f,     0.500f,    0.1548f, "-",    0.001f, &param_cache[MOTOR_LR_INV_K_IDX])      \
     X( 1, "u0_l",    "后轮L|摩擦截距 u0", 0.000f,     0.300f,    0.057f,  "-",    0.001f, &param_cache[MOTOR_LR_U0_IDX])         \
@@ -264,9 +432,14 @@
     X( 5, "u0_r",    "后轮R|摩擦截距 u0", 0.000f,     0.300f,    0.057f,  "-",    0.001f, &param_cache[MOTOR_RR_U0_IDX])         \
     X( 6, "k_v_r",   "后轮R|比例 k_v",    0.000f,     2.000f,    0.164f,  "-",    0.005f, &param_cache[MOTOR_RR_KV_IDX])         \
     X( 7, "k_z_r",   "后轮R|积分 k_z",    0.000f,    20.000f,    0.512f,  "-",    0.010f, &param_cache[MOTOR_RR_KZ_IDX])         \
-    X( 8, "kp_s",    "舵机|比例 Kp",      0.000f,  1000.000f,  500.000f,  "-",    1.000f, &param_cache[SERVO_KP_IDX])            \
-    X( 9, "u0_s",    "舵机|摩擦前馈 U0",  0.000f, 10000.000f, 1900.000f,  "-",   10.000f, &param_cache[SERVO_U0_IDX])       \
-    X(10, "ki_s",    "舵机|积分 Ki",      0.000f,  1000.000f,   50.000f,  "-",    1.000f, &param_cache[SERVO_KI_IDX])
+    X( 8, "kp_s",    "舵机|比例 Kp",      0.000f,  1000.000f,  400.000f,  "-",    1.000f, &param_cache[SERVO_KP_IDX])            \
+    X( 9, "u0_s",    "舵机|摩擦前馈 U0",  0.000f, 10000.000f, 1700.000f,  "-",   10.000f, &param_cache[SERVO_U0_IDX])       \
+    X(10, "ki_s",    "舵机|积分 Ki",      0.000f,  1000.000f,   25.000f,  "-",    1.000f, &param_cache[SERVO_KI_IDX])            \
+    X(11, "rt_ds",   "路表|采样点距",      0.020f,    0.200f,    0.050f,  "m",    0.010f, &param_cache[ROUTE_DS_IDX])            \
+    X(12, "pb_v",    "回放|车速",          0.000f,    2.000f,    0.000f,  "m/s",  0.010f, &param_cache[PB_V_IDX])               \
+    X(13, "pb_ld",   "回放|前视距离",      0.200f,    2.000f,    0.800f,  "m",    0.010f, &param_cache[PB_LD_IDX])             \
+    X(14, "pb_smode","回放|转向通道0航向1直给", 0.000f,   1.000f,    0.000f, "-",    1.000f, &param_cache[PB_SMODE_IDX])        \
+    X(15, "tel_sel", "遥测|档案 0全量41 1标定18", 0.000f, 1.000f,   0.000f, "-",    1.000f, &param_cache[TEL_SEL_IDX])
 
 /**********************************************************/
 /*----------------------------------------[E] 参数表 [E]--*/
@@ -281,7 +454,7 @@
 //   模块把包收下了没有、发出去没有，车端都看不见；只有真收到上位机的帧才能证明"对面在"。
 //   ⚠ 因此上位机必须定期发点什么。KartHost 会发 PING，本模块回 ACK。
 //     若上位机只收不发，本模块会一直停在 OFFLINE（这不算 bug，是判据本身的含义）。
-// ★★ 2026-10-17 起这个三态**只给遥测通道 HOST_CH_HOST_LINK 用**，屏幕的 LINK 行不再用它：
+// ★★ 2026-10-17 起这个三态**只给遥测通道 HOST_CH_ONLINE 用**，屏幕的 LINK 行不再用它：
 //   屏幕要区分"UP 模式在发"和"CMD 模式心跳正常"，还得显示锁存，见 Host_Crtl.c 的 host_link_text()。
 //   两者故意不同源：遥测通道的语义必须稳定（上位机与历史 CSV 都依赖它），
 //   而屏幕上给人看的是"现在处于哪个阶段"。
@@ -375,7 +548,7 @@ void    Host_Crtl_Release    (void);
 //   在那里按 BACK 取消 = 直接退回主菜单，**不会**进入本页
 int     Host_Crtl_Page       (void);
 
-// 状态查询（遥测通道 HOST_CH_HOST_LINK 用它；**屏幕的 LINK 行不用**，理由见 HOST_ST_* 段）
+// 状态查询（遥测通道 HOST_CH_ONLINE 用它；**屏幕的 LINK 行不用**，理由见 HOST_ST_* 段）
 uint8   Host_Crtl_State      (void);        // 取 HOST_ST_IDLE / ACTIVE / OFFLINE
 uint8   Host_Crtl_Err        (void);        // 最近一次 Connect 的错误码
 uint32  Host_Crtl_Tx_Count   (void);        // 已成功交给模块的遥测帧数
