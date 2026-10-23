@@ -53,22 +53,6 @@ static void param_page_init(void)
 }
 
 
-// 只构路表参数（Route 页的入口）
-static void param_route_page_init(void)
-{
-    menu_reset();
-
-    Menu_Item *folder_rt = DynamicCreate_Menu_Folder(&head, "Route");
-    DynamicCreate_Menu_LimitNumber(folder_rt, "ds", &ROUTE_DS, float_03_Box,
-                                   INS_ROUTE_DS_MIN, INS_ROUTE_DS_MAX);
-    DynamicCreate_Menu_LimitNumber(folder_rt, "v",  &ROUTE_PB_V,  float_02_Box, PB_V_MIN,  PB_V_MAX);
-    DynamicCreate_Menu_LimitNumber(folder_rt, "ld", &ROUTE_PB_LD, float_02_Box, PB_LD_MIN, PB_LD_MAX);
-    DynamicCreate_Menu_LimitNumber(folder_rt, "sm", &ROUTE_PB_SMODE, float_01_Box, 0, 1);
-
-    key = head.first_son;
-}
-
-
 // 参数页公共循环（进入前菜单已建好）
 static int param_page_loop(void)
 {
@@ -124,13 +108,5 @@ static int param_page_loop(void)
 int Param_Page_Menu(void)
 {
     param_page_init();
-    return param_page_loop();
-}
-
-
-// 路表参数入口（Route 页调用）
-int Param_Page_Route(void)
-{
-    param_route_page_init();
     return param_page_loop();
 }

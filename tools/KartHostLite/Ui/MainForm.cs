@@ -241,7 +241,9 @@ public sealed class MainForm : Form
         _stLoss = new ToolStripStatusLabel("丢包 --") { ForeColor = Theme.TextDim };
         _stBw = new ToolStripStatusLabel("带宽 --") { ForeColor = Theme.TextDim };
         _stCrc = new ToolStripStatusLabel("CRC 错 0") { ForeColor = Theme.TextDim };
-        _stProfile = new ToolStripStatusLabel("档案 --") { ForeColor = Theme.TextDim };
+        // ★ 档案一格：初始值直接取当前档案。不能指望 UpdateProfileTexts 来填 ——
+        //   它在本构造函数更早的位置（BuildStatusBar 之前）就跑过了，那时这个标签还不存在。
+        _stProfile = new ToolStripStatusLabel($"档案 {Defaults.Current.Name}（{Defaults.Current.Count}）") { ForeColor = Theme.TextDim };
         _stDirty = new ToolStripStatusLabel("参数改动 0") { ForeColor = Theme.Warn };
 
         _status.Items.AddRange(new ToolStripItem[]
@@ -371,11 +373,27 @@ public sealed class MainForm : Form
         // 波形与轨迹叠在同一块区域里，靠 Visible 切换（各自 Dock=Fill）
         _waveDock = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
 
-        _track = new TrackPanel { Dock = DockStyle.Fill, Visible = false, OdomXy = Defaults.Current.OdomXy };
+        _track = new TrackPanel
+        {
+            Dock = DockStyle.Fill,
+            Visible = false,
+            Store = _store,                 // ★ 与波形共用同一份数据（只读视图，不复制）
+            OdomXy = Defaults.Current.OdomXy,
+        };
 
-        _btnTrackClear = new Button { Text = "清空", Width = Dpi.Px(52), Height = Dpi.Px(24), Visible = false, Parent = _waveHost };
-        _btnTrackPause = new Button { Text = "暂停", Width = Dpi.Px(52), Height = Dpi.Px(24), Visible = false, Parent = _waveHost };
-        _ckTrackIsometric = new CheckBox { Text = "等比 1:1", Checked = true, AutoSize = true, Visible = false, Parent = _waveHost, ForeColor = Theme.Text, BackColor = Theme.Bg };
+        // ★ 三个小控件做成 **_track 的子控件**（不是 _waveHost 的兄弟）：
+        //   兄弟会被 Dock=Fill 的 _track 盖住（后加的在前），而且 _track 隐藏时还得逐个跟着隐藏。
+        //   挂成子控件以后，"跟着显隐"和"永远在上面"这两件事都是白送的。
+        _btnTrackClear = new Button { Text = "清空", Width = Dpi.Px(52), Height = Dpi.Px(24) };
+        _btnTrackPause = new Button { Text = "暂停", Width = Dpi.Px(52), Height = Dpi.Px(24) };
+        _ckTrackIsometric = new CheckBox
+        {
+            Text = "等比 1:1",
+            Checked = true,
+            AutoSize = true,
+            ForeColor = Theme.Text,
+            BackColor = Theme.Canvas,
+        };
         _btnTrackClear.Click += (_, __) => _track.Clear();
         _btnTrackPause.Click += (_, __) =>
         {
@@ -383,20 +401,11 @@ public sealed class MainForm : Form
             _btnTrackPause.Text = _track.Paused ? "继续" : "暂停";
         };
         _ckTrackIsometric.CheckedChanged += (_, __) => _track.Isometric = _ckTrackIsometric.Checked;
-        // 三个小控件挂在 _waveHost 上、锚在右上角（不放 bar 里，免得把 bar 挤爆）
-        _btnTrackClear.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _btnTrackPause.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        _ckTrackIsometric.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        void placeTrackBar()
-        {
-            int right = _waveHost.ClientSize.Width - Dpi.Px(8);
-            int y = Dpi.Px(38);
-            _ckTrackIsometric.Location = new Point(right - Dpi.Px(80), y + Dpi.Px(4));
-            _btnTrackPause.Location = new Point(right - Dpi.Px(80) - Dpi.Px(58), y);
-            _btnTrackClear.Location = new Point(right - Dpi.Px(80) - Dpi.Px(58) - Dpi.Px(58), y);
-        }
-        _waveHost.Resize += (_, __) => { if (_trackMode) placeTrackBar(); };
-        _waveHost.Layout += (_, __) => { if (_trackMode) placeTrackBar(); };
+        _track.Controls.Add(_btnTrackClear);
+        _track.Controls.Add(_btnTrackPause);
+        _track.Controls.Add(_ckTrackIsometric);
+        _track.Resize += (_, __) => PlaceTrackBar();
+        Theme.Apply(_track);
 
         _waveHost.Controls.Add(_waveDock);   // Fill 先加
         _waveHost.Controls.Add(_track);
@@ -486,6 +495,21 @@ public sealed class MainForm : Form
     internal void SetLayoutForTest(int n)
     {
         if (n == 1 || n == 2 || n == 4) ApplyLayout(n);
+        PerformLayout();
+    }
+
+    /// <summary>给 --shot-form / --shot-demo 用：强制切档案，检查标定 18 路那套界面有没有崩</summary>
+    internal void SetProfileForTest(ChannelProfile p)
+    {
+        if (p == null) return;
+        if (Defaults.Select(p)) OnProfileChanged(p);
+        PerformLayout();
+    }
+
+    /// <summary>给 --shot-form / --shot-demo 用：进/出 odom 轨迹图，检查新版面</summary>
+    internal void SetTrackModeForTest(bool on)
+    {
+        SetTrackMode(on);
         PerformLayout();
     }
 
@@ -1084,22 +1108,23 @@ public sealed class MainForm : Form
         _track.Visible = on;
         _btnTrack.Text = on ? "波形图" : "轨迹图";
 
-        _btnTrackClear.Visible = on;
-        _btnTrackPause.Visible = on;
-        _ckTrackIsometric.Visible = on;
-
         if (on)
         {
             _track.OdomXy = Defaults.Current.OdomXy;
-            int right = _waveHost.ClientSize.Width - Dpi.Px(8);
-            int y = Dpi.Px(38);
-            _ckTrackIsometric.Location = new Point(right - Dpi.Px(80), y + Dpi.Px(4));
-            _btnTrackPause.Location = new Point(right - Dpi.Px(80) - Dpi.Px(58), y);
-            _btnTrackClear.Location = new Point(right - Dpi.Px(80) - Dpi.Px(58) - Dpi.Px(58), y);
-            _btnTrackClear.BringToFront();
-            _btnTrackPause.BringToFront();
-            _ckTrackIsometric.BringToFront();
+            PlaceTrackBar();
         }
+    }
+
+    /// <summary>把「清空 / 暂停 / 等比」摆到轨迹面板右上角（它们都是 _track 的子控件）</summary>
+    private void PlaceTrackBar()
+    {
+        if (_track == null) return;
+
+        int right = _track.ClientSize.Width - Dpi.Px(10);
+        int y = Dpi.Px(8);
+        _ckTrackIsometric.Location = new Point(right - Dpi.Px(84), y + Dpi.Px(3));
+        _btnTrackPause.Location = new Point(right - Dpi.Px(84) - Dpi.Px(58), y);
+        _btnTrackClear.Location = new Point(right - Dpi.Px(84) - Dpi.Px(58) - Dpi.Px(58), y);
     }
 
     /// <summary>布局自查（--shot-form 用）：把关键尺寸打出来，避免"看着像坏的"和"真坏了"分不清</summary>

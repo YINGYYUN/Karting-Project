@@ -855,6 +855,9 @@ static void host_rx_feed (const uint8 *buf, uint16 len)
 //   两边最终都置同一个 `wifi_spi_inited`，所以谁先连上，另一个都能直接复用（不再重复 init）。
 
 // [三级界面]WiFi 候选列表
+//   ★ 末尾多一项 SKIP：不连接（已连时用它关掉上行）。光标可选项 = 候选数 + 1
+#define HOST_WIFI_SEL_COUNT     ((uint8)(HOST_WIFI_COUNT + 1u))
+
 static void host_wifi_ui (void)
 {
     uint8 i;
@@ -867,7 +870,10 @@ static void host_wifi_ui (void)
         ips200_show_string(10, (uint16)(48 + 16 * i), host_wifi_list[i].ssid);
     }
 
-    ips200_show_string(10, 128, "CONFIRM: connect");
+    // SKIP 紧跟在候选后面（候选超过 4 条时要同时下移下面两行提示）
+    ips200_show_string(10, (uint16)(48 + 16 * HOST_WIFI_COUNT), "SKIP");
+
+    ips200_show_string(10, 128, "CONFIRM: select");
     ips200_show_string(10, 144, "BACK: cancel");
 }
 
@@ -902,12 +908,14 @@ static uint8 host_wifi_open (uint8 idx)
 //--------------------------------------
 // 函数简介     ★★ 全工程统一的 WiFi 选择连接界面（Host 页进门 / 调试页 WIFI-SPI 共用）
 // 参数说明     void
-// 返回参数     HOST_OK = 已连上；HOST_ERR_NOT_INIT = 用户按 BACK 取消
-// 使用示例     Host_Crtl_Connect() 内部；Debug.c 的调试页第 1 项
+// 返回参数     HOST_OK = 已连上；HOST_ERR_NOT_INIT = 用户按 BACK 取消，或选了 SKIP
+// 使用示例     Host_Crtl_Connect() 内部；Debug.c 的调试页第 1 项；Route 页的 HOST 项
 // 备注信息     ★ 阻塞界面：WiFi 最长十几秒，只能在按键处调用。
 //              连上**直接返回**（本界面会把整屏清掉，调用者随后自己重画）；
 //              失败则留在本界面，换一个热点或再试；BACK 取消
 //              ★ 未连时弹本界面；已连时（只可能来自调试页）也允许进来看一眼并换网络
+//              ★ 最后一项 SKIP = 不连接；已连时选它会 `Host_Crtl_Set_Link(OFF)` 关掉上行，
+//                所以本界面兼作开/关入口（Route 页就靠这个关上行）
 //--------------------------------------
 uint8 Host_Crtl_WiFi_Select (void)
 {
@@ -931,18 +939,25 @@ uint8 Host_Crtl_WiFi_Select (void)
         {
             key_clear_state(KEY_UP);
             key_pressed = 1;
-            sel = (0 == sel) ? (uint8)(HOST_WIFI_COUNT - 1) : (uint8)(sel - 1);
+            sel = (0 == sel) ? (uint8)(HOST_WIFI_SEL_COUNT - 1) : (uint8)(sel - 1);
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
         {
             key_clear_state(KEY_DOWN);
             key_pressed = 1;
             sel ++;
-            if (sel >= HOST_WIFI_COUNT) { sel = 0; }
+            if (sel >= HOST_WIFI_SEL_COUNT) { sel = 0; }
         }
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
             key_clear_state(KEY_CONFIRM);
+
+            // SKIP：不连接。已连过就顺手把上行关掉（本界面兼作开/关入口）
+            if (sel >= HOST_WIFI_COUNT)
+            {
+                Host_Crtl_Set_Link(HOST_LINK_OFF);
+                return HOST_ERR_NOT_INIT;
+            }
 
             ips200_show_string(10, 176, "connecting...     ");
             ret = host_wifi_open(sel);
@@ -964,7 +979,7 @@ uint8 Host_Crtl_WiFi_Select (void)
         if (key_pressed)
         {
             key_pressed = 0;
-            for (i = 0; i < HOST_WIFI_COUNT; i ++)
+            for (i = 0; i < HOST_WIFI_SEL_COUNT; i ++)
             {
                 ips200_show_string(0, (uint16)(48 + 16 * i), " ");
             }

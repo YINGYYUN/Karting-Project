@@ -85,7 +85,11 @@ public sealed class TrackPanel : Control
             return;
         }
 
-        if (Store == null) return;
+        if (Store == null || Store.Count == 0)
+        {
+            CenterNote(g, pw, ph, "等待数据…（车端进 Host 页 + 打开 Host Link 后推一下车）");
+            return;
+        }
 
         int n = Store.Snapshot(OdomXy[0], _vx, _tx, ChannelStore.Capacity);
         int m = Store.Snapshot(OdomXy[1], _vy, _ty, ChannelStore.Capacity);

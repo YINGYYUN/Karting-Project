@@ -81,8 +81,17 @@ public sealed class ChannelProfile
 /// </summary>
 public static class Defaults
 {
-    /// <summary>当前生效的档案。切换只走 <see cref="Select"/>。</summary>
-    public static ChannelProfile Current { get; private set; } = Full41;
+    /// <summary>
+    /// 当前生效的档案。切换只走 <see cref="Select"/>。
+    ///
+    /// <para>⚠ **不能**写成 <c>= Full41</c> 的自动属性初始化：C# 的静态字段初始化按**书写顺序**执行，
+    /// 而 <see cref="Full41"/> 是写在本类后面的静态字段 —— 那样初始化时它还是 null，
+    /// <see cref="Current"/> 会得到一个 null，然后在第一次读 <c>Current.Name</c> 时抛 NullReferenceException
+    /// （症状：一启动就崩在窗口构造函数里）。所以这里用延迟初始化。</para>
+    /// </summary>
+    public static ChannelProfile Current => _cur ??= Full41;
+
+    private static ChannelProfile _cur;
 
     /// <summary>
     /// 按帧头 COUNT 选档案。返回 <c>null</c> = 未知档案（调用方应丢帧并提示）。
@@ -96,7 +105,7 @@ public static class Defaults
     public static bool Select(ChannelProfile p)
     {
         if (p == null || ReferenceEquals(p, Current)) return false;
-        Current = p;
+        _cur = p;
         return true;
     }
 

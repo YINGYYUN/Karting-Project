@@ -301,20 +301,50 @@ public sealed class WavePanel : Control
     {
         using var f = new Font("Consolas", 8f);
         using var b = new SolidBrush(Theme.TextDim);
-        int y = PadTop + 4;
-        int rightX = PadLeft + (Width - PadLeft - PadRight) - 8;
+
+        // ★ 行距必须用**字体的行高**，不能用上一行的 MeasureString().Height：
+        //   GDI+ 对同一个字体、不同字符串返回的高度会差几个像素（取决于有没有下伸部），
+        //   逐行相加就变成"有的行挤在一起"。换成 41 路档案后通道名长短差得更远，更明显。
+        float lineAdvance = Math.Max(f.GetHeight(g), 14f);
+        int adv = (int)Math.Ceiling(lineAdvance) + 2;
+
+        // 先量一遍：宽度取最长那行，高度 = 行数 × 行距。
+        // ★ 为什么要先量：图例画在图的**右上角内部**，而转速/输出这类量的曲线正好在最上面
+        //   （值域 1 rps 附近就是屏幕顶部），不垫一块底就变成"文字和曲线叠在一起"——
+        //   2026-10-22 换 41 路档案后 target_r / uff_l 那几行就是这么糊掉的。
+        var entries = new List<(string Text, Color Color, float Width)>();
+        float maxW = 0;
         foreach (int ch in Ordered)
         {
             float val = Store.Latest(ch);
             string vs = float.IsNaN(val) ? "  --  " : val.ToString("0.##");
             string txt = $"{Defaults.ChannelName(ch)}  {vs}{Defaults.ChannelUnit(ch)}";
-            var sz = g.MeasureString(txt, f);
-            float x = rightX - sz.Width;
-            using (var pen = new Pen(Theme.CurveOf(ch), 2.5f))
-                g.DrawLine(pen, x - 14, y + sz.Height / 2, x - 3, y + sz.Height / 2);
+            float w = g.MeasureString(txt, f).Width;
+            entries.Add((txt, Theme.CurveOf(ch), w));
+            if (w > maxW) maxW = w;
+            if (PadTop + 4 + entries.Count * adv > Height - 24) break;
+        }
+        if (entries.Count == 0) return;
+
+        int rightX = PadLeft + (Width - PadLeft - PadRight) - 8;
+        float left = rightX - maxW - 18;
+        float top = PadTop + 2;
+        int boxW = (int)(rightX - left) + 4;
+        int boxH = entries.Count * adv + 2;
+
+        // ★ 底色必须**完全不透明**：先试过 232/255，剩下的 9% 足以让底下擦过去的曲线
+        //   （青色/红色那种高亮的尤其明显）在文字上留一道细线，5 倍放大就看得一清二楚。
+        using (var fill = new SolidBrush(Theme.Bg))
+            g.FillRectangle(fill, (int)left - 2, (int)top - 1, boxW, boxH);
+
+        int y = (int)top + 1;
+        foreach (var (txt, color, w) in entries)
+        {
+            float x = rightX - w;
+            using (var pen = new Pen(color, 2.5f))
+                g.DrawLine(pen, x - 14, y + lineAdvance / 2, x - 3, y + lineAdvance / 2);
             g.DrawString(txt, f, b, x, y);
-            y += (int)sz.Height + 1;
-            if (y > Height - 24) break;
+            y += adv;
         }
     }
 

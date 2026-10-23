@@ -17,7 +17,7 @@
  *  一、配置
  *=================================================================================================================*/
 #define INS_ROUTE_MAX_POINTS    (INS_RT_SLOT_CAPACITY)      /* = 2048 */
-#define INS_ROUTE_DS_DEFAULT    (0.05f)                     /* 米，单槽 102 m */
+#define INS_ROUTE_DS_DEFAULT    (0.10f)                     /* 米，默认点距（= 队友），单槽 2048 点 ≈ 205 m */
 #define INS_ROUTE_DS_MIN        (0.02f)
 #define INS_ROUTE_DS_MAX        (0.20f)
 

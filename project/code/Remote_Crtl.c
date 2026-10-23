@@ -23,8 +23,6 @@ volatile uint8  RC_Sw6       = 0;
 volatile uint8  RC_Online    = 0;
 volatile uint8  RC_Engage    = RC_ENGAGE_OFF;
 
-volatile uint16 RC_Raw_Ch3  = 0;
-
 // ★★ 累计接收机帧数（导出给遥测通道 HOST_CH_RC_FRAMES）。
 //    只由 Remote_Crtl_Update() 消费 finsh_flag 时自增 —— 遥控页不再自己数一遍，
 //    否则两个消费者抢同一个 finsh_flag：谁先清谁得，另一个永远数不到（症状是
@@ -40,8 +38,7 @@ volatile uint32 RC_Frames   = 0;
 /*[S] 方向盘信号整形 [S]----------------------------------*/
 /**********************************************************/
 
-static uint8  s_ch_bad    = 0;          // 通道掉线位图：bit0 CH1 / bit1 CH2 / bit2 CH3
-static uint8  s_drive_rev = 0;          // 1 = 按倒车算航向环（符号跟着油门方向走）
+static uint8  s_ch_bad    = 0;          // 通道掉线位图：bit0 CH1 / bit1 CH2
 static uint16 RC_Steer_Mid = RC_STEER_MID;  // 方向盘静止位（开机学一次，之后慢跟踪）
 static uint16 RC_Thr_Mid   = RC_THR_MID;    // 油门静止位
 static uint8  s_mid_locked = 0;         // 0 = 还在开机捕获
@@ -170,133 +167,14 @@ static int8 RC_Pick3 (uint16 v)
 }
 
 /**********************************************************/
-/*[S] CH3 模式开关 [S]------------------------------------*/
+/*[S] 舵角来源 [S]----------------------------------------*/
 /**********************************************************/
 
-static uint16 s_c3_min = 0x0FFF;        // CH3 见过的最小值
-static uint16 s_c3_max = 0;             // CH3 见过的最大值
-static uint8  s_c3_cal = 0;             // 1 = 已标定（见过开关两端）
-static uint8  s_c3_hi  = 0;             // 0 = 低档 / 1 = 高档
-
-volatile uint8 RC_Hdg_Mode = 0;         // 1 = CH1 控目标航向；0 = CH1 控舵角
-
-//--------------------------------------
-// 函数简介     CH3 判高/低：自适应阈值 + 滞环
-// 备注信息     不写死 992。现场三种接法都出现过：192/1792、0/1792、992/1792，
-//              写死一种，另两种的症状一模一样（"CH3 拨到低还是舵机角模式"）
-//              没见过跨度 ≥400 就保持舵机角模式（最保守）
-//--------------------------------------
-static void RC_Ch3_Track (void)
-{
-    uint16 thr;
-    uint8  mode;
-
-    if (RC_Raw_Ch3 < s_c3_min) { s_c3_min = RC_Raw_Ch3; }
-    if (RC_Raw_Ch3 > s_c3_max) { s_c3_max = RC_Raw_Ch3; }
-
-    if ((0 == s_c3_cal) &&
-        ((uint32)(s_c3_max - s_c3_min) >= 400u) &&
-        (s_c3_max >= 1200u))
-    {
-        s_c3_cal = 1;
-    }
-
-    thr = (0 != s_c3_cal)
-        ? (uint16)(((uint32)s_c3_min + (uint32)s_c3_max) / 2u)
-        : (uint16)RC_SW_VAL_MID;
-
-    // 滞环：低->高 要 > thr+RC_HDG_HYST；高->低 要 < thr-RC_HDG_HYST
-    if (0 == s_c3_hi)
-    {
-        if (RC_Raw_Ch3 > (uint16)(thr + RC_HDG_HYST)) { s_c3_hi = 1; }
-    }
-    else
-    {
-        if (((uint32)RC_Raw_Ch3 + RC_HDG_HYST) < (uint32)thr) { s_c3_hi = 0; }
-    }
-
-    // 没标定 + 通道没信号：不知道开关在哪 -> 保持舵机角模式
-    if ((0 == s_c3_cal) && (0 != (s_ch_bad & 0x04)))
-    {
-        mode = 0;
-    }
-    else
-    {
-        mode = (0 != s_c3_hi) ? 0 : 1;      // 低档 = 航向
-    }
-
-    RC_Hdg_Mode = mode;
-}
+// 遥控态：CH1 直通舵角（Servo_Target_Deg = RC_Steer_Deg），航向环不接管。
+// 航向环（Head_Crtl）只由路表回放（route_pb）启用。
 
 /**********************************************************/
-/*----------------------------------------[E] CH3 开关 [E]*/
-/**********************************************************/
-
-
-/**********************************************************/
-/*[S] 航向保持 [S]----------------------------------------*/
-/**********************************************************/
-
-static float  s_hm_base     = 0.0f;     // 基准航向（进模式 / 松手那一拍更新）
-static float  s_hm_prev     = 0.0f;     // 上一拍的方向盘指令（判"松手"用）
-static float  s_hm_tar      = 0.0f;     // 当前目标航向（累积值）
-static uint8  s_ht_on       = 0;        // 1 = 航向模式已建立（用来抓进模式那一拍）
-
-//--------------------------------------
-// 函数简介     按台阶量化（四舍五入到 step 的整数倍）
-//--------------------------------------
-static float RC_Quantize (float v, float step)
-{
-    if (step < 1.0e-4f) { return v; }
-    return ((float)(int)((v / step) + ((v >= 0.0f) ? 0.5f : -0.5f))) * step;
-}
-
-//--------------------------------------
-// 函数简介     清航向模式状态（未闭环）
-//--------------------------------------
-static void RC_Head_Reset (void)
-{
-    s_ht_on   = 0;
-    s_hm_prev = 0.0f;
-}
-
-//--------------------------------------
-// 函数简介     按 CH1 更新目标航向（CH3 = 低档时）
-// 备注信息     弹簧式 + 量化：一次"推出去再松手" = 一个台阶
-//              松手那一拍把当前航向记成新基准，转轮停不准、回弹都不影响结果
-//              "松手"由方向盘死区（RC_STEER_DEADBAND）判定，不另设门限
-//--------------------------------------
-static void RC_Head_Update (void)
-{
-    float yaw = ins_imu_get_yaw();
-    float off;
-
-    // 刚进航向模式：基准 = 当前航向
-    if (0 == s_ht_on)
-    {
-        s_ht_on   = 1;
-        s_hm_base = yaw;
-        s_hm_prev = 0.0f;
-    }
-
-    // 松手那一拍（指令进死区）：基准换成当前航向
-    if ((0.0f == RC_Steer_Deg) && (0.0f != s_hm_prev))
-    {
-        s_hm_base = yaw;
-    }
-
-    // 右推 => 目标航向减小（yaw 正 = 左转）
-    off = RC_Quantize(-RC_Steer_Deg / RC_STEER_LIMIT_DEG * RC_HEAD_MAX_DEG, RC_HEAD_STEP_DEG);
-
-    if (off >  RC_HEAD_MAX_DEG) { off =  RC_HEAD_MAX_DEG; }
-    if (off < -RC_HEAD_MAX_DEG) { off = -RC_HEAD_MAX_DEG; }
-
-    s_hm_tar  = s_hm_base + off;
-    s_hm_prev = RC_Steer_Deg;
-}
-
-/**********************************************************/
-/*----------------------------------------[E] 航向保持 [E]*/
+/*----------------------------------------[E] 舵角来源 [E]*/
 /**********************************************************/
 
 //--------------------------------------
@@ -344,7 +222,6 @@ void Remote_Crtl_Update (void)
 
     RC_Raw_Ch1 = uart_receiver.channel[RC_CH_STEER];
     RC_Raw_Ch2 = uart_receiver.channel[RC_CH_THROTTLE];
-    RC_Raw_Ch3 = uart_receiver.channel[RC_CH_MODE];
     RC_Online  = uart_receiver.state;
 
     RC_Mid_Learn();
@@ -354,7 +231,6 @@ void Remote_Crtl_Update (void)
     s_ch_bad = 0;
     if (RC_Raw_Ch1 < RC_CH_VALID_MIN) { s_ch_bad = (uint8)(s_ch_bad | 0x01); }
     if (RC_Raw_Ch2 < RC_CH_VALID_MIN) { s_ch_bad = (uint8)(s_ch_bad | 0x02); }
-    if (RC_Raw_Ch3 < RC_CH_VALID_MIN) { s_ch_bad = (uint8)(s_ch_bad | 0x04); }
 
     // 方向盘：死区 + 掉线都按回中；量程跟着学到的中位一起平移（span 不变，满杆仍是 ±1）
     if ((0 != (s_ch_bad & 0x01)) ||
@@ -387,18 +263,10 @@ void Remote_Crtl_Update (void)
     }
 
     // 开关
-    RC_Sw3 = RC_Pick2(uart_receiver.channel[2]);        // CH3 两态
+    RC_Sw3 = RC_Pick2(uart_receiver.channel[2]);        // CH3 两态（空置，仅显示）
     RC_Sw4 = RC_Pick3(uart_receiver.channel[3]);        // CH4 三档（空置，仅显示）
     RC_Sw5 = RC_Pick2(uart_receiver.channel[4]);        // CH5 两态
     RC_Sw6 = RC_Pick2(uart_receiver.channel[5]);        // CH6 两态
-
-    // CH3 = 航向模式启停（低档 = 航向）。必须放在 s_ch_bad 算完之后：它要用 bit2 判掉线
-    RC_Ch3_Track();
-
-    // 前进 / 倒车：航向环的符号跟着油门方向走（倒车时 yaw 对 δ 的响应反号）。
-    // 带滞环，避免油门过零附近符号逐拍翻转
-    if (RC_Throttle < -RC_HEAD_REV_BAND)     { s_drive_rev = 1; }
-    else if (RC_Throttle > RC_HEAD_REV_BAND) { s_drive_rev = 0; }
 }
 
 //--------------------------------------
@@ -424,39 +292,16 @@ void Remote_Crtl_Apply (void)
         RC_Engage = RC_ENGAGE_FAILSAFE;
     }
 
-    // 只有遥控接管时航向环才成立；其余状态一律交给本状态机自己写目标
-    if (RC_ENGAGE_ON != RC_Engage)
-    {
-        RC_Head_Reset();
-        Head_Crtl_Set_Enable(0);
-    }
+    // 遥控态永远不接管航向环（本函数与 route_pb 分属不同页面，不会同拍跑）
+    Head_Crtl_Set_Enable(0);
 
     switch (RC_Engage)
     {
-        case RC_ENGAGE_ON:              // 遥控接管：双闭环 + 遥控设置目标
+        case RC_ENGAGE_ON:              // 遥控接管：双闭环 + CH1 直通舵角
             Servo_Crtl_Enable    = 1;
             Motor_Crtl_Enable    = 1;
 
-            if (0 != RC_Hdg_Mode)       // CH3 低档：CH1 设定目标航向，航向层闭环
-            {
-                RC_Head_Update();
-
-                Head_Crtl_Set_Enable(1);
-                Head_Crtl_Set_Reverse(s_drive_rev);
-                Head_Crtl_Set_Target(s_hm_tar);
-            }
-            else                        // CH3 高档：方向盘直通 CH1
-            {
-                RC_Head_Reset();
-                Head_Crtl_Set_Enable(0);
-            }
-
-            Head_Crtl_Tick();           // 使能时写目标；否则只刷新实测航向与误差
-
-            if (0 == RC_Hdg_Mode)
-            {
-                Servo_Target_Deg = RC_Steer_Deg;
-            }
+            Servo_Target_Deg     = RC_Steer_Deg;
 
             // 电子差速：用实测方向盘角分配（目标角有滞后，会让后轮提前分速）
             Motor_Diff_Alloc(tgt, Servo_Angle_Deg, &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
@@ -507,7 +352,6 @@ void Remote_Crtl_Release (void)
 {
     RC_Engage = RC_ENGAGE_OFF;
 
-    RC_Head_Reset();
     Head_Crtl_Set_Enable(0);
 
     Servo_Crtl_Enable    = 0;
@@ -545,9 +389,8 @@ static void Remote_Crtl_UI (void)
     ips200_show_string(10 ,64 , "K3:# K5:# K6:#  S4:#");
     ips200_show_string(10 ,80 , "ST:#  FRM:#####");
     ips200_show_string(10 ,96 , "EN:#  TGT:+####");
-    ips200_show_string(10 ,112, "YAW:         M:#");
-    ips200_show_string(10 ,128, "TAR:         B:#");
-    ips200_show_string(10 ,144, "ERR:         ");
+    ips200_show_string(10 ,112, "YAW:         H:#");
+    ips200_show_string(10 ,128, "SRV:         E:#");
     ips200_show_string(10 ,176, "CONFIRM: RC ON/OFF");
 }
 
@@ -651,7 +494,7 @@ int Remote_Crtl_Page (void)
             // }
 
             // 舵机/航向数据上发（每 20ms 一行，6 列）：
-            //   施加目标角, 实际角, PWM 输出, 实测航向, 目标航向, 航向误差
+            //   施加目标角, 实际角, PWM 输出, 实测航向, 舵机误差, 航向环接管
             // 角度单位 0.01°（×100）：编码器 1 计数 ≈ 0.02°，×100 不丢分辨率，
             //   且与后轮通道（actual/target ×100、out ×10000）的 ×100 口径一致，便于同图对比。
             // ★ 第一列用 Servo_Target_Applied_Deg（软限位夹紧后实际施加的目标），不要用 Servo_Target_Deg：
@@ -667,8 +510,8 @@ int Remote_Crtl_Page (void)
                         (int)(Servo_Angle_Deg      * 100.0f),   // 实际角 0.01°
                         (int)Servo_Out,                         // PWM 输出 duty
                         (int)(ins_imu_get_yaw() * 100.0f),       // 实测航向 0.01°
-                        (int)(Head_Crtl_Get_Target() * 100.0f), // 目标航向 0.01°
-                        (int)(Head_Crtl_Get_Err() * 100.0f));   // 航向误差 0.01°
+                        (int)(Servo_Err_Deg * 100.0f),          // 舵机误差 0.01°
+                        (int)Head_Crtl_Enabled());              // 航向环接管（回放时 1）
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }
@@ -691,10 +534,9 @@ int Remote_Crtl_Page (void)
             ips200_printf(34 ,96 , "%d ", (int)RC_Engage);
             Remote_Crtl_ShowInt(90 ,96 , (int32_t)(Motor_LR_Crtl.target * 100.0f));   // 0.01 rps
             Remote_Crtl_ShowDeg(42 ,112, (int32_t)(ins_imu_get_yaw() * 10.0f));       // 0.1 deg
-            Remote_Crtl_ShowInt(130,112, (int32_t)RC_Hdg_Mode);                       // 1 = 航向 / 0 = 舵角
-            Remote_Crtl_ShowDeg(42 ,128, (int32_t)(Head_Crtl_Get_Target() * 10.0f));
-            Remote_Crtl_ShowInt(130,128, (int32_t)(s_hm_base * 10.0f));                // 基准航向 0.1°
-            Remote_Crtl_ShowDeg(42 ,144, (int32_t)(Head_Crtl_Get_Err() * 10.0f));
+            Remote_Crtl_ShowInt(130,112, (int32_t)Head_Crtl_Enabled());                // 1 = 航向环接管（回放）
+            Remote_Crtl_ShowDeg(42 ,128, (int32_t)(Servo_Angle_Deg * 10.0f));          // 实测舵角 0.1°
+            Remote_Crtl_ShowDeg(130,128, (int32_t)(Servo_Err_Deg * 10.0f));            // 舵机误差 0.1°
         }
     }
 }

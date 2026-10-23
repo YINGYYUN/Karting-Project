@@ -22,7 +22,7 @@ CYT4BB 适配：存储位置为 Work Flash 第 0 页（sector 参数恒为 0）�
 
 // 上电强制重置falsh参数开关
 // 1：上电强制重写参数页flash
-#define PARAM_FORCE_RESET           (0)
+#define PARAM_FORCE_RESET           (1)
 
 // 参数缓冲区(Flash 读写的唯一载体)
 extern float param_cache[PARAM_COUNT];

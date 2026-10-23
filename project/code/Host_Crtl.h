@@ -514,9 +514,11 @@ uint8   Host_Crtl_Connect    (void);
 // ★★ 全工程统一的 WiFi 选择连接界面（三级界面，[WIFI]-SPI）：上下键选热点、确认键连、BACK 取消。
 //   两个入口共用它 —— ① `Host_Crtl_Page()` 进门未连时自动弹 ② **调试页第 1 项 WIFI-SPI**
 //   （`Debug.c` 里原来那份独立的界面与候选表已删除，那个菜单项现在直接调本函数）。
+//   第三个入口：Route 页的 HOST 项（选上就连 + 开上行；选 SKIP 就关上行）。
 //   ★ 会阻塞（WiFi 最长约 10s、Socket 更长），只能在按键处调用。
 //   ★ 连上后**直接返回**且不清屏 —— 调用者必须自己把界面整屏重画（`ips200_clear()` + UI）。
-//   返回 HOST_OK / HOST_ERR_NOT_INIT（用户按 BACK 取消）
+//   ★ 列表末尾固定有一项 SKIP = 不连接；已连时选它同时 `Host_Crtl_Set_Link(OFF)` 关上行。
+//   返回 HOST_OK / HOST_ERR_NOT_INIT（BACK 取消，或选了 SKIP）
 uint8   Host_Crtl_WiFi_Select (void);
 
 // ★★ 链路层：收命令 + 发遥测。自带限频与"模块忙就跳过"，可安全放在任意 while(1) 里。

@@ -10,7 +10,6 @@
 
 
 int Param_Page_Menu(void);
-int Param_Page_Route(void);     // 只含路表参数，Route 页的入口
 
 
 #endif

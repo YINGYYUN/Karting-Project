@@ -85,9 +85,9 @@
 #define MOTOR_CRTL_INT_CLR_STEP     (0.30f)
 
 /* 目标绝对值上限 rps（该电机满占空比约 1.7 rps） */
-#define MOTOR_CRTL_TARGET_MAX       (3.0f)
-/* 输出限幅（归一化）：0.5 = 50% 占空比 = 5000/PWM_DUTY_MAX */
-#define MOTOR_CRTL_OUT_MAX          (0.5f)
+#define MOTOR_CRTL_TARGET_MAX       (3.2f)      /* 与队友 target_max 一致 */
+/* 输出限幅（归一化）：0.8 = 80% 占空比 = 8000/PWM_DUTY_MAX（与队友 duty_limit 一致） */
+#define MOTOR_CRTL_OUT_MAX          (0.8f)
 
 /* 主节拍周期 ms（必须与 PIT 一致），编码器脱落计时用 */
 #define MOTOR_CRTL_TICK_MS          (5)

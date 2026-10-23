@@ -24,6 +24,7 @@ static uint8   s_st   = PB_ST_IDLE;
 static uint16  s_idx  = 0u;         // 最近点（单调）
 static uint16  s_aim  = 0u;         // 前视点
 static uint16  s_n    = 0u;         // 开跑时的点数
+static uint8   s_done_armed = 0u;   // 1 = 已走过完成阈值点，才允许判到终点
 static float   s_elat = 0.0f;
 static float   s_ld   = 0.0f;
 
@@ -180,10 +181,14 @@ uint8 route_pb_start (void)
     s_aim  = s_idx;
     s_elat = 0.0f;
     s_ld   = 0.0f;
+    s_done_armed = 0u;              // 新起跑：重新计算"走过没有"
     s_why[0] = '\0';
 
     // 直接给 δ 的通道先把航向环关掉；走航向通道时由 poll 每拍打开
     if (ROUTE_PB_SMODE >= 0.5f) { Head_Crtl_Set_Enable(0); }
+
+    // 回放要打角：手推录制时舵机是失能的，这里自己打开
+    Servo_Crtl_Enable = 1;
 
     s_st = PB_ST_RUN;
     return 1u;
@@ -232,12 +237,24 @@ void route_pb_poll (void)
     best  = pb_find_nearest(px, py, p);
     s_idx = best;
 
+    // 闭合表首尾相接：进度没走过阈值点就不许判终点，否则起跑第一拍就 DONE
+    if (0u == s_done_armed)
+    {
+        uint16 need = (uint16)(s_n / 4u);
+
+        if (need < 4u)                 { need = 4u; }
+        if (need > 30u)                { need = 30u; }
+        if (need > (uint16)(s_n / 2u)) { need = (uint16)(s_n / 2u); }
+
+        if (best >= need) { s_done_armed = 1u; }
+    }
+
     // 完成 / 中止
     {
         float lx = px - p[s_n - 1u].x;
         float ly = py - p[s_n - 1u].y;
 
-        if (sqrtf(lx * lx + ly * ly) < PB_FIN_M)
+        if ((0u != s_done_armed) && (sqrtf(lx * lx + ly * ly) < PB_FIN_M))
         {
             pb_finish(PB_ST_DONE, "done");
             return;

@@ -30,7 +30,7 @@
 /* 判据 */
 #define PB_MIN_POINTS       (10u)       /* 少于这么多点不许启动 */
 #define PB_NEAR_WIN         (40u)       /* 最近点前向搜索窗（点） */
-#define PB_FIN_M            (0.50f)     /* 离末点多近算跑完 m */
+#define PB_FIN_M            (0.15f)     /* 离末点多近算跑完 m（= 队友 pb_fin）*/
 #define PB_DELTA_MAX        (27.0f)     /* 回放自己再夹一次舵角 deg */
 
 /* 状态 */

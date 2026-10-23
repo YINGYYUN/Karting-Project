@@ -1,6 +1,7 @@
 /*******************************************************************************
 路表页：模式（录制 / 回放）+ 状态机 + 遥控接管
 录制是监听者，不参与驾驶权；CH6 = 1 时把驾驶权交给遥控。
+HOST 项：进 WiFi 选择界面，选上就开上行遥测（只上行，本页不接驾驶权）。
 *******************************************************************************/
 
 
@@ -27,9 +28,10 @@
 
 static uint8        route_mode  = ROUTE_MODE_REC;
 static uint8        route_state = ROUTE_ST_IDLE;
-static uint8        route_cursor = 3;       // 0 = MODE / 1 = SLOT / 2 = PARAM / 3 = RUN
+static uint8        route_cursor = 3;       // 0 = MODE / 1 = SLOT / 2 = HOST / 3 = STATE
 static const char  *route_msg   = "";
 static uint8        route_save_prev = 0;    // 上一圈是否在写盘（抓 1->0 沿）
+static uint8        route_rc_seen   = 0;    // 本次进页面后见过接收机在线（判"在线后断连"）
 
 /**********************************************************/
 /*----------------------------------------[E] 内部状态 [E]*/
@@ -60,28 +62,23 @@ static void Route_Crtl_UI (void)
     ips200_show_string(0  ,16 , "==============================");
     ips200_show_string(10 ,32 , "MODE :");
     ips200_show_string(10 ,48 , "SLOT :");
-    ips200_show_string(10 ,64 , "PARAM:");
-    ips200_show_string(66 ,64 , "OPEN");
-    ips200_show_string(10 ,80 , "RUN  :");
-    ips200_show_string(10 ,96 , "STATE:");
-    ips200_show_string(10 ,112, "DIST :");
-    ips200_show_string(10 ,128, "TBL  :");
-    ips200_show_string(10 ,144, "SAV  :");
-    ips200_show_string(10 ,160, "RC:0 ENG:0 K5:0 K6:0");
-    ips200_show_string(10 ,176, "CTRL :");
-    ips200_show_string(10 ,192, "ELAT :");
-    ips200_show_string(10 ,208, "MSG  :");
-    ips200_show_string(10 ,240, "CONFIRM: SELECT");
-    ips200_show_string(10 ,256, "UP/DN  : MOVE");
-    ips200_show_string(10 ,272, "BACK   : EXIT");
+    ips200_show_string(10 ,64 , "HOST :");
+    ips200_show_string(10 ,80 , "STATE:");
+    ips200_show_string(10 ,96 , "DIST :");
+    ips200_show_string(10 ,112, "TBL  :");
+    ips200_show_string(10 ,128, "SAV  :");
+    ips200_show_string(10 ,144, "RC:0 ENG:0 K5:0 K6:0");
+    ips200_show_string(10 ,160, "CTRL :");
+    ips200_show_string(10 ,176, "ELAT :");
+    ips200_show_string(10 ,192, "MSG  :");
 }
 
 // 界面缩写说明：
 //   MODE   模式：REC 录制 / PLAY 回放
 //   SLOT   Flash 槽号 0~4；选中即载入，录制固定写槽 0
-//   PARAM  路表参数页入口（当前只有 ds：录制采样点距）
-//   RUN    光标停在这行时，CONFIRM = 启动/停止
+//   HOST   WiFi 上行：NONE 链路未建 / OFF 未开 / ON 正在发。CONFIRM 进 WiFi 选择界面
 //   STATE  状态：IDLE 空闲 / RUN 运行 / DONE 正常结束 / STOP 人工停止 / FAULT 异常
+//          光标停在这行时，CONFIRM = 启动 / 停止
 //   DIST   当前表的里程，cm
 //   TBL    RAM 里的路表点数
 //   SAV    上次写盘结果：---- 未写 / OK / FAIL / EMPTY / BUSY nn%
@@ -92,6 +89,7 @@ static void Route_Crtl_UI (void)
 //   CTRL   当前驾驶权：STANDBY / REMOTE / RC LOST / STOP
 //   ELAT   回放横向误差 cm（正 = 车在参考线右侧）
 //   MSG    状态机给出的结果或异常原因
+// 路表参数（ds / v / ld / sm）统一在主菜单的 Param 页里改
 
 /**********************************************************/
 /*----------------------------------------[E] 界面样式 [E]*/
@@ -103,13 +101,22 @@ static void Route_Crtl_UI (void)
 /**********************************************************/
 
 //--------------------------------------
-// 函数简介     空闲态：舵机回中，后轮自由轮
+// 函数简介     空闲态：后轮自由轮；手推录制时舵机也松开
 // 备注信息     后轮不使能，方便手推；不经过 Remote_Crtl_Apply()，避免它按 RC_Online 锁 FAILSAFE
 //--------------------------------------
 static void Route_Drive_Idle (void)
 {
-    Servo_Crtl_Enable    = 1;
-    Servo_Target_Deg     = 0.0f;
+    // 手推录制：舵机也失能，否则电机顶着 0° 妨碍人转方向盘
+    if ((ROUTE_MODE_REC == route_mode) && (ROUTE_ST_RUN == route_state))
+    {
+        Servo_Crtl_Enable = 0;
+    }
+    else
+    {
+        Servo_Crtl_Enable = 1;
+        Servo_Target_Deg  = 0.0f;
+    }
+
     Motor_Crtl_Enable    = 0;
     Motor_LR_Crtl.target = 0.0f;
     Motor_RR_Crtl.target = 0.0f;
@@ -156,6 +163,7 @@ int Route_Crtl_Page (void)
     route_state  = ROUTE_ST_IDLE;
     route_cursor = 3;
     route_msg    = "";
+    route_rc_seen = 0;      // 没插接收机不算掉线：只认"在线后断连"
 
     // 进页面：双闭环待命（使能、目标 0），遥控要 CH6 = 1 才接管
     RC_Engage = RC_ENGAGE_STANDBY;
@@ -185,6 +193,7 @@ int Route_Crtl_Page (void)
             }
             else
             {
+                Host_Crtl_Set_Link(HOST_LINK_OFF);  // 退出即静默，不留上行
                 Remote_Crtl_Release();
                 return 0;
             }
@@ -194,7 +203,9 @@ int Route_Crtl_Page (void)
 
         Remote_Crtl_Update();
 
-        // 光标：运行中锁在 RUN 行
+        if (0 != RC_Online) { route_rc_seen = 1; }
+
+        // 光标：运行中锁在 STATE 行
         if (ROUTE_ST_RUN == route_state)
         {
             route_cursor = 3;
@@ -219,9 +230,7 @@ int Route_Crtl_Page (void)
         // CH5 优先：接收机在线时一直是硬急停（锁存）
         if (1 == RC_Sw5)
         {
-            RC_Engage = RC_ENGAGE_ESTOP;
-            Remote_Crtl_Apply();
-
+            // 先停本页动作（pb_finish 会把后轮置自由轮），再由状态机写"后轮目标 0 速"
             if (ROUTE_ST_RUN == route_state)        // 急停即结束本次运行
             {
                 if (ROUTE_MODE_REC == route_mode) { Route_Rec_Stop(); route_msg = "ESTOP"; }
@@ -232,6 +241,25 @@ int Route_Crtl_Page (void)
                     route_msg   = "ESTOP";
                 }
             }
+
+            RC_Engage = RC_ENGAGE_ESTOP;
+            Remote_Crtl_Apply();                    // 后轮使能 + 目标 0（主动刹停）
+        }
+        // 接收机在线后突然断连：停本次运行并刹停。只报一次，之后按"脱机"继续（可手推）
+        else if ((ROUTE_ST_RUN == route_state) && (0 != route_rc_seen) && (0 == RC_Online))
+        {
+            route_rc_seen = 0;
+
+            if (ROUTE_MODE_REC == route_mode) { Route_Rec_Stop(); route_msg = "RC LOST"; }
+            else
+            {
+                route_pb_stop("rc lost");
+                route_state = ROUTE_ST_STOP;
+                route_msg   = "RC LOST";
+            }
+
+            RC_Engage = RC_ENGAGE_FAILSAFE;
+            Remote_Crtl_Apply();                    // 后轮使能 + 目标 0（刹停）
         }
         // CH6：显式把驾驶权交给遥控；回 0 收回待命
         else if (1 == RC_Sw6)
@@ -313,29 +341,39 @@ int Route_Crtl_Page (void)
                     route_state = ROUTE_ST_IDLE;
                 }
             }
-            else if (2 == route_cursor)             // PARAM：打开路表参数页
+            else if (2 == route_cursor)             // HOST：进 WiFi 选择界面，选上就开始上行
             {
                 if (ins_route_flash_busy())
                 {
                     route_state = ROUTE_ST_FAULT;
                     route_msg   = "FLASH BUSY";
                 }
-                else if (RC_ENGAGE_ON == RC_Engage)
-                {
-                    route_state = ROUTE_ST_FAULT;
-                    route_msg   = "RELEASE CH6";
-                }
                 else
                 {
-                    Param_Page_Route();
+                    uint8 r;
+
+                    ips200_clear();
+                    r = Host_Crtl_WiFi_Select();
 
                     ips200_clear();
                     Route_Crtl_UI();
                     Time_Count1 = 0;
-                    route_msg   = "PARAM";
+
+                    if (HOST_OK == r)
+                    {
+                        Host_Crtl_Set_Link(HOST_LINK_OFF);  // 换了链路 -> 重发参数表
+                        Host_Crtl_Set_Link(HOST_LINK_ON);
+                        route_msg = "LINK ON";
+                    }
+                    else        // BACK 取消沿用原状态；选了 SKIP 则已在那边关掉
+                    {
+                        route_msg = (HOST_LINK_ON == Host_Link) ? "LINK ON" : "NO LINK";
+                    }
+
+                    route_state = ROUTE_ST_IDLE;
                 }
             }
-            else                                    // RUN：启动
+            else                                    // STATE：启动 / 停止
             {
                 if (ROUTE_MODE_REC == route_mode)
                 {
@@ -410,6 +448,9 @@ int Route_Crtl_Page (void)
             route_save_prev = busy_now;
         }
 
+        // WiFi 上行（链路没建 / 没开时整个函数空转；放在控制与写盘之后，先保控制节拍）
+        Host_Crtl_Task();
+
         /* 屏幕显示更新（100ms） */
         if (Time_Count1 >= 10)
         {
@@ -425,35 +466,40 @@ int Route_Crtl_Page (void)
             ips200_show_string(66 ,32 , "    ");
             ips200_show_string(66 ,32 , Route_Mode_Text());
             ips200_printf(66 ,48 , "%d    ", (int)ins_route_slot_active());
-            ips200_show_string(66 ,80 , (ROUTE_ST_RUN == route_state) ? "STOP " : "START");
-            ips200_show_string(66 ,96 , Route_State_Text());
 
-            ips200_printf(66 ,112, "%d    ", (int)(ins_route_get_total_dist() * 100.0f + 0.5f));
-            ips200_printf(66 ,128, "%d    ", (int)ins_route_get_count());
+            // HOST：NONE 链路未建 / OFF 未开 / ON 正在发
+            if (0 == wifi_spi_inited)           { ips200_show_string(66 ,64, "NONE    "); }
+            else if (HOST_LINK_ON == Host_Link) { ips200_show_string(66 ,64, "ON      "); }
+            else                                { ips200_show_string(66 ,64, "OFF     "); }
+
+            ips200_show_string(66 ,80 , Route_State_Text());
+
+            ips200_printf(66 ,96 , "%d    ", (int)(ins_route_get_total_dist() * 100.0f + 0.5f));
+            ips200_printf(66 ,112, "%d    ", (int)ins_route_get_count());
 
             if (0 != ins_route_flash_busy())
             {
-                ips200_printf(66 ,144, "BUSY %d%%    ", (int)ins_route_flash_progress());
+                ips200_printf(66 ,128, "BUSY %d%%    ", (int)ins_route_flash_progress());
             }
-            else if (1 == ins_route_flash_last_rc()) { ips200_show_string(66 ,144, "OK      "); }
-            else if (2 == ins_route_flash_last_rc()) { ips200_show_string(66 ,144, "FAIL    "); }
-            else if (3 == ins_route_flash_last_rc()) { ips200_show_string(66 ,144, "EMPTY   "); }
-            else                                     { ips200_show_string(66 ,144, "----    "); }
+            else if (1 == ins_route_flash_last_rc()) { ips200_show_string(66 ,128, "OK      "); }
+            else if (2 == ins_route_flash_last_rc()) { ips200_show_string(66 ,128, "FAIL    "); }
+            else if (3 == ins_route_flash_last_rc()) { ips200_show_string(66 ,128, "EMPTY   "); }
+            else                                     { ips200_show_string(66 ,128, "----    "); }
 
-            ips200_printf(34 ,160, "%d ", (int)RC_Online);
-            ips200_printf(82 ,160, "%d ", (int)RC_Engage);
-            ips200_printf(122,160, "%d ", (int)RC_Sw5);
-            ips200_printf(162,160, "%d ", (int)RC_Sw6);
+            ips200_printf(34 ,144, "%d ", (int)RC_Online);
+            ips200_printf(82 ,144, "%d ", (int)RC_Engage);
+            ips200_printf(122,144, "%d ", (int)RC_Sw5);
+            ips200_printf(162,144, "%d ", (int)RC_Sw6);
 
-            if (RC_ENGAGE_ESTOP == RC_Engage)         { ips200_show_string(66 ,176, "STOP      "); }
-            else if (RC_ENGAGE_FAILSAFE == RC_Engage) { ips200_show_string(66 ,176, "RC LOST   "); }
-            else if (RC_ENGAGE_ON == RC_Engage)       { ips200_show_string(66 ,176, "REMOTE    "); }
-            else                                      { ips200_show_string(66 ,176, "STANDBY   "); }
+            if (RC_ENGAGE_ESTOP == RC_Engage)         { ips200_show_string(66 ,160, "STOP      "); }
+            else if (RC_ENGAGE_FAILSAFE == RC_Engage) { ips200_show_string(66 ,160, "RC LOST   "); }
+            else if (RC_ENGAGE_ON == RC_Engage)       { ips200_show_string(66 ,160, "REMOTE    "); }
+            else                                      { ips200_show_string(66 ,160, "STANDBY   "); }
 
-            ips200_printf(66 ,192, "%d    ", (int)(route_pb_elat() * 100.0f));
+            ips200_printf(66 ,176, "%d    ", (int)(route_pb_elat() * 100.0f));
 
-            ips200_show_string(66 ,208, "                    ");
-            ips200_show_string(66 ,208, route_msg);
+            ips200_show_string(66 ,192, "                    ");
+            ips200_show_string(66 ,192, route_msg);
         }
     }
 }
