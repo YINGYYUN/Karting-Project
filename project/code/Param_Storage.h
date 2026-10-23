@@ -84,8 +84,14 @@ extern float param_cache[PARAM_COUNT];
 #define TEL_SEL                     param_cache[TEL_SEL_IDX]
 
 void    Param_Init          (void);     // 初始化(加载或设默认值)
-void    Param_Save          (void);     // 保存当前参数到 Flash
+void    Param_Save          (void);     // 保存当前参数到 Flash —— **没改动就不写**（见 Param_Is_Dirty）
 void    Param_Erase         (void);     // 擦除 Flash(下次启动恢复默认)
 void    Flash_SyncTo_Param  (void);     // 将缓存区的值推送到实际参数
+
+// 缓存区是否与 Flash 里的不一致（= 有未保存的改动）。0 = 一致。
+// 实现：把 Flash 那一页读出来跟 param_cache 按位比 —— 不维护任何额外状态。
+// 存在的理由：一次保存 = 擦掉一个 2 KB 扇区，而参数页"根层按 BACK 退出"是无条件调
+// Param_Save() 的；不判一下，进去看一眼就白擦一次。
+uint8   Param_Is_Dirty      (void);
 
 #endif

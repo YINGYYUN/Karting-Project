@@ -205,11 +205,12 @@ void uart0_isr (void)
 {
     if(uart_isr_mask(UART_0))            // 串口0接收中断
     {
-        
-#if DEBUG_UART_USE_INTERRUPT             // 如果开启 debug 串口中断
-        debug_interrupr_handler();       // 调用 debug 串口接收处理函数 数据会被 debug 环形缓冲区读取
-#endif                                   // 如果修改了 DEBUG_UART_INDEX 那这段代码需要放到对应的串口中断去
-      
+        /* UART_0 的接收字节归 route_link（串口灌表）独家消费。
+         * 这里原来调的是 debug_interrupr_handler()；两个消费者抢 uart_query_byte()，
+         * 结果必然是"谁先取谁得"，灌表随机丢字节。本工程没有任何代码读 debug 环形缓冲，
+         * 所以让出去是零代价；printf 那条发送通路不受影响。
+         * ⚠ 以后若要用 scanf，得改成"取一次、分发给两边"，不能再加第二个 uart_query_byte() 循环。 */
+        route_link_uart_irq();
     }
     else                                 // 串口0发送中断
     {           

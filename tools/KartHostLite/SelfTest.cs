@@ -179,6 +179,69 @@ internal static class SelfTest
         Check(Defaults.ByCount(30) == null && Defaults.ByCount(0) == null && Defaults.ByCount(40) == null,
               "其它 COUNT → 未知档案（返回 null，调用方必须丢帧）");
 
+        // ==================================================================
+        // 路表镜像（串口灌表）—— 与车端 ins_route_load_image() 同一套判定
+        // 这一段**不需要串口、不需要车**：镜像格式、CRC、点数/点距、帧组包全在这里钉死。
+        // 现场出现"灌不进去"时先跑它 —— 能把"镜像不对"和"线/驱动/波特率不对"分开。
+        // ==================================================================
+        Section("路表镜像（36 B 头 + N×16 B，v2）");
+
+        var ring = RouteImage.BuildRing(5.0, 0.05, out int ringN);
+        Check(RouteLink.VerifyImage(ring) == null, "圆环测试表校验通过", RouteLink.VerifyImage(ring) ?? "ok");
+        Check(ring.Length == 36 + ringN * 16, "长度 = 36 + N×16",
+              $"{ring.Length} / {36 + ringN * 16}（N={ringN}）");
+        Check(ringN == (int)Math.Round(2 * Math.PI * 5.0 / 0.05), "点数 = 周长 / 点距", ringN.ToString());
+
+        var (rc, rds, rlap) = RouteLink.ImageInfo(ring);
+        Check(RouteLink.U32(ring, 0) == 0x4B525443, "magic = 'CTRK'");
+        Check(RouteLink.U16(ring, 4) == 2, "ver = 2（v1 的 12 B 记录已弃用）");
+        Check(RouteLink.U16(ring, 6) == 16, "rec_len = 16");
+        Check(rc == ringN && rds == 50 && rlap == (int)Math.Round(2 * Math.PI * 5000.0),
+              "表头 count / ds_mm / lap_mm 对得上", $"count={rc} ds={rds} lap={rlap}");
+        Check(RouteLink.U16(ring, 34) == RouteLink.Crc16(0xFFFF, ring, 0, 34), "表头 CRC 覆盖 [0,34)");
+        Check(RouteLink.U16(ring, 32) == RouteLink.Crc16(0xFFFF, ring, 36, ringN * 16),
+              "记录区 CRC 覆盖整段记录");
+
+        // 首点必须在原点：这是"坐标没被平移"的字面证据
+        Check(RouteLink.U32(ring, 36) == 0 && RouteLink.U32(ring, 40) == 0,
+              "第 0 点在原点 (0, 0)", $"{RouteLink.U32(ring, 36)} {RouteLink.U32(ring, 40)}");
+
+        // 破坏任一处都必须被拦下来 —— 对应车端准入条件的四个分支
+        var badCrcH = (byte[])ring.Clone(); badCrcH[10] ^= 0xFF;
+        Check(RouteLink.VerifyImage(badCrcH) != null, "坏表头 CRC → 拦下");
+        var badCrcR = (byte[])ring.Clone(); badCrcR[36 + 5] ^= 0xFF;
+        Check(RouteLink.VerifyImage(badCrcR) != null, "坏记录区 CRC → 拦下");
+        var badVer = (byte[])ring.Clone(); badVer[4] = 1;
+        Check(RouteLink.VerifyImage(badVer) != null, "ver=1（老格式）→ 拦下");
+        var badCnt = (byte[])ring.Clone(); badCnt[8] = 0; badCnt[9] = 0; badCnt[10] = 0; badCnt[11] = 0;
+        Check(RouteLink.VerifyImage(badCnt) != null, "点数为 0 → 拦下");
+        Check(RouteLink.VerifyImage(new byte[20]) != null, "太短的字节流 → 拦下");
+
+        var line = RouteImage.BuildLine(10.0, 0.05, out int lineN);
+        Check(RouteLink.VerifyImage(line) == null && lineN == 200,
+              "直线测试表：10 m / 50 mm = 200 点，校验通过", lineN.ToString());
+
+        Section("路表串口帧（与车端 route_link.c 对齐）");
+        var pingF = RouteLink.Build(RouteLink.TPing);
+        Check(pingF.Length == 7 && pingF[0] == 0xA5 && pingF[1] == 0x5A,
+              "PING 帧 = 7 B，同步头 A5 5A", pingF.Length.ToString());
+        Check(RouteLink.U16(pingF, 5) == RouteLink.Crc16(0xFFFF, pingF, 2, 3),
+              "CRC 覆盖 type|len（不含同步头）");
+
+        var begin = new byte[5];
+        begin[0] = 1;
+        RouteLink.PutU32(begin, 1, (uint)ring.Length);
+        var beginF = RouteLink.Build(RouteLink.TLoadBegin, begin);
+        Check(beginF.Length == 12 && RouteLink.U16(beginF, 3) == 5,
+              "LOAD_BEGIN 帧 = 12 B（payload 5 B）", beginF.Length.ToString());
+        Check(RouteLink.U32(beginF, 6) == (uint)ring.Length, "LOAD_BEGIN 里的 total_bytes 对");
+
+        int chunks = (ring.Length + RouteLink.ChunkMax - 1) / RouteLink.ChunkMax;
+        Check(RouteLink.ChunkMax <= RouteLink.PayloadMax - 6, "块大小 + 6 B 头 ≤ 单帧载荷上限",
+              $"{RouteLink.ChunkMax} + 6 ≤ {RouteLink.PayloadMax}");
+        Check(RouteLink.SlotMaxBytes == 36 + 2048 * 16 && ring.Length <= RouteLink.SlotMaxBytes,
+              "单槽上限 32804 B，测试镜像装得下", $"{ring.Length} ≤ {RouteLink.SlotMaxBytes}，{chunks} 块");
+
         _sb.Append($"\r\n通过 {_pass} 项，失败 {_fail} 项。\r\n");
 
         // ★ 本程序是 WinExe，没有控制台 —— 结果必须落到文件里才看得见

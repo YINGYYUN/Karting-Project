@@ -768,3 +768,205 @@ uint8 ins_route_slot_info (uint8 slot, ins_route_slot_info_t *out)
     out->crc_r  = h.crc_r;
     return 1u;
 }
+
+/*===================================================================================================================
+ *  镜像级接口（灌表 / 上传用）
+ *
+ *  与 ins_route_flash_load*() 读的是**同一套字节格式**（36 B 头 + N×16 B 记录，两个 CRC16），
+ *  区别只是来源：那两条从 Flash 分页读，这三条从一块连续内存读 / 按偏移往外拷。
+ *=================================================================================================================*/
+
+//--------------------------------------
+// 函数简介     把一整块"车端镜像"校验并展开进 RAM
+// 参数说明     img	36 B 头 + N×16 B 记录，小端
+// 参数说明     len	字节数
+// 返回参数     uint8	1 = 通过；0 = 不过（期间不修改 RAM）
+// 使用示例     ins_route_load_image(buf, n);
+// 备注信息     ★ 准入条件与 ins_route_flash_load_slot() 逐条相同 —— 两个入口必须对
+//              "什么算一张合法的表"给同一个答案，否则会出现"灌进去说成功、载入却说无效"。
+//              ★ 按手工偏移读，不 memcpy 到 rt_head_t：不依赖 packed。
+//              ★ 只写 s_wp[] / s_head，不碰 Flash、不碰 s_fl_busy；
+//                写盘由 ins_route_slot_load_image() → ins_route_flash_save_slot() 接手。
+//--------------------------------------
+uint8 ins_route_load_image (const uint8 *img, uint32 len)
+{
+    uint32 magic, count, ds_mm, lap_mm, need, i;
+    uint16 ver, rec_len, crc_r, crc_h, flags;
+    int32  ox, oy;
+    int16  oyaw;
+
+    if ((NULL == img) || (len < 36u)) { return 0u; }
+
+    magic   = (uint32)img[0]  | ((uint32)img[1]  << 8) | ((uint32)img[2]  << 16) | ((uint32)img[3]  << 24);
+    ver     = (uint16)((uint16)img[4]  | ((uint16)img[5]  << 8));
+    rec_len = (uint16)((uint16)img[6]  | ((uint16)img[7]  << 8));
+    count   = (uint32)img[8]  | ((uint32)img[9]  << 8) | ((uint32)img[10] << 16) | ((uint32)img[11] << 24);
+    ds_mm   = (uint32)img[12] | ((uint32)img[13] << 8) | ((uint32)img[14] << 16) | ((uint32)img[15] << 24);
+    lap_mm  = (uint32)img[16] | ((uint32)img[17] << 8) | ((uint32)img[18] << 16) | ((uint32)img[19] << 24);
+    ox      = (int32)((uint32)img[20] | ((uint32)img[21] << 8) | ((uint32)img[22] << 16) | ((uint32)img[23] << 24));
+    oy      = (int32)((uint32)img[24] | ((uint32)img[25] << 8) | ((uint32)img[26] << 16) | ((uint32)img[27] << 24));
+    oyaw    = (int16)((uint16)img[28] | ((uint16)img[29] << 8));
+    flags   = (uint16)((uint16)img[30] | ((uint16)img[31] << 8));
+    crc_r   = (uint16)((uint16)img[32] | ((uint16)img[33] << 8));
+    crc_h   = (uint16)((uint16)img[34] | ((uint16)img[35] << 8));
+
+    /* ---- 与 flash_load 完全一致的准入条件 ---- */
+    if (RT_MAGIC != magic)                        { return 0u; }
+    if ((uint16)RT_VER != ver)                    { return 0u; }
+    if ((uint16)INS_RT_REC_SIZE != rec_len)       { return 0u; }
+    if (0u == count)                              { return 0u; }
+    if (count > (uint32)INS_ROUTE_MAX_POINTS)     { return 0u; }
+    if (0u == ds_mm)                              { return 0u; }
+    if (rt_crc16(0xFFFFu, img, 34u) != crc_h)     { return 0u; }
+
+    need = 36u + count * (uint32)INS_RT_REC_SIZE;
+    if (len < need)                               { return 0u; }
+    if (rt_crc16(0xFFFFu, img + 36u, count * (uint32)INS_RT_REC_SIZE) != crc_r) { return 0u; }
+
+    /* ---- 展开：mm → m、0.01° → °、cm/s → m/s ---- */
+    for (i = 0u; i < count; i ++)
+    {
+        const uint8 *p = img + 36u + i * (uint32)INS_RT_REC_SIZE;
+
+        int32  x_mm     = (int32)((uint32)p[0] | ((uint32)p[1] << 8) | ((uint32)p[2] << 16) | ((uint32)p[3] << 24));
+        int32  y_mm     = (int32)((uint32)p[4] | ((uint32)p[5] << 8) | ((uint32)p[6] << 16) | ((uint32)p[7] << 24));
+        int16  yaw_cdeg = (int16)((uint16)p[8]  | ((uint16)p[9]  << 8));
+        int16  v_cmps   = (int16)((uint16)p[10] | ((uint16)p[11] << 8));
+        int16  st_cdeg  = (int16)((uint16)p[12] | ((uint16)p[13] << 8));
+        uint16 fl       = (uint16)((uint16)p[14] | ((uint16)p[15] << 8));
+
+        s_wp[i].x          = (float)x_mm / 1000.0f;
+        s_wp[i].y          = (float)y_mm / 1000.0f;
+        s_wp[i].yaw        = (float)yaw_cdeg / 100.0f;
+        s_wp[i].v          = (float)v_cmps / 100.0f;
+        s_wp[i].steer_cdeg = st_cdeg;
+        s_wp[i].flags      = fl;
+    }
+
+    /* 统计"这份表带不带打角/关键点"（菜单与遥测要看）*/
+    s_steer_cnt = 0u;
+    s_key_cnt   = 0u;
+    for (i = 0u; i < count; i ++)
+    {
+        if (0u != (s_wp[i].flags & (uint16)INS_WP_FL_STEER)) { s_steer_cnt ++; }
+        if (0u != (s_wp[i].flags & (uint16)INS_WP_FL_KEY))   { s_key_cnt   ++; }
+    }
+
+    s_head.origin_x   = (float)ox / 1000.0f;
+    s_head.origin_y   = (float)oy / 1000.0f;
+    s_head.origin_yaw = (float)oyaw / 100.0f;
+    s_head.count      = (uint16)count;
+    s_head.version    = 1u;
+    s_head.total_dist = (float)lap_mm / 1000.0f;
+
+    s_running = 0u;
+    s_flags   = 0u;
+    if (0u != (flags & 1u)) { s_flags |= INS_ROUTE_ST_FULL; }
+
+    s_fl_loaded = 0u;               /* ★ 不是从 Flash 来的：上位机可以提示"这是刚下发的表" */
+
+    return 1u;
+}
+
+//--------------------------------------
+// 函数简介     从内存镜像写进指定槽：先校验+展开进 RAM，再武装分步写盘
+// 参数说明     slot	槽号（灌表只允许 1..INS_RT_SLOT_COUNT-1，槽 0 是手推录制的家）
+// 参数说明     img / len	镜像
+// 返回参数     uint8	0 = 已武装（等 poll 写完）/ 1 = 槽越界 / 2 = 镜像不过 / 3 = 无法武装
+// 使用示例     ins_route_slot_load_image(1, buf, n);
+// 备注信息     ★ **不在这里等写盘完成**：擦一页是毫秒级，一口气写 17 页会把 5 ms 控制节拍顶穿。
+//              真正的写由主循环的 ins_route_flash_poll() 一页一页推进。
+//              ★ 写完 ins_route_flash_save_slot() 会顺手把该槽设为 active ——
+//                所以灌完不用再选槽，菜单里直接就是这张新表。
+//--------------------------------------
+uint8 ins_route_slot_load_image (uint8 slot, const uint8 *img, uint32 len)
+{
+    if (slot >= (uint8)INS_RT_SLOT_COUNT)     { return 1u; }
+    if (0u == ins_route_load_image(img, len)) { return 2u; }
+
+    ins_route_flash_save_slot(slot);
+    if (0u == s_fl_busy)                      { return 3u; }
+    return 0u;
+}
+
+//--------------------------------------
+// 函数简介     按"镜像偏移"读一块（车 → PC 上传用）
+// 参数说明     slot	槽号 / off	镜像内偏移 / dst	目的地 / n	最多读多少字节
+// 返回参数     uint16	实际拷贝字节数；0 = 失败（槽空 / 格式不对 / 参数错）
+// 使用示例     ins_route_slot_read_bytes(1, off, buf, 512);
+// 备注信息     ★ 镜像是**逻辑连续**的（36 B 头 + N×16 B 记录），物理上却是 2 KB 分页，
+//              所以偏移要先换算成"页 + 页内偏移"。
+//              ★ 一次调用里只在**页号变化时重读那一页**（flash_read_page_to_buffer 是 2 KB
+//                阻塞读，512 B 的块最多碰 2 页）。
+//              ⚠ 不做跨调用的页缓存：flash_union_buffer 是全局共享的，别的模块
+//                （Param_Storage / 分步写盘）随时会把它盖掉，跨调用缓存就是自找脏读。
+//--------------------------------------
+uint16 ins_route_slot_read_bytes (uint8 slot, uint32 off, uint8 *dst, uint16 n)
+{
+    rt_head_t h;
+    uint32    base, img_len, pos;
+    uint32    last_page = 0xFFFFFFFFu;
+    uint16    done = 0u, copy;
+
+    if ((NULL == dst) || (slot >= (uint8)INS_RT_SLOT_COUNT) || (0u == n)) { return 0u; }
+
+    flash_init();
+    base = INS_RT_SLOT_BASE(slot);
+
+    flash_read_page_to_buffer(0u, base, (uint32)FLASH_PAGE_LENGTH);
+    last_page = base;
+    memcpy(&h, (const void *)flash_union_buffer, sizeof(h));
+
+    if ((RT_MAGIC != h.magic) || ((uint16)RT_VER != h.ver) ||
+        ((uint16)INS_RT_REC_SIZE != h.rec_len) || (0u == h.count) ||
+        (h.count > INS_RT_FLASH_CAPACITY))
+    {
+        return 0u;
+    }
+
+    img_len = 36u + (uint32)h.count * (uint32)INS_RT_REC_SIZE;
+    if (off >= img_len)              { return 0u; }
+    if ((off + (uint32)n) > img_len) { n = (uint16)(img_len - off); }
+
+    pos = off;
+
+    /* --- 头 36 B（就在刚才那一页里）--- */
+    if (pos < 36u)
+    {
+        uint32 take = 36u - pos;
+
+        if (take > (uint32)n) { take = (uint32)n; }
+        memcpy(dst, (const uint8 *)flash_union_buffer + pos, take);
+        done = (uint16)take;
+        pos += take;
+    }
+
+    /* --- 记录区 --- */
+    while (done < n)
+    {
+        uint32 rec      = (pos - 36u) / (uint32)INS_RT_REC_SIZE;
+        uint32 in_rec   = (pos - 36u) % (uint32)INS_RT_REC_SIZE;
+        uint32 page     = rec / (uint32)INS_RT_REC_PER_PAGE;
+        uint32 in_page  = (rec % (uint32)INS_RT_REC_PER_PAGE) * (uint32)INS_RT_REC_SIZE + in_rec;
+
+        /* 本页还剩多少字节，必须**从 pos 算**（含记录内偏移 in_rec），不能从"本条记录的开头"算：
+           漏掉 in_rec 的话，每个页边界都会多拷几个字节（读到页内 0xFF 填充）、
+           再跳掉下一页开头几个字节。症状是镜像长度对、每帧 CRC 也过，只有记录区 CRC 不对。 */
+        uint32 till_end = (uint32)INS_RT_REC_PER_PAGE * (uint32)INS_RT_REC_SIZE - in_page;
+
+        if (last_page != (base + 1u + page))
+        {
+            flash_read_page_to_buffer(0u, base + 1u + page, (uint32)FLASH_PAGE_LENGTH);
+            last_page = base + 1u + page;
+        }
+
+        copy = (uint16)((uint32)n - (uint32)done);
+        if ((uint32)copy > till_end) { copy = (uint16)till_end; }
+
+        memcpy(dst + done, (const uint8 *)flash_union_buffer + in_page, copy);
+        done += copy;
+        pos  += copy;
+    }
+
+    return done;
+}

@@ -1209,6 +1209,12 @@
             <name>$PROJ_DIR$\..\..\code\Route_Crtl.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\route_link.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\route_link.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\Servo_Crtl.c</name>
         </file>
         <file>

@@ -12,15 +12,18 @@
   `CsvRecorder.cs` / `Ui/WavePanel.cs` / `Ui/ParamPanel.cs` 已经解决了最难的两件事：
   **30 FPS 重绘与接收解耦**、**半包/垃圾字节/坏 CRC 下的帧同步**。自己重写等于重踩一遍。
 - 因此这些文件是**原样搬过来的**（`namespace KartHost` 保持不变，`RootNamespace` 也设为 `KartHost`，
-  一个字符都不用改）。本工程新写的只有 5 个文件：
+  一个字符都不用改）。本工程新写的只有 8 个文件：
 
 | 文件 | 作用 |
 |---|---|
 | `Channels.cs` | ★ 通道表：**两套档案**（全量 41 / 标定 18），每套 4 张平行数组（英文名 / 单位 / 中文简称 / 悬停说明）+ 分图预设 + 实时值格子 + 轨迹通道 ——「用哪套档案」的唯一落点 |
 | `Ui/MainForm.cs` | 主窗（左参数 / 中波形或轨迹 / 右实时值+通道显隐 / 底部日志+状态栏） |
 | `Ui/TrackPanel.cs` | odom 轨迹图（只读，x 横轴 / -y 纵轴，等比 1:1、清空、暂停） |
-| `SelfTest.cs` | 无硬件自检（协议层 + 两套通道表） |
-| `Program.cs` | 入口 + `--selftest` / `--shot-form` / `--shot-demo` |
+| `RouteLink.cs` | ★ 路表**串口灌表**链路（DAP 虚拟串口；协议与车端 `route_link.c` 逐字节对应） |
+| `RouteImage.cs` | 车端路表镜像（`route_car.bin`）的生成 / 校验；能造圆环、直线测试表 |
+| `Ui/RouteForm.cs` | 路表面板（选串口 / 灌表 / 读回 / 槽位一览） |
+| `SelfTest.cs` | 无硬件自检（协议层 + 两套通道表 + 路表镜像与帧） |
+| `Program.cs` | 入口 + `--selftest` / `--shot-form` / `--shot-demo` / `--shot-route` / 路表命令行 |
 
 从队友那份搬来的文件共 10 个（含 `Ui/LampControl.cs` 指示灯）：`Protocol` `FrameParser` `Link`
 `ChannelStore` `CsvRecorder` `Ui/Theme` `Ui/Dpi` `Ui/WavePanel` `Ui/ParamPanel` `Ui/LampControl`。
@@ -116,13 +119,39 @@ run.bat --selftest   :: 无硬件自检（退出码 = 失败项数）
   所以单位是 `%`、满占空比约 ±50 —— **不要当 ±1 画**，否则看起来像"没出力"。
 - odom 轨迹图用全量档案的 `ins_x(29)` / `ins_y(30)`；标定档没有这两路，轨迹图显示 **N/A**。
 
+## 路表 · 串口灌表（2026-10-23 新增）
+
+**为什么是串口不是 WiFi**：车端 WiFi 下行是**定长 15 B**（`HOST_DN_FRAME_LEN`），一张表 32 KB
+要改下行协议核心 + 自己做分片重传；串口是自己的字节流，一层都没有。
+所以这条路走 **DAP 自带的虚拟串口**（车端 `UART_0`，115200，与 `printf` 日志共用一根线）。
+
+- 主窗右上角 **「路表…」** 打开面板：选串口 → 打开 → 握手 PING → 选镜像 / 造测试表 → 灌表。
+- ★★ **车端必须停在【参数页】（主菜单 → Param）**。车端的分步写盘只在
+  `Param_Page.c` 的 `param_page_loop()` 里推进（`route_link_tick()` 的唯一调用点）。
+  停在别的页面：收不到帧、也写不完 Flash（**数据不丢**，回到参数页继续），但上位机会先 25 s 超时。
+- **槽的纪律**：槽 0 是"手推录制"的家，面板里就没有 0，车端协议层也会拒。
+- **传输期间车端日志会静音**（`debug_uart_mute`），这是有意的 —— 文本插进二进制帧会破坏帧同步。
+- 影像格式：`36 B 头 + N×16 B 记录`，`magic="CTRK"`、`ver=2`、两个 CRC16-MODBUS。
+
+命令行（不需要界面，可脚本化）：
+
+```bat
+run.bat --make-route out\route_ring.bin 5 0.05    :: 造一张半径 5 m / 点距 50 mm 的圆环测试表
+run.bat --make-line  out\route_line.bin 10 0.05    :: 直线
+run.bat --check-route out\route_ring.bin           :: 只校验，不发串口
+run.bat --route-dir  COM7                          :: 列出车端 5 个槽
+run.bat --load-route COM7 out\route_ring.bin 1     :: 灌进槽 1
+run.bat --read-route COM7 1 out\slot1.bin          :: 把槽 1 读回来
+```
+
 ## 三个自查手段（这次加的两条，队友那套没有）
 
 | 命令 | 用途 |
 |---|---|
-| `--selftest` | **52 项**断言：CRC 标准向量、组帧、**逐字节投喂**、垃圾前缀重同步、坏 CRC、坏帧尾、两帧连发、参数元数据 73B 回读；**两套通道表各 4 份长度一致 / 名字无重复 / 41 与 18 的项数 / 关键下标 / 单位是 % / 按 COUNT 选档案（含未知 COUNT 返回 null）** |
+| `--selftest` | **74 项**断言：CRC 标准向量、组帧、**逐字节投喂**、垃圾前缀重同步、坏 CRC、坏帧尾、两帧连发、参数元数据 73B 回读；两套通道表各 4 份长度一致 / 名字无重复 / 41 与 18 的项数 / 关键下标 / 单位是 % / 按 COUNT 选档案；**路表镜像（长度=36+N×16、magic/ver/rec_len、两个 CRC、首点在原点、五种坏镜像都要被拦下、PING/LOAD_BEGIN 帧长与 CRC）** |
 | `--shot-form` | 离屏截图整窗布局（窗口开到屏幕外，不在你桌面上弹），同时打印各分栏的实际尺寸与**通道文字是否被裁**（`chkTxt=225/291`） |
 | `--shot-demo [png] [布局] [视角]` | 先灌 900 帧假遥测 + 假参数，再截图。**视角**可选 `track`（odom 轨迹图）/ `calib18`（标定 18 路档案），可叠加写成 `calib18,track` |
+| `--shot-route [png]` | 把**路表面板**离屏画出来（不需要串口、不需要车），检查版面有没有互顶 |
 
 后两个还会顺带输出 `crop_bar.png` / `crop_wave.png` / `crop_param.png` 三张 1:1 局部图
 （整窗图缩到屏幕宽度后文字全糊，看不出"是裁掉了还是缩小了"）。

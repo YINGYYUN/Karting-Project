@@ -273,14 +273,14 @@ void route_pb_poll (void)
         s_elat = (px - p[best].x) * cosf(tyaw) + (py - p[best].y) * sinf(tyaw);
     }
 
-    // 速度：只认参数；0 = 自由轮（手推）
+    // 速度：只认参数；0 = 自由轮（手推），负值 = 倒车
     {
         float v = ROUTE_PB_V;
 
         if (v < PB_V_MIN) { v = PB_V_MIN; }
         if (v > PB_V_MAX) { v = PB_V_MAX; }
 
-        if (v < 0.005f)
+        if ((v < 0.005f) && (v > -0.005f))      // |v| 太小：自由轮
         {
             Motor_Crtl_Enable    = 0;
             Motor_LR_Crtl.target = 0.0f;

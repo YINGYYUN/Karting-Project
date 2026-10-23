@@ -33,6 +33,9 @@ void Peripheral_Init(void)
 
     Route_Crtl_Init();          // 路表：读槽索引 + 载入 active 槽（阻塞，必须在 PIT 打开前）
 
+    route_link_init();          // 串口灌表：清收发状态 + 放开日志门闩（收字节在 uart0_isr，
+                                //   解析/写盘在 route_link_tick()，调用点在参数页的循环里）
+
     Host_Crtl_Init();           // 上位机对接：只重置链路状态（不连 WiFi，避免卡住上电）
                                 // 调用纪律（静默 / 链路来源）见 Host_Crtl.h 文件头
 }

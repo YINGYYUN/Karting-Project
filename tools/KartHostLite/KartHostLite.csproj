@@ -19,6 +19,12 @@
     <AssemblyTitle>KartHostLite</AssemblyTitle>
   </PropertyGroup>
 
-  <!-- 刻意不引 System.IO.Ports：本工程不走串口（路表灌表等能力不做） -->
+  <!-- ★ 2026-10-23 起**引入** System.IO.Ports —— 只为一件事：路表"灌表"走 DAP 虚拟串口
+       （协议与车端 route_link.c 对应，见 RouteLink.cs）。
+       原来那条"本工程不走串口"的约定就此作废：WiFi 下行是定长 15 B，搬不动 32 KB 的镜像。
+       ⚠ 10.0.12 是本机 NuGet 缓存里已有的版本（含 net9.0 资产）；换版本要先能联网还原。 -->
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="10.0.12" />
+  </ItemGroup>
 
 </Project>

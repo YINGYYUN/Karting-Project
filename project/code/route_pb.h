@@ -12,7 +12,7 @@
 
 /* 回放参数（Route 参数页，持久化在 Flash 页 0 末尾） */
 #define PB_V_DEFAULT        (0.00f)     /* 巡航车速 m/s；0 = 自由轮，手推 */
-#define PB_V_MIN            (0.00f)
+#define PB_V_MIN            (-2.00f)    /* 负值 = 倒车（后轮反转，同 |v| 同速） */
 #define PB_V_MAX            (2.00f)
 
 #define PB_LD_DEFAULT       (0.80f)     /* 前视距离 m */

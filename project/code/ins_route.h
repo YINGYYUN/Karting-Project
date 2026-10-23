@@ -94,6 +94,10 @@ const ins_route_head_t  *ins_route_get_head   (void);
 #define INS_RT_INDEX_PAGE       (FM_SLOT_INDEX_PAGE)
 #define INS_RT_SLOT_BASE(k)     (FM_SLOT_BASE_PAGE(k))
 
+/* 一张表的**镜像**上限 = 36 B 头 + 2048 × 16 B = **32804 B**
+ * （route_link 按它开接收暂存缓冲 —— 这是 CM7_0 RAM 里最大的一块静态数组，改容量要复核 .bss）*/
+#define INS_RT_SLOT_MAX_BYTES   (36u + (uint32)INS_RT_SLOT_CAPACITY * (uint32)INS_RT_REC_SIZE)
+
 uint8   ins_route_flash_load        (void);     /* 载入当前 active 槽；1 = 成功 */
 uint8   ins_route_flash_load_slot   (uint8 slot);
 
@@ -120,5 +124,21 @@ typedef struct
     uint32  crc_r;
 } ins_route_slot_info_t;
 uint8   ins_route_slot_info         (uint8 slot, ins_route_slot_info_t *out);
+
+/*===================================================================================================================
+ *  镜像级接口（灌表 / 上传）
+ *
+ *  与 ins_route_flash_load*() 用**同一套字节格式**（36 B 头 + N×16 B 记录，两个 CRC16），
+ *  区别只是来源：那两条从 Flash 分页读，这三个从一块连续内存读 / 按偏移往外拷。
+ *  准入条件逐条相同（magic / ver / rec_len / count / ds_mm / 两个 CRC），校验逻辑只此一份。
+ *
+ *  ⚠ 只展开进 RAM，不碰 Flash；写盘交给 ins_route_flash_save_slot() + 分步 poll。
+ *=================================================================================================================*/
+uint8   ins_route_load_image        (const uint8 *img, uint32 len);     /* 1 = 校验通过并展开进 RAM，0 = 不过 */
+uint8   ins_route_slot_load_image   (uint8 slot, const uint8 *img, uint32 len);
+                                    /* 0 = 已武装分步写盘（等 poll 写完） / 1 = 槽越界 /
+                                       2 = 镜像不过 / 3 = 无法武装 */
+uint16  ins_route_slot_read_bytes   (uint8 slot, uint32 off, uint8 *dst, uint16 n);
+                                    /* 按"镜像偏移"读一块（上传用）；返回实际字节数，0 = 失败 */
 
 #endif

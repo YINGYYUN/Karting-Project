@@ -60,6 +60,7 @@ static int param_page_loop(void)
 
     while(1)
     {
+        route_link_tick();          // 串口灌表：收帧 + 推进分步写盘（全工程唯一调用点）
         // 短按: 上键
         if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
         {

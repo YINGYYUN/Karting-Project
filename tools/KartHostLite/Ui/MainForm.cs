@@ -49,6 +49,7 @@ public sealed class MainForm : Form
     private NumericUpDown _numPort;
     private Button _btnConn;
     private CheckBox _ckHb;
+    private Button _btnRoute;      // 打开路表面板（串口灌表，与 WiFi 链路无关）
 
     // ---- 波形（1 / 2 / 4 张，跟队友一样用 TableLayoutPanel 拼）----
     private Panel _waveHost;
@@ -190,15 +191,41 @@ public sealed class MainForm : Form
 
         var lbHint = new Label
         {
-            // ⚠ AutoSize 标签太长会顶出父容器。整窗 1440 逻辑像素，这里从 664 起 → 最多 ~48 汉字。
-            Text = "提示：车端是 UDP 客户端，本机只负责绑定端口收包；档案按帧头 COUNT 自动切（41 / 18）",
+            // ⚠ AutoSize 标签太长会顶出父容器，也会撞上右边那颗「路表…」按钮。
+            //   整窗 1440 逻辑像素：从 664 起、到 1340 之前，约 40 个半角位。
+            Text = "提示：车端是 UDP 客户端，本机只绑定端口收包",
             AutoSize = true,
             Location = new Point(Dpi.Px(664), Dpi.Px(15)),
             ForeColor = Theme.TextDim,
         };
 
         bar.Controls.AddRange(new Control[] { _lampLink, lbPort, _numPort, _btnConn, _ckHb, _lbProfile, lbHint });
+
+        // ★ 路表按钮贴右边缘（Anchor=Right）：顶栏左边已经被链路/心跳/档案/提示占满，
+        //   再往里塞会互顶。路表走的是**串口**，与这条 WiFi 链路完全无关，放最右边不冲突。
+        _btnRoute = new Button
+        {
+            Text = "路表…",
+            Width = Dpi.Px(84),
+            Height = Dpi.Px(26),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Location = new Point(bar.ClientSize.Width - Dpi.Px(92), Dpi.Px(10)),
+        };
+        _btnRoute.Click += (_, __) => OpenRouteForm();
+        bar.Controls.Add(_btnRoute);
+
         Controls.Add(bar);
+    }
+
+    /// <summary>
+    /// 打开路表面板。<b>它与 WiFi 链路互不干扰</b>：串口灌表时波形照常收 / 照常画。
+    /// 用模态窗口是有意的 —— 避免"边灌表边改参数"这种事后说不清的组合。
+    /// </summary>
+    private void OpenRouteForm()
+    {
+        using var f = new RouteForm();
+        Log("打开路表面板（串口灌表，与 WiFi 链路无关）");
+        f.ShowDialog(this);
     }
 
     // ==================================================================

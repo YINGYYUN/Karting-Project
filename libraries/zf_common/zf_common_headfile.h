@@ -122,6 +122,7 @@
 #include "flash_map.h"
 #include "ins_route.h"
 #include "route_pb.h"
+#include "route_link.h"         // 串口灌表（UART_0 / 调试虚拟串口）
 #include "Route_Crtl.h"
 #include "Host_Crtl.h"
 #include "Debug.h"

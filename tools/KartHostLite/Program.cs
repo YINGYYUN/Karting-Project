@@ -25,6 +25,43 @@ internal static class Program
         // DPI 必须在任何窗口创建之前设好（--shot-form 也会建窗口）
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
+        // ---- 路表相关（全部无界面，可脚本化）----
+        //   --make-route <out.bin> [半径m] [点距m]    生成一张**圆环**测试镜像
+        //   --make-line  <out.bin> [长度m] [点距m]    生成一张**直线**测试镜像
+        //   --check-route <bin>                       只校验镜像，不发串口
+        //   --route-dir  <COMx>                       列出车端 5 个槽里都有什么
+        //   --load-route <COMx> <bin> [槽号]           灌表（槽号默认 1；槽 0 禁止写）
+        //   --read-route <COMx> <槽号> <out.bin>       把车上的表读回并存成镜像
+        if (args.Length > 0 && (args[0] == "--make-route" || args[0] == "--make-line"))
+        {
+            Environment.ExitCode = MakeRoute(args, ring: args[0] == "--make-route");
+            return;
+        }
+        if (args.Length > 0 && (args[0] == "--check-route" || args[0] == "--route-dir"
+                                || args[0] == "--load-route" || args[0] == "--read-route"))
+        {
+            Environment.ExitCode = RouteCli(args);
+            return;
+        }
+
+        // --shot-route <png>：把路表面板离屏画出来自查（不需要串口、不需要车）
+        if (args.Length > 0 && args[0] == "--shot-route")
+        {
+            using var rf = new RouteForm
+            {
+                ShowInTaskbar = false,
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-4000, -4000),
+            };
+            rf.Show();
+            for (int i = 0; i < 20; i++) { Application.DoEvents(); System.Threading.Thread.Sleep(20); }
+            using var rb = new Bitmap(rf.Width, rf.Height);
+            rf.DrawToBitmap(rb, new Rectangle(0, 0, rf.Width, rf.Height));
+            rb.Save(args.Length > 1 ? args[1] : "route_form.png", System.Drawing.Imaging.ImageFormat.Png);
+            Console.WriteLine("shot -> " + (args.Length > 1 ? args[1] : "route_form.png"));
+            return;
+        }
+
         // --shot-form / --shot-demo：离屏截图自查界面布局（不出现在任务栏、不挡人）
         //   --shot-demo 会先灌一份假数据（假遥测 + 假参数表），用来检查波形与参数面板
         //   可选第 3 个参数指定分图数（1 / 2 / 4，默认 4），用来检查另一种布局有没有崩
@@ -95,5 +132,110 @@ internal static class Program
         if (w <= 0 || h <= 0) return;
         using var c = src.Clone(new Rectangle(x, y, w, h), src.PixelFormat);
         c.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    // ==================================================================
+    // 路表命令行
+    // ==================================================================
+    private static double ArgD(string[] a, int i, double def)
+        => a.Length > i && double.TryParse(a[i], System.Globalization.NumberStyles.Float,
+                                           System.Globalization.CultureInfo.InvariantCulture, out double v) ? v : def;
+
+    private static int MakeRoute(string[] a, bool ring)
+    {
+        string path = a.Length > 1 ? a[1] : (ring ? "route_ring.bin" : "route_line.bin");
+        double p1 = ArgD(a, 2, ring ? 5.0 : 10.0);      // 半径 / 长度
+        double p2 = ArgD(a, 3, 0.05);                   // 点距
+
+        byte[] img = ring ? RouteImage.BuildRing(p1, p2, out _) : RouteImage.BuildLine(p1, p2, out _);
+
+        string bad = RouteLink.VerifyImage(img);
+        if (bad != null) { Console.WriteLine("内部错误：生成的镜像校验不过 —— " + bad); return 2; }
+
+        if (!RouteImage.Save(path, img, out string err)) { Console.WriteLine("写文件失败：" + err); return 3; }
+
+        var (cnt, ds, lap) = RouteLink.ImageInfo(img);
+        Console.WriteLine($"已生成 {(ring ? "圆环" : "直线")}测试镜像 -> {Path.GetFullPath(path)}");
+        Console.WriteLine($"  {img.Length} B = 36 + {cnt} × 16　点距 {ds} mm　一圈 {lap / 1000.0:F2} m");
+        Console.WriteLine("  校验：通过（magic/ver/点数/点距/两个 CRC 都对）");
+        return 0;
+    }
+
+    private static int RouteCli(string[] a)
+    {
+        try
+        {
+            switch (a[0])
+            {
+                case "--check-route":
+                {
+                    if (a.Length < 2) { Console.WriteLine("用法：--check-route <bin>"); return 64; }
+                    var img = File.ReadAllBytes(a[1]);
+                    string bad = RouteLink.VerifyImage(img);
+                    var (cnt, ds, lap) = RouteLink.ImageInfo(img);
+                    Console.WriteLine($"文件：{Path.GetFullPath(a[1])}");
+                    Console.WriteLine($"  {img.Length} B　{cnt} 点　点距 {ds} mm　一圈 {lap / 1000.0:F2} m");
+                    Console.WriteLine(bad == null ? "  校验：通过" : "  校验：**不过** —— " + bad);
+                    return bad == null ? 0 : 1;
+                }
+
+                case "--route-dir":
+                {
+                    if (a.Length < 2) { Console.WriteLine("用法：--route-dir <COMx>"); return 64; }
+                    using var rl = new RouteLink();
+                    rl.Open(a[1]);
+                    Console.WriteLine(rl.Ping());
+                    var list = rl.Dir(out int active, out int n);
+                    Console.WriteLine($"当前槽 = {active}，共 {n} 槽：");
+                    foreach (var s in list) Console.WriteLine("  " + s.Text);
+                    return 0;
+                }
+
+                case "--load-route":
+                {
+                    if (a.Length < 3) { Console.WriteLine("用法：--load-route <COMx> <bin> [槽号]"); return 64; }
+                    int slot = a.Length > 3 && int.TryParse(a[3], out int s0) ? s0 : 1;
+                    var img = File.ReadAllBytes(a[2]);
+                    string bad = RouteLink.VerifyImage(img);
+                    if (bad != null) { Console.WriteLine("镜像不自洽，没发：" + bad); return 1; }
+
+                    using var rl = new RouteLink();
+                    rl.Open(a[1]);
+                    Console.WriteLine(rl.Ping());
+                    Console.WriteLine(RouteImage.Describe(img));
+                    Console.WriteLine($"开始灌表 -> 槽 {slot} …");
+                    string msg = rl.Download(slot, img, (frac, note) =>
+                        Console.Write($"\r  {frac * 100,5:F1}%  {note,-40}"));
+                    Console.WriteLine();
+                    Console.WriteLine(msg);
+                    return 0;
+                }
+
+                case "--read-route":
+                {
+                    if (a.Length < 4) { Console.WriteLine("用法：--read-route <COMx> <槽号> <out.bin>"); return 64; }
+                    if (!int.TryParse(a[2], out int slot)) { Console.WriteLine("槽号不是数字"); return 64; }
+                    using var rl = new RouteLink();
+                    rl.Open(a[1]);
+                    Console.WriteLine(rl.Ping());
+                    var img = rl.ReadSlot(slot, (frac, note) => Console.Write($"\r  {frac * 100,5:F1}%  {note,-40}"));
+                    Console.WriteLine();
+                    Console.WriteLine(RouteImage.Describe(img));
+                    if (!RouteImage.Save(a[3], img, out string err2))
+                    {
+                        Console.WriteLine("写文件失败：" + err2);
+                        return 3;
+                    }
+                    Console.WriteLine("已保存 -> " + Path.GetFullPath(a[3]));
+                    return 0;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("失败：" + ex.Message);
+            return 1;
+        }
+        return 64;
     }
 }

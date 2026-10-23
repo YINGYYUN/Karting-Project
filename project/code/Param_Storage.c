@@ -115,8 +115,7 @@ static void fix_appended_params (void)
         copy_cache_to_flash_buffer();
         flash_write_page_from_buffer(PARAM_FLASH_SECTION, PARAM_FLASH_PAGE, PARAM_COUNT);
     }
-}
-/**********************************************************/
+}/**********************************************************/
 /*----------------------------------------[E] 内部函数 [E]*/
 /**********************************************************/
 
@@ -165,9 +164,26 @@ void Param_Init(void)
     Flash_SyncTo_Param();
 }
 
+// 缓存区是否与 Flash 里的不一致（= 有未保存的改动）
+//
+// 判据就是"把 Flash 里那一页读出来，跟 cache 按位比" —— 不额外维护任何状态，
+// 所以不管是菜单步进改的还是上位机 SET_PARAM 改的，都自动算进来。
+// ⚠ 按位比，不用浮点 != ：NaN != NaN 恒真，一个 NaN 就会"永远有改动"、每次白擦一页。
+uint8 Param_Is_Dirty(void)
+{
+    flash_read_page_to_buffer(PARAM_FLASH_SECTION, PARAM_FLASH_PAGE, PARAM_COUNT);
+    return (0 != memcmp(flash_union_buffer, param_cache, sizeof(float) * PARAM_COUNT)) ? 1u : 0u;
+}
+
 // 保存参数到 Flash(退出参数页面时调用)
+//
+// ★ 2026-10-23：**没改动就一个字节都不写**。
+//   原来是无条件写，而参数页"根层按 BACK 退出"就是无条件调它 —— 进去看一眼、
+//   什么都没动，也会擦掉一个 2 KB 扇区（Work Flash 的擦除粒度就是 2 KB）。
 void Param_Save(void)
 {
+    if (0 == Param_Is_Dirty()) { return; }
+
     copy_cache_to_flash_buffer();
     flash_write_page_from_buffer(PARAM_FLASH_SECTION, PARAM_FLASH_PAGE, PARAM_COUNT);
 }
