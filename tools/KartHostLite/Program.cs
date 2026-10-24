@@ -44,6 +44,28 @@ internal static class Program
             return;
         }
 
+        // --audit <bin> [报告.txt]：只体检一张镜像（不连车），报告打到 stdout 或文件
+        if (args.Length > 0 && args[0] == "--audit")
+        {
+            if (args.Length < 2) { Console.WriteLine("用法: --audit <镜像.bin> [报告.txt]"); return; }
+
+            byte[] img = RouteImage.Load(args[1], out string aerr);
+            if (img == null) { Console.WriteLine("读镜像失败：" + aerr); return; }
+
+            string crc = RouteLink.VerifyImage(img);
+            var audit = RouteAudit.Run(img, System.IO.Path.GetFileName(args[1]));
+            string text = (crc == null ? "CRC：通过" : "CRC：不过 —— " + crc) + Environment.NewLine + audit.Report;
+
+            if (args.Length > 2)
+            {
+                File.WriteAllText(args[2], text, new System.Text.UTF8Encoding(true));
+                Console.WriteLine("报告 -> " + args[2]);
+            }
+            else Console.WriteLine(text);
+
+            Environment.ExitCode = audit.Ok ? 0 : 2;      // 脚本里能直接用退出码判"体检是否通过"
+            return;
+        }
         // --shot-route <png>：把路表面板离屏画出来自查（不需要串口、不需要车）
         if (args.Length > 0 && args[0] == "--shot-route")
         {
@@ -54,11 +76,30 @@ internal static class Program
                 Location = new Point(-4000, -4000),
             };
             rf.Show();
+            rf.ShotLoadDemo();          // 灌一张圆环 + 示例槽位，让表格/预览都有内容可看
             for (int i = 0; i < 20; i++) { Application.DoEvents(); System.Threading.Thread.Sleep(20); }
             using var rb = new Bitmap(rf.Width, rf.Height);
             rf.DrawToBitmap(rb, new Rectangle(0, 0, rf.Width, rf.Height));
             rb.Save(args.Length > 1 ? args[1] : "route_form.png", System.Drawing.Imaging.ImageFormat.Png);
             Console.WriteLine("shot -> " + (args.Length > 1 ? args[1] : "route_form.png"));
+            return;
+        }
+
+        // --shot-bench <png>：把"台架直给"面板离屏画出来自查（不需要链路）
+        if (args.Length > 0 && args[0] == "--shot-bench")
+        {
+            using var bf = new BenchForm((cmd, id, v) => true)
+            {
+                ShowInTaskbar = false,
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-4000, -4000),
+            };
+            bf.Show();
+            for (int i = 0; i < 20; i++) { Application.DoEvents(); System.Threading.Thread.Sleep(20); }
+            using var bb = new Bitmap(bf.Width, bf.Height);
+            bf.DrawToBitmap(bb, new Rectangle(0, 0, bf.Width, bf.Height));
+            bb.Save(args.Length > 1 ? args[1] : "bench_form.png", System.Drawing.Imaging.ImageFormat.Png);
+            Console.WriteLine("shot -> " + (args.Length > 1 ? args[1] : "bench_form.png"));
             return;
         }
 

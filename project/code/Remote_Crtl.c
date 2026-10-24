@@ -45,6 +45,8 @@ static uint8  s_mid_locked = 0;         // 0 = 还在开机捕获
 static uint8  s_mid_cnt    = 0;         // 已看到的有效读数次数
 static uint32 s_mid_ms     = 0;         // 上次慢跟踪时刻
 
+static uint8  s_prev_on    = 0;         // 上一拍是否处在"遥控接管"，用来抓 ON 的上升沿
+
 //--------------------------------------
 // 函数简介     中位慢跟踪：每次最多挪 RC_MID_TRACK_STEP 计数
 // 备注信息     明显不在中位（手推着杆）就一个计数都不许动，否则推杆会把中位学跑
@@ -295,17 +297,33 @@ void Remote_Crtl_Apply (void)
     // 遥控态永远不接管航向环（本函数与 route_pb 分属不同页面，不会同拍跑）
     Head_Crtl_Set_Enable(0);
 
+    if (RC_ENGAGE_ON != RC_Engage) { s_prev_on = 0; }
+
     switch (RC_Engage)
     {
         case RC_ENGAGE_ON:              // 遥控接管：双闭环 + CH1 直通舵角
+        {
+            /* ★ 每次重新接管都清一次"编码器脱落"锁存。
+               那个锁存原本只有上电或调试页能解：一次瞬时丢脉冲（起步打滑、插头抖、
+               被顶住）就会让**某一路永久停机**，而那个轮子只是被拖着走、编码器照样报数
+               ⇒ 现场看到的是"左侧永远比右侧快"，且与打角方向无关。
+               真有故障时 200 ms 内会重新锁上，保护不会丢（见 Motor_Crtl.h 的说明）。 */
+            if (0 == s_prev_on)
+            {
+                Motor_Crtl_Reset();
+                s_prev_on = 1;
+            }
+
             Servo_Crtl_Enable    = 1;
             Motor_Crtl_Enable    = 1;
 
             Servo_Target_Deg     = RC_Steer_Deg;
 
             // 电子差速：用实测方向盘角分配（目标角有滞后，会让后轮提前分速）
-            Motor_Diff_Alloc(tgt, Servo_Angle_Deg, &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
+            Motor_Diff_Alloc(tgt, Servo_Angle_Deg, ROUTE_PB_L,
+                             &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
             break;
+        }
 
         case RC_ENGAGE_STANDBY:         // 待命：双闭环使能，但目标 0（遥控还没接管）
             Servo_Crtl_Enable    = 1;
@@ -391,6 +409,7 @@ static void Remote_Crtl_UI (void)
     ips200_show_string(10 ,96 , "EN:#  TGT:+####");
     ips200_show_string(10 ,112, "YAW:         H:#");
     ips200_show_string(10 ,128, "SRV:         E:#");
+    ips200_show_string(10 ,144, "MOT F: L:#  R:#");   // 0 = 正常，1 = 该路编码器脱落已停机
     ips200_show_string(10 ,176, "CONFIRM: RC ON/OFF");
 }
 
@@ -537,6 +556,8 @@ int Remote_Crtl_Page (void)
             Remote_Crtl_ShowInt(130,112, (int32_t)Head_Crtl_Enabled());                // 1 = 航向环接管（回放）
             Remote_Crtl_ShowDeg(42 ,128, (int32_t)(Servo_Angle_Deg * 10.0f));          // 实测舵角 0.1°
             Remote_Crtl_ShowDeg(130,128, (int32_t)(Servo_Err_Deg * 10.0f));            // 舵机误差 0.1°
+            ips200_printf(82 ,144, "%d ", (int)Motor_LR_Crtl.enc_fault);               // 左后轮编码器停机
+            ips200_printf(122,144, "%d ", (int)Motor_RR_Crtl.enc_fault);               // 右后轮编码器停机
         }
     }
 }

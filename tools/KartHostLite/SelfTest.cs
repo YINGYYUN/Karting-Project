@@ -95,6 +95,59 @@ internal static class SelfTest
         p5.Feed(badTail, badTail.Length);
         Check(n5 == 0, "帧尾不对 → 不交付", n5.ToString());
 
+        Section("路表体检（RouteAudit）");
+        {
+            var ringImg = RouteImage.BuildRing(5.0, 0.05, out _);
+            var a1 = RouteAudit.Run(ringImg, "圆环 R=5");
+            Check(Math.Abs(a1.MinRadiusM - 5.0) < 0.35, "圆环 R=5 m ⇒ 最小半径算得 ≈5.0 m",
+                  a1.MinRadiusM.ToString("0.000"));
+            // 生成器不重复首点 ⇒ 末点离起点正好差一个点距，闭合误差 ≈ 1×ds 是正常的
+            Check(a1.CloseErrMValue <= a1.MeanDsM * 1.2, "圆环闭合误差 ≤ 1 个点距",
+                  $"{a1.CloseErrMValue:0.000} m（ds {a1.MeanDsM:0.000} m）");
+            Check(a1.MaxDYaw < 2.0, "圆环单点航向变化 ≈ 360/628 = 0.57°", a1.MaxDYaw.ToString("0.00"));
+            Check(a1.YawGeomDiff < 3.0, "圆环：表内 yaw 与几何方向一致（口径正确）", a1.YawGeomDiff.ToString("0.0"));
+            Check(a1.Bad == 0, "圆环：无严重项（打角字段会是警告，因为生成器不写 steer）", a1.Summary);
+
+            var lineImg = RouteImage.BuildLine(10.0, 0.05, out _);
+            var a2 = RouteAudit.Run(lineImg, "直线");
+            Check(double.IsPositiveInfinity(a2.MinRadiusM), "直线 ⇒ 无曲率（半径 = ∞）", a2.MinRadiusM.ToString());
+            Check(a2.CloseErrMValue > 9.0, "直线首尾相距 ≈10 m（不是环）", a2.CloseErrMValue.ToString("0.00"));
+
+            // 人为把一个点的 yaw 打偏 45°：必须被"单点航向变化"抓到
+            var jump = (byte[])ringImg.Clone();
+            int o = RouteImage.HeadBytes + 100 * RouteImage.RecBytes + 8;
+            short yy = BitConverter.ToInt16(jump, o);
+            BitConverter.GetBytes((short)(yy + 4500)).CopyTo(jump, o);
+            var a3 = RouteAudit.Run(jump, "跳点");
+            Check(a3.MaxDYaw > 20.0, "1 个点偏 45° ⇒ 检出航向突变", a3.MaxDYaw.ToString("0.0"));
+
+            // 半径小于最小转弯半径：R=1.0 m 的环应判"不过"
+            var tightImg = RouteImage.BuildRing(1.0, 0.05, out _);
+            var a4 = RouteAudit.Run(tightImg, "小环 R=1");
+            Check(!a4.Ok, "R=1.0 m < L/tan27°≈1.30 m ⇒ 体检不过", a4.Summary);
+            Check(a4.MinRadiusM < RouteAudit.SuggestRadiusM, "  ↳ 报告的实测值确实小于建议值",
+                  $"{a4.MinRadiusM:0.000} < {RouteAudit.SuggestRadiusM:0.000}");
+        }
+
+        Section("台架直给 · SET_TARGET 帧");
+        {
+            var f1 = Proto.BuildSetTarget(TargetId.Steer, -12.5f, 0x1234);
+            Check(f1.Length == 15, "帧长 15 B", f1.Length.ToString());
+            Check(f1[5] == (byte)Cmd.SetTarget && f1[5] == 0x09, "cmd = 0x09（0x08 留给读路表）",
+                  $"0x{f1[5]:X2}");
+            Check(f1[6] == (byte)TargetId.Steer, "id = 0（舵机）", f1[6].ToString());
+            Check(Math.Abs(Proto.GetF32(f1, 7) + 12.5f) < 1e-6f, "负角度按 float 原样编码（不能用 uint16 截）",
+                  Proto.GetF32(f1, 7).ToString("0.###"));
+
+            var f2 = Proto.BuildSetTarget(TargetId.Wheel, 3.2f, 1);
+            Check(f2[6] == (byte)TargetId.Wheel && Math.Abs(Proto.GetF32(f2, 7) - 3.2f) < 1e-6f,
+                  "id = 1（两轮 rps），3.2 rps 原样编码");
+
+            // CRC 覆盖 TYPE~PAYLOAD（不含 MAGIC、不含 CRC）
+            ushort want = Proto.Crc16(f2, 2, 3 + Proto.DN_PAYLOAD);
+            Check(Proto.GetU16(f2, 13) == want, "CRC 覆盖 [2, 13)", $"0x{Proto.GetU16(f2, 13):X4} / 0x{want:X4}");
+        }
+
         Section("参数元数据（73 B 载荷）");
         var meta = BuildParamMeta(8, 0f, 1000f, 500f, 1f, "-", "kp_s", "舵机|比例 Kp");
         Check(meta.Length == 73, "载荷 73 B", meta.Length.ToString());
@@ -242,8 +295,47 @@ internal static class SelfTest
         Check(RouteLink.SlotMaxBytes == 36 + 2048 * 16 && ring.Length <= RouteLink.SlotMaxBytes,
               "单槽上限 32804 B，测试镜像装得下", $"{ring.Length} ≤ {RouteLink.SlotMaxBytes}，{chunks} 块");
 
-        _sb.Append($"\r\n通过 {_pass} 项，失败 {_fail} 项。\r\n");
+        Section("CSV 导出（与 CsvRecorder 同一套表头）");
+        try
+        {
+            var st = new ChannelStore();
+            int nc = Math.Min(6, Defaults.Current.Count);
+            st.Ensure(nc);
 
+            float[] row = new float[nc];
+            for (int i = 0; i < 5; i++)
+            {
+                for (int c = 0; c < nc; c++) row[c] = c * 10 + i;
+                st.Append(row, nc, 1000.0 + i * 0.02, 0xFFFF);
+            }
+
+            string hp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"kh_csv_{Guid.NewGuid():N}.csv");
+            int nrow = CsvExport.Dump(hp, st, new[] { 3, 1 }, out string info);
+            string[] lines = File.ReadAllLines(hp);
+            try { File.Delete(hp); } catch { }
+
+            string Head(int ch)
+            {
+                string u = Defaults.ChannelUnit(ch);
+                return Defaults.ChannelName(ch) + (string.IsNullOrEmpty(u) ? "" : "[" + u + "]");
+            }
+
+            Check(nrow == 5 && lines.Length == 6, "导出行数 = 缓冲点数（5 行 + 1 行表头）", $"{nrow} / {lines.Length}");
+            Check(lines[0] == $"t_ms,note,{Head(1)},{Head(3)}",
+                  "表头与 CsvRecorder 同格式，且按通道号升序（传进来是 3,1）", lines[0]);
+            Check(lines[1].Split(',')[0] == "0", "首行 t_ms = 0（减掉第一点）", lines[1]);
+            Check(lines[1].Split(',')[1] == "", "note 列恒为空（快照没有锚点）", lines[1]);
+
+            var empty = new ChannelStore();
+            empty.Ensure(4);
+            string ep = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"kh_csv_e_{Guid.NewGuid():N}.csv");
+            int n0 = CsvExport.Dump(ep, empty, new[] { 0 }, out string info0);
+            Check(n0 == 0 && info0.Contains("没有"), "空缓冲返回 0 并给出原因，不抛异常", info0);
+            try { if (File.Exists(ep)) File.Delete(ep); } catch { }
+        }
+        catch (Exception ex) { Check(false, "CSV 导出不抛异常", ex.Message); }
+
+        _sb.Append($"\r\n通过 {_pass} 项，失败 {_fail} 项。\r\n");
         // ★ 本程序是 WinExe，没有控制台 —— 结果必须落到文件里才看得见
         string path = string.IsNullOrEmpty(outPath) ? "selftest.txt" : outPath;
         try { File.WriteAllText(path, _sb.ToString(), Encoding.UTF8); } catch { }

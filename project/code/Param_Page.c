@@ -42,6 +42,15 @@ static void param_page_init(void)
     DynamicCreate_Menu_LimitNumber(folder_rt, "v",  &ROUTE_PB_V,  float_02_Box, PB_V_MIN,  PB_V_MAX);
     DynamicCreate_Menu_LimitNumber(folder_rt, "ld", &ROUTE_PB_LD, float_02_Box, PB_LD_MIN, PB_LD_MAX);
     DynamicCreate_Menu_LimitNumber(folder_rt, "sm", &ROUTE_PB_SMODE, float_01_Box, 0, 1);
+    DynamicCreate_Menu_LimitNumber(folder_rt, "L",  &ROUTE_PB_L,  float_02_Box, PB_L_MIN, PB_L_MAX);   // 有效轴距
+    DynamicCreate_Menu_LimitNumber(folder_rt, "ept", &ROUTE_END_PT, float_01_Box, 0, 1);               // 停止时补终点
+    DynamicCreate_Menu_LimitNumber(folder_rt, "ve", &ROUTE_PB_VE, float_01_Box, 0, 1);                 // 速度剖面 0关/1开
+    DynamicCreate_Menu_LimitNumber(folder_rt, "alat", &ROUTE_PB_ALAT, float_02_Box,
+                                   PB_ALAT_MIN, PB_ALAT_MAX);                                          // 弯道横向加速度
+    DynamicCreate_Menu_LimitNumber(folder_rt, "vmin", &ROUTE_PB_VMIN, float_02_Box,
+                                   PB_VMIN_MIN, PB_VMIN_MAX);                                          // 限速地板
+    DynamicCreate_Menu_LimitNumber(folder_rt, "kh", &ROUTE_PB_KH, float_02_Box,
+                                   PB_KH_MIN, PB_KH_MAX);                                              // 0=自动 2L/ld
 
     // 遥测（顶层文件夹）：档案选择 0 = 全量 41 路 / 1 = 标定精简 18 路
     // ★ 切换后**无需重启**：Host_Crtl.c 每帧按 tel_sel 现算通道数与表，

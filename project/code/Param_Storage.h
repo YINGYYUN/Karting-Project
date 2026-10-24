@@ -17,8 +17,8 @@ CYT4BB 适配：存储位置为 Work Flash 第 0 页（sector 参数恒为 0）�
 #define PARAM_FLASH_SECTION         (0)
 #define PARAM_FLASH_PAGE            (0)
 
-// 参数总数（2 个后轮电机 × 4 + 舵机 × 3 + 路表 × 4 + 遥测档案 × 1）
-#define PARAM_COUNT                 (16)
+// 参数总数（2 个后轮电机 × 4 + 舵机 × 3 + 路表 × 11 + 遥测档案 × 1）
+#define PARAM_COUNT                 (22)
 
 // 上电强制重置falsh参数开关
 // 1：上电强制重写参数页flash
@@ -59,6 +59,28 @@ extern float param_cache[PARAM_COUNT];
 //   （没有对应的控制器副本），由 Host_Crtl.c 每帧直接读 param_cache[TEL_SEL_IDX]。
 #define TEL_SEL_IDX                 15
 
+// ★ 录制终点补点 (16)：1 = 停止录制时把"当前这一拍"强制补进路表，0 = 关
+//   为什么需要：采样是按里程（ins_route_ds）触发的 ⇒ 按下停止那一刻若还没走过一个点距，
+//   最后那一段就没有点，而**终点往往正打着大角**（收车/过弯尾）—— 回放跑到末尾会少一截、
+//   且最后一点的方向与实际不一致，很危险。开着它，停止时一定会落下带当前打角的一点。
+#define ROUTE_END_PT_IDX            16
+
+// ★ 有效轴距 L (17)：回放的 Pure Pursuit 与航向增益 k = 2L/ld 都要它
+//   2026-10-23 从 route_pb.h 的编译期常量 PB_L_M 提成运行期参数。
+#define ROUTE_PB_L_IDX              17
+
+// ★ 速度剖面 (18-20)：曲率限速 + 末段收油
+//   pb_ve = 1 时，pb_v 从"恒定车速"变成"车速上限"，实际目标由下面两条决定：
+//     ① 曲率限速：v ≤ √(alat / κ)，κ 由前后 kwin 个点的航向变化 / 弧长算出；
+//     ② 末段收油：越接近末点，上限按 √(creep² + 2·alat·d) 收紧（d = 沿路径到末点的弧长）。
+//   pb_ve = 0 时行为与以前**完全一样**（一个常数速度），所以它默认是 0。
+#define PB_VE_IDX                   18
+#define PB_ALAT_IDX                 19
+#define PB_VMIN_IDX                 20
+
+// ★ 航向增益手工覆盖 (21)：0 = 自动按 2L/ld（默认），> 0 = 直接用这个值做 A/B
+#define PB_KH_IDX                   21
+
 // 便捷访问宏
 #define MOTOR_LR_INV_K              param_cache[MOTOR_LR_INV_K_IDX]
 #define MOTOR_LR_U0                 param_cache[MOTOR_LR_U0_IDX]
@@ -82,6 +104,21 @@ extern float param_cache[PARAM_COUNT];
 // 遥测档案选择：0.0 = 全量 41 路 / 1.0 = 标定精简 18 路（默认 0）
 #define TEL_SEL_DEFAULT             (0.0f)
 #define TEL_SEL                     param_cache[TEL_SEL_IDX]
+
+// 录制终点补点：1.0 = 停止录制时强制补最后一个点（默认开），0.0 = 关
+#define ROUTE_END_PT_DEFAULT        (1.0f)
+#define ROUTE_END_PT                param_cache[ROUTE_END_PT_IDX]
+
+// 有效轴距 m（默认值来自 route_pb.h 的 PB_L_DEFAULT，量程也用它那对 MIN/MAX）
+#define ROUTE_PB_L                  param_cache[ROUTE_PB_L_IDX]
+
+// 速度剖面：使能 / 横向加速度 / 地板
+#define ROUTE_PB_VE                 param_cache[PB_VE_IDX]
+#define ROUTE_PB_ALAT               param_cache[PB_ALAT_IDX]
+#define ROUTE_PB_VMIN               param_cache[PB_VMIN_IDX]
+
+// 航向增益手工覆盖：0 = 自动（2L/ld）
+#define ROUTE_PB_KH                 param_cache[PB_KH_IDX]
 
 void    Param_Init          (void);     // 初始化(加载或设默认值)
 void    Param_Save          (void);     // 保存当前参数到 Flash —— **没改动就不写**（见 Param_Is_Dirty）

@@ -120,6 +120,77 @@ static uint16 pb_find_lookahead (uint16 nearest, const ins_wp_t *p, float ld)
 }
 
 //--------------------------------------
+// 函数简介     速度剖面：曲率限速 + 末段收油
+// 参数说明     best  当前进度点 / p 点表 / n 点数 / vmax 车速上限（= ROUTE_PB_V）
+// 返回参数     float 本拍目标速度 m/s（已夹在 [vmin, vmax]）
+// 备注信息     ★ 只在 pb_ve = 1 时调用；= 0 时回放仍走"一个常数速度"的老路径。
+//              ★ 每拍现算，不建 s_vlim[] 数组（省 8 KB）：曲率窗口只有 2×PB_KWIN 个点，
+//                末段收油最多扫到"从 vmax 降到 creep 所需的那几米"就提前退出。
+//--------------------------------------
+static float pb_speed_limit (uint16 best, const ins_wp_t *p, uint16 n, float vmax)
+{
+    float  alat = ROUTE_PB_ALAT;
+    float  vmin = ROUTE_PB_VMIN;
+    float  v, acc;
+    uint16 i0, i1, k;
+
+    if (alat < PB_ALAT_MIN) { alat = PB_ALAT_MIN; }
+    if (alat > PB_ALAT_MAX) { alat = PB_ALAT_MAX; }
+    if (vmin < PB_VMIN_MIN) { vmin = PB_VMIN_MIN; }
+    if (vmin > vmax)        { vmin = vmax; }
+
+    // ---- ① 曲率限速 ----
+    // 弧长用**逐段弦长累加**，不能用两端点直线距离：弯道上弦长 < 弧长，会把 κ 算大、速度压过低
+    i0 = (best > (uint16)PB_KWIN) ? (uint16)(best - (uint16)PB_KWIN) : 0u;
+    i1 = (uint16)(best + (uint16)PB_KWIN);
+    if (i1 > (uint16)(n - 1u)) { i1 = (uint16)(n - 1u); }
+
+    acc = 0.0f;
+    for (k = i0; k < i1; k ++) { acc += pb_dist(&p[k], &p[k + 1u]); }
+
+    if (acc < 0.02f)
+    {
+        // 位置几乎没动：转过角度 ⇒ 原地打方向（最急，给地板）；没转 ⇒ 静止段，不压速
+        float turn = fabsf(pb_wrap180(p[i1].yaw - p[i0].yaw)) * PB_D2R;
+
+        v = (turn > 0.017f) ? vmin : vmax;
+    }
+    else
+    {
+        float kap = fabsf(pb_wrap180(p[i1].yaw - p[i0].yaw)) * PB_D2R / acc;
+
+        v = (kap < 1e-3f) ? vmax : sqrtf(alat / kap);
+    }
+
+    // ---- ② 末段收油：v ≤ √(creep² + 2·alat·d) ----
+    // 先算"从 vmax 降到 creep 需要多少米"；沿路径走不到这个距离就说明末段收油不生效，
+    // 直接退出 —— 这样每拍最多扫十几米，不用每次从 best 走到表尾。
+    {
+        float need = ((vmax * vmax) - (PB_END_CREEP * PB_END_CREEP)) / (2.0f * alat);
+        float d    = 0.0f;
+        uint8 far  = 0u;
+
+        for (k = best; (uint16)(k + 1u) < n; k ++)
+        {
+            d += pb_dist(&p[k], &p[k + 1u]);
+            if (d >= need) { far = 1u; break; }
+        }
+
+        if (0u == far)
+        {
+            float vc = sqrtf((PB_END_CREEP * PB_END_CREEP) + (2.0f * alat * d));
+
+            if (v > vc) { v = vc; }
+        }
+    }
+
+    if (v > vmax) { v = vmax; }
+    if (v < vmin) { v = vmin; }
+
+    return v;
+}
+
+//--------------------------------------
 // 函数简介     收尾：回中、让出驾驶
 //--------------------------------------
 static void pb_finish (uint8 st, const char *why)
@@ -280,6 +351,14 @@ void route_pb_poll (void)
         if (v < PB_V_MIN) { v = PB_V_MIN; }
         if (v > PB_V_MAX) { v = PB_V_MAX; }
 
+        // ★ 速度剖面（pb_ve = 1）：pb_v 从"恒定车速"变成"上限"，
+        //   曲率限速自动压弯道、末段收油防止冲到表尾。pb_ve = 0 时这一段不执行。
+        //   只对**正向**生效：负值 = 倒车，倒车沿用恒定速度（倒车段的几何限速没有意义）。
+        if ((ROUTE_PB_VE >= 0.5f) && (v > 0.005f))
+        {
+            v = pb_speed_limit(best, p, s_n, v);
+        }
+
         if ((v < 0.005f) && (v > -0.005f))      // |v| 太小：自由轮
         {
             Motor_Crtl_Enable    = 0;
@@ -292,7 +371,7 @@ void route_pb_poll (void)
             float vrps = v / mpr;
 
             Motor_Crtl_Enable = 1;
-            Motor_Diff_Alloc(vrps, Servo_Angle_Deg,
+            Motor_Diff_Alloc(vrps, Servo_Angle_Deg, ROUTE_PB_L,
                              &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
         }
     }
@@ -317,7 +396,9 @@ void route_pb_poll (void)
         if (ROUTE_PB_SMODE < 0.5f)
         {
             // 航向通道：目标航向 + k = 2L/ld（与 Pure Pursuit 等价）
-            float k = 2.0f * PB_L_M / s_ld;
+            // 实际施加由 5 ms 中断里的 Head_Crtl_Tick() 完成，这里只给目标与增益。
+            // pb_kh > 0 时用手填值覆盖（做 A/B 用），见 route_pb.h 的说明。
+            float k = (ROUTE_PB_KH > 1.0e-3f) ? ROUTE_PB_KH : (2.0f * ROUTE_PB_L / s_ld);
 
             if (k < PB_K_MIN) { k = PB_K_MIN; }
             if (k > PB_K_MAX) { k = PB_K_MAX; }
@@ -325,13 +406,12 @@ void route_pb_poll (void)
             Head_Crtl_Set_Kp(k);
             Head_Crtl_Set_Target(pb_wrap180(o.yaw - alpha * PB_R2D));
             Head_Crtl_Set_Enable(1);
-            Head_Crtl_Tick();                   // 回放期间由本函数驱动航向环
         }
         else
         {
             // 直接给 δ
             float kappa = 2.0f * sinf(alpha) / s_ld;
-            float delta = atanf(PB_L_M * kappa) * PB_R2D;
+            float delta = atanf(ROUTE_PB_L * kappa) * PB_R2D;
 
             if (delta >  PB_DELTA_MAX) { delta =  PB_DELTA_MAX; }
             if (delta < -PB_DELTA_MAX) { delta = -PB_DELTA_MAX; }

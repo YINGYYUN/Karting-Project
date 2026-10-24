@@ -68,6 +68,23 @@ static const Host_Param_t host_param_meta[] = { HOST_PARAM_TABLE(HOST_DEF_META) 
 #define HOST_CMD_LOAD           (0x06)
 #define HOST_CMD_GET_TABLE      (0x07)
 
+/* ★ 台架直给（2026-10-24 新增）：上位机用滑条直接给驱动量，用于台架测试/标定。
+ *
+ * 为什么做成**新命令**而不是参数表里加一项：
+ *   · 舵机目标角是**瞬时命令**，不该进 Flash、也不该被「存 Flash」打包；
+ *   · 它写的是驱动量（Servo_Target_Deg / 电机 target），不是控制参数；
+ *   · 参数表的语义是"标定量"，混进来会让 CSV 与参数对照表产生歧义。
+ *
+ * 生效条件（缺一不可，全在 host_drive_tick() 里判；收到帧时只记录）：
+ *   Host_Mode == HOST_MODE_CMD  &&  Host_Link == ON  &&  Host_Lost == 0  &&  对应使能位 = 1
+ * ⇒ 与 SET_ENABLE 同一套门：UP 模式 / 链路关 / 心跳锁存期间都不生效；
+ *   锁存后自动回落到"闭环刹停"（后轮保持使能、目标 0；舵机保持原转向）。
+ *
+ * VALUE 里放 float（与 SET_PARAM 同一编码），ID 选目标量： */
+#define HOST_CMD_SET_TARGET     (0x09)      /* ★ 0x08 留给"WiFi 读路表"（上位机 Cmd.RouteDump 已占位） */
+#define HOST_TGT_STEER          (0)         // 舵机目标角 deg（向右为正；按 SERVO_SOFT_LIMIT_DEG 夹）
+#define HOST_TGT_WHEEL          (1)         // 两轮目标 rps（同速、不走差速；按 MOTOR_CRTL_TARGET_MAX 夹）
+
 // 下行帧固定长度：MAGIC(2) + TYPE(1) + LEN(2) + CMD(1) + ID(1) + VALUE(4) + TOKEN(2) + CRC(2) = 15
 #define HOST_DN_FRAME_LEN       (15)
 #define HOST_DN_PAYLOAD         (8)         // 下行 LEN 恒定 8
@@ -107,6 +124,8 @@ static uint32   host_alive_ms   = 0;        // 最近一次收到下行帧的时
 static uint8    host_ever_rx    = 0;        // 1 = 上电以来至少收到过一帧下行
 static uint16   host_tx_seq     = 0;        // 遥测序号（上位机按它算丢包）
 static uint16   host_enable     = 0;        // 上位机下发的使能位图
+static float    host_tgt_steer  = 0.0f;     // SET_TARGET: 舵机目标角 deg（台架直给）
+static float    host_tgt_wheel  = 0.0f;     // SET_TARGET: 两轮目标 rps（台架直给，同速）
 static uint32   host_tx_count   = 0;        // 已成功交给模块的遥测帧数
 static uint32   host_rx_count   = 0;        // 已解析通过的命令帧数
 static uint32   host_crc_err    = 0;        // CRC 校验失败次数
@@ -758,6 +777,40 @@ static void host_dispatch (uint8 cmd, uint8 pid, uint32 raw, float val, uint16 t
             host_send_ack(cmd, token);
             break;
 
+        
+        /* ★ 台架直给（SET_TARGET）：只**记录**目标，不在这里写驱动。
+           与 SET_ENABLE 同一个理由：三道门（CMD / 链路 / 心跳锁存）都在 host_drive_tick() 里，
+           在这里补一脚会让"刚收到 SET_TARGET 的那一圈"绕过它们。
+           越界直接 NAK，**不夹**：夹了会让上位机以为自己的值被接受了。 */
+        case HOST_CMD_SET_TARGET:
+            if (HOST_TGT_STEER == pid)
+            {
+                if (!((val >= -SERVO_SOFT_LIMIT_DEG) && (val <= SERVO_SOFT_LIMIT_DEG)))
+                {
+                    host_send_nak(cmd, token, 3);
+                    break;
+                }
+                host_tgt_steer = val;
+            }
+            else if (HOST_TGT_WHEEL == pid)
+            {
+                if (!((val >= -MOTOR_CRTL_TARGET_MAX) && (val <= MOTOR_CRTL_TARGET_MAX)))
+                {
+                    host_send_nak(cmd, token, 3);
+                    break;
+                }
+                host_tgt_wheel = val;
+            }
+            else
+            {
+                host_send_nak(cmd, token, 4);       // 未知目标量
+                break;
+            }
+
+            host_send_ack(cmd, token);
+            break;
+
+
         case HOST_CMD_SAVE:
             Param_Save();                           // 写 Flash（Param_Storage.c）
             host_send_ack(cmd, token);
@@ -1146,6 +1199,13 @@ static void host_actuator_clear (void)
     Motor_Crtl_Enable    = 0;
     Motor_LR_Crtl.target = 0.0f;
     Motor_RR_Crtl.target = 0.0f;
+
+    /* 台架直给的目标也一并作废：否则"遥控收回 → 再交回上位机"时，
+       会拿上一位驾驶员留下的舵角/转速继续跑（目标本身不是驱动量，不写不会停）。
+       ★ 只在"交还驾驶权"这条路径上清；host_drive_tick() 里失能时**不清** ——
+         那次失能只是"暂时不出力"，重新使能应当回到原来的目标。 */
+    host_tgt_steer = 0.0f;
+    host_tgt_wheel = 0.0f;
 }
 
 //--------------------------------------
@@ -1393,6 +1453,26 @@ static void host_drive_tick (void)
     /* 正常：上位机的使能位图说了算（SET_ENABLE 只写 host_enable，写驱动在这里） */
     Servo_Crtl_Enable = (0 != (host_enable & HOST_EN_STEER)) ? 1 : 0;
     Motor_Crtl_Enable = (0 != (host_enable & HOST_EN_MOTOR)) ? 1 : 0;
+
+    /* ★ 台架直给（SET_TARGET）：使能位为 1 才写目标 ——
+       位为 0 时目标**不写**（保留上一个值不动），这与"失能=不出力"是两件事：
+       重新使能时不会因为目标被清成 0 而"先回正再打角"。
+
+       舵机：直给时必须先把航向环让开 —— 否则 5 ms 中断里的 Head_Crtl_Tick()
+       每拍都会把 Servo_Target_Deg 覆盖成 -kp·err，上位机的滑条完全不起作用。 */
+    if (0 != (host_enable & HOST_EN_STEER))
+    {
+        Head_Crtl_Set_Enable(0);
+        Servo_Target_Deg = host_tgt_steer;      // 软限位在 Servo_Crtl_Tick() 里夹
+    }
+
+    /* 后轮：台架测试要"两轮同速"，刻意不走 Motor_Diff_Alloc（差速用实测舵角，
+       台架上轮子悬空、实测角没意义，反而会让两轮转速不一样）。 */
+    if (0 != (host_enable & HOST_EN_MOTOR))
+    {
+        Motor_LR_Crtl.target = host_tgt_wheel;
+        Motor_RR_Crtl.target = host_tgt_wheel;
+    }
 }
 
 //--------------------------------------

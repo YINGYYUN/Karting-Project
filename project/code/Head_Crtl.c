@@ -12,11 +12,14 @@
 /*[S] 内部状态 [S]----------------------------------------*/
 /**********************************************************/
 
-static uint8 head_en  = 0;          // 1 = 接管 Servo_Target_Deg
-static uint8 head_rev = 0;          // 1 = 按倒车算
-static float head_tar = 0.0f;       // 目标航向（累积值）
-static float head_err = 0.0f;       // 目标 - 实测，折到 ±180
-static float head_kp  = HEAD_KP_DEFAULT;    // 航向环增益（回放会按 2L/ld 覆盖）
+// ★ 全部 volatile：Head_Crtl_Tick() 在 5 ms 中断里跑（pit0_ch1_isr），
+//   其余接口在页面主循环里调用。跨节拍共享的状态不加 volatile 的话，
+//   编译器可以把 Set_Target 写的值缓存在寄存器里，中断永远读到旧值 —— 这类 bug 只在 -O2 下出现。
+static volatile uint8 head_en  = 0;         // 1 = 接管 Servo_Target_Deg
+static volatile uint8 head_rev = 0;         // 1 = 按倒车算
+static volatile float head_tar = 0.0f;      // 目标航向（累积值）
+static volatile float head_err = 0.0f;      // 目标 - 实测，折到 ±180
+static volatile float head_kp  = HEAD_KP_DEFAULT;   // 航向环增益（回放会按 2L/ld 覆盖）
 
 /**********************************************************/
 /*----------------------------------------[E] 内部状态 [E]*/

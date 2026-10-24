@@ -22,6 +22,14 @@ static const float DEFAULT_PARAMS[PARAM_COUNT] = {
     PB_V_DEFAULT, PB_LD_DEFAULT, PB_SMODE_DEFAULT,
     // 遥测档案选择：0 = 全量 41 路（上电默认） / 1 = 标定精简 18 路
     TEL_SEL_DEFAULT,
+    // 录制终点补点：1 = 停止时强制补最后一个点（默认开）
+    ROUTE_END_PT_DEFAULT,
+    // 有效轴距 m（回放的 2L/ld 与 δ=atan(L·κ) 都用它）
+    PB_L_DEFAULT,
+    // 速度剖面：使能（0 = 关，行为与以前完全一样）/ 允许横向加速度 / 限速地板
+    PB_VE_DEFAULT, PB_ALAT_DEFAULT, PB_VMIN_DEFAULT,
+    // 航向增益手工覆盖：0 = 自动按 2L/ld
+    PB_KH_DEFAULT,
 };
 
 // 参数缓存区(菜单直接修改此数组, Flash 读写也通过此数组)
@@ -107,6 +115,48 @@ static void fix_appended_params (void)
     if (!((TEL_SEL >= 0.0f) && (TEL_SEL <= 1.0f)))
     {
         TEL_SEL = TEL_SEL_DEFAULT;
+        fix = 1;
+    }
+
+    // 录制终点补点：0/1
+    if (!((ROUTE_END_PT >= 0.0f) && (ROUTE_END_PT <= 1.0f)))
+    {
+        ROUTE_END_PT = ROUTE_END_PT_DEFAULT;
+        fix = 1;
+    }
+
+    // 有效轴距：空白页读出来是 NaN/巨值；量程用 route_pb.h 的那一对
+    if (!((ROUTE_PB_L >= PB_L_MIN) && (ROUTE_PB_L <= PB_L_MAX)))
+    {
+        ROUTE_PB_L = PB_L_DEFAULT;
+        fix = 1;
+    }
+
+    // 速度剖面使能：0/1
+    if (!((ROUTE_PB_VE >= 0.0f) && (ROUTE_PB_VE <= 1.0f)))
+    {
+        ROUTE_PB_VE = PB_VE_DEFAULT;
+        fix = 1;
+    }
+
+    // 横向加速度：太小限速会把车压成爬行，太大等于没有限速
+    if (!((ROUTE_PB_ALAT >= PB_ALAT_MIN) && (ROUTE_PB_ALAT <= PB_ALAT_MAX)))
+    {
+        ROUTE_PB_ALAT = PB_ALAT_DEFAULT;
+        fix = 1;
+    }
+
+    // 限速地板：0 也是合法的（= 弯里可以压到 0），所以只夹上限
+    if (!((ROUTE_PB_VMIN >= PB_VMIN_MIN) && (ROUTE_PB_VMIN <= PB_VMIN_MAX)))
+    {
+        ROUTE_PB_VMIN = PB_VMIN_DEFAULT;
+        fix = 1;
+    }
+
+    // 航向增益手工覆盖：0 = 自动，合法范围 0~PB_KH_MAX
+    if (!((ROUTE_PB_KH >= PB_KH_MIN) && (ROUTE_PB_KH <= PB_KH_MAX)))
+    {
+        ROUTE_PB_KH = PB_KH_DEFAULT;
         fix = 1;
     }
 

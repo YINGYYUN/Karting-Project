@@ -109,7 +109,18 @@ static void Motor_Crtl_EncCheck (Motor_Crtl_t *p, float delta)
 
     if (0 != p->enc_fault)
     {
-        return;                         // 已锁存，等 Motor_Crtl_Reset()
+        /* 软锁存：冷却到点就自动放行一次重试（见 Motor_Crtl.h 的说明）。
+           ★ 只有在"真的重试过 RETRY_MAX 次"之后才变成永久锁存（Reset 才清）。
+           重试前输出已经被 Update 清零、积分与斜坡也复位过，所以这是"重新使能一次"，
+           不是"带着错误积分继续冲"。 */
+        if ((p->retry < MOTOR_CRTL_ENC_RETRY_MAX) &&
+            ((uint32)(Sys_Tick_Ms - p->fault_ms) >= MOTOR_CRTL_ENC_RETRY_MS))
+        {
+            p->retry    ++;
+            p->enc_fault = 0;
+            p->zero_ms   = 0;
+        }
+        return;
     }
 
     /* 前提不成立（没使能 / 心跳丢 / 出力还没到阈值）-> 只清计时，不判 */
@@ -129,6 +140,11 @@ static void Motor_Crtl_EncCheck (Motor_Crtl_t *p, float delta)
     {
         p->zero_ms   = 0;
         p->enc_fault = 1;
+        p->fault_ms  = Sys_Tick_Ms;
+
+        // 串口留一行痕迹：这个故障原本是"看不见"的，现场只会觉得"那个轮子慢了"
+        printf("[MOT] ENC LOST: motor %u (重试 %u/%u)\r\n",
+               (unsigned)p->motor_id, (unsigned)p->retry, (unsigned)MOTOR_CRTL_ENC_RETRY_MAX);
     }
 }
 
@@ -156,6 +172,8 @@ void Motor_Crtl_Reset (void)
     Motor_LR_Crtl.z           = 0.0f;
     Motor_LR_Crtl.zero_ms     = 0;
     Motor_LR_Crtl.enc_fault   = 0;
+    Motor_LR_Crtl.retry       = 0;      // 重试配额也归零：人工复位 = 重新给满配额
+    Motor_LR_Crtl.fault_ms    = 0;
 
     Motor_RR_Crtl.target      = 0.0f;
     Motor_RR_Crtl.target_prev = 0.0f;
@@ -163,6 +181,8 @@ void Motor_Crtl_Reset (void)
     Motor_RR_Crtl.z           = 0.0f;
     Motor_RR_Crtl.zero_ms     = 0;
     Motor_RR_Crtl.enc_fault   = 0;
+    Motor_RR_Crtl.retry       = 0;
+    Motor_RR_Crtl.fault_ms    = 0;
 }
 
 //--------------------------------------
@@ -324,13 +344,19 @@ void Motor_Crtl_Update (Motor_Crtl_t *p)
 // 函数简介     电子差速分配（阿克曼）
 // 参数说明     v_rps       两轮平均目标转速 rps
 //              delta_deg   实测方向盘角度（度，向右为正）
+//              L_m         有效轴距 m（调用方给：回放传 ROUTE_PB_L 参数）
 //              vl / vr     输出：左 / 右轮目标 rps
-// 使用示例     Motor_Diff_Alloc(tgt, Servo_Angle_Deg, &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
+// 使用示例     Motor_Diff_Alloc(tgt, Servo_Angle_Deg, ROUTE_PB_L, &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
 // 备注信息     右转（delta > 0）左轮在外侧 -> 快；前进 / 倒车同一公式。
 //              |r| < MOTOR_DIFF_MAX < 1，保证两轮恒与 v 同向。
 //              软限位 ±28° 不跨编码器 0 点，直接用原始偏差即可。
+//              ★ 轴距由参数传入（原来内用宏 MOTOR_DIFF_L，与回放的 2L/ld 各用一份）
+//              ★ 实测角先过一阶低通（α=0.25），与队友 spd_diff_alloc() 一致：
+//                编码器有量化噪声，直接进 tan() 会让差速跟着抖
 //--------------------------------------
-void Motor_Diff_Alloc (float v_rps, float delta_deg, float *vl, float *vr)
+static float s_diff_dm = 0.0f;      // 实测舵角低通状态（度）
+
+void Motor_Diff_Alloc (float v_rps, float delta_deg, float L_m, float *vl, float *vr)
 {
     *vl = v_rps;
     *vr = v_rps;
@@ -340,10 +366,19 @@ void Motor_Diff_Alloc (float v_rps, float delta_deg, float *vl, float *vr)
         float k;            // 曲率 1/m
         float r;            // 单侧相对偏差
 
-        if ((v_rps < MOTOR_DIFF_V_MIN) && (v_rps > -MOTOR_DIFF_V_MIN)) { return; }
-        if (MOTOR_DIFF_L < MOTOR_DIFF_L_MIN) { return; }    // 轴距没配好：宁可不差速
+        /* 倒车/静止：不做分配，但**让低通跟上**当前角，免得下次前进第一拍跳变
+           （队友 spd_diff_alloc() 里也是这个处理） */
+        if ((v_rps < MOTOR_DIFF_V_MIN) && (v_rps > -MOTOR_DIFF_V_MIN))
+        {
+            s_diff_dm = delta_deg;
+            return;
+        }
 
-        k = tanf(delta_deg * MOTOR_DIFF_DEG2RAD) / MOTOR_DIFF_L;
+        if (L_m < MOTOR_DIFF_L_MIN) { return; }             // 轴距没配好：宁可不差速
+
+        s_diff_dm = (MOTOR_DIFF_LPF * delta_deg) + ((1.0f - MOTOR_DIFF_LPF) * s_diff_dm);
+
+        k = tanf(s_diff_dm * MOTOR_DIFF_DEG2RAD) / L_m;
         r = k * MOTOR_DIFF_W * 0.5f;
 
         if (r >  MOTOR_DIFF_MAX) { r =  MOTOR_DIFF_MAX; }

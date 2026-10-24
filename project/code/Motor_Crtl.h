@@ -120,13 +120,35 @@
 /* ---- 电子差速（阿克曼）----
    按实测方向盘角把目标转速分配到左右轮：左 = v(1+r)、右 = v(1-r)，平均仍等于 v。
    与队友工程 10 同源同车，L / W / MAX 用他的实测值。 */
+/* 电子差速的三项参数（2026-10-24 与队友 spd_ctrl.h 逐值核对过，数值完全相同）：
+ *   MOTOR_DIFF_W      = 0.605  ← 队友 SPD_DIFF_W_DEFAULT（实测 60.5 cm 轮心距）
+ *   MOTOR_DIFF_MAX    = 0.85   ← 队友 SPD_DIFF_MAX_DEFAULT（内侧最低保留 15%）
+ *   MOTOR_DIFF_ENABLE = 1      ← 队友 spd_diff_en 默认 1
+ * 差别只在"宏 vs 运行期参数"：队友把这三项做成了参数（df_en/df_w/df_max）。
+ * 轴距 L 两边都是**运行时传入**：队友传 pb_l，我们传 ROUTE_PB_L。
+ */
 #define MOTOR_DIFF_ENABLE           (1)         // 0 = 关闭差速（两轮同速）
-#define MOTOR_DIFF_L                (0.66f)     // 有效轴距 m（方向盘角 -> 曲率的等效值）
 #define MOTOR_DIFF_L_MIN            (0.30f)     // 轴距小于它视为无效，不差速
-#define MOTOR_DIFF_W                (0.605f)    // 轮距 m（左右轮心距）
+#define MOTOR_DIFF_W                (0.605f)    // 轮距 m（左右轮心距，实测 60.5 cm）
 #define MOTOR_DIFF_MAX              (0.85f)     // 单侧偏差上限（内侧最低保留 15%），必须 < 1
 #define MOTOR_DIFF_V_MIN            (0.024f)    // 死区半宽：|v| 低于它不分速 rps（≈0.02 m/s）
 #define MOTOR_DIFF_DEG2RAD          (0.0174532925f)
+#define MOTOR_DIFF_LPF              (0.25f)     // 实测角一阶低通系数（与队友一致）
+
+/* ---------------------------------------------------------------
+ * 编码器脱落停机：软锁存 + 有限次自动重试（2026-10-24）
+ *
+ * 现场问题：某一拍起步打滑 / 插头抖一下 / 被顶住，本路编码器 200 ms 没有脉冲
+ * ⇒ 该路输出被**永久**清零，只有 `Motor_Crtl_Reset()`（上电或调试页）能解。
+ * 表现极具误导性：**那个轮子从此只是被拖着走**（编码器照样报转速），于是
+ * "左轮永远比右轮快"，而且直线、左转、右转都一样 —— 看起来像差速算错了。
+ *
+ * 现在：停机后冷却 RETRY_MS 自动放行一次；连续 RETRY_MAX 次都不行才真正锁存。
+ * ⚠ 重试不是"带病继续跑"：每次重试前输出已经清零、积分与斜坡都已复位，
+ *   所以它等价于"重新使能一次"，反馈真没动就 200 ms 后再次停机。
+ * ------------------------------------------------------------- */
+#define MOTOR_CRTL_ENC_RETRY_MAX    (3u)
+#define MOTOR_CRTL_ENC_RETRY_MS     (1000u)
 
 /**********************************************************/
 /*----------------------------------------[E] 默认参数 [E]*/
@@ -163,6 +185,8 @@ typedef struct
     uint8   enabled;            // 1 = 本拍闭环在跑
     uint32  zero_ms;            // 编码器脱落计时：已连续多少 ms "在出力但编码器不动"
     uint8   enc_fault;          // 1 = 本路因编码器脱落/堵转停机（锁存，Reset 才清）
+    uint8   retry;              // 已经自动重试过几次（软锁存）
+    uint32  fault_ms;           // 上次停机的时刻（Sys_Tick_Ms）：冷却到点才允许重试
 } Motor_Crtl_t;
 
 // 两路实例
@@ -190,7 +214,9 @@ void    Motor_Crtl_Tick     (void);
 // 单路控制计算（通用函数写法，与 PID 基础函数同一风格）
 void    Motor_Crtl_Update   (Motor_Crtl_t *p);
 // 电子差速：按实测方向盘角分配左右轮目标 rps（|v| 低于死区不分配）
-void    Motor_Diff_Alloc    (float v_rps, float delta_deg, float *vl, float *vr);
+// ★ L_m 由调用方给（回放传 ROUTE_PB_L 参数）：以前这里内用宏 MOTOR_DIFF_L，
+//   与回放的 2L/ld 各用一份轴距，改一个另一个不动 —— 现在只有一个来源。
+void    Motor_Diff_Alloc    (float v_rps, float delta_deg, float L_m, float *vl, float *vr);
 // 心跳：由正在监督电机运行的循环每圈调用（见 MOTOR_CRTL_HB_TIMEOUT_MS 的说明）
 void    Motor_Crtl_HB_Feed  (void);
 // 距上次喂心跳的毫秒数（调试页显示用）

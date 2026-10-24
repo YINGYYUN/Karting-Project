@@ -50,6 +50,7 @@ public sealed class MainForm : Form
     private Button _btnConn;
     private CheckBox _ckHb;
     private Button _btnRoute;      // 打开路表面板（串口灌表，与 WiFi 链路无关）
+    private Button _btnBench;      // 台架直给（WiFi 下行 SET_TARGET）
 
     // ---- 波形（1 / 2 / 4 张，跟队友一样用 TableLayoutPanel 拼）----
     private Panel _waveHost;
@@ -61,6 +62,7 @@ public sealed class MainForm : Form
     private Button _btnTrack;
     private CheckBox _ckAutoY;
     private Button _btnRec;
+    private Button _btnExport;
 
     // ---- odom 轨迹图（只读；与波形共用同一份 ChannelStore）----
     private TrackPanel _track;
@@ -88,7 +90,7 @@ public sealed class MainForm : Form
 
     private SplitContainer _mainSplit, _rightSplit;
 
-    private System.Windows.Forms.Timer _uiTimer, _statTimer, _tableTimer, _hbTimer;
+    private System.Windows.Forms.Timer _uiTimer, _statTimer, _tableTimer, _hbTimer, _recTimer;
 
     private ushort _tok = 1;
     private long _frames, _lost, _crcBad;
@@ -214,6 +216,18 @@ public sealed class MainForm : Form
         _btnRoute.Click += (_, __) => OpenRouteForm();
         bar.Controls.Add(_btnRoute);
 
+        // 台架直给（舵机角 / 两轮转速）：走 WiFi 下行 SET_TARGET，与"路表…"（走串口）完全不同
+        _btnBench = new Button
+        {
+            Text = "台架…",
+            Width = Dpi.Px(84),
+            Height = Dpi.Px(26),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Location = new Point(bar.ClientSize.Width - Dpi.Px(92) - Dpi.Px(88), Dpi.Px(10)),
+        };
+        _btnBench.Click += (_, __) => OpenBenchForm();
+        bar.Controls.Add(_btnBench);
+
         Controls.Add(bar);
     }
 
@@ -226,6 +240,25 @@ public sealed class MainForm : Form
         using var f = new RouteForm();
         Log("打开路表面板（串口灌表，与 WiFi 链路无关）");
         f.ShowDialog(this);
+    }
+
+    /// <summary>
+    /// 打开"台架直给"窗口：用滑条直接把舵机角 / 两轮转速给到车端（<see cref="Cmd.SetTarget"/>）。
+    /// 与参数滑条不同 —— 它写的是**驱动量**，不进 Flash；车端只在 CMD 模式 + 链路 ON 时采信。
+    /// </summary>
+    private void OpenBenchForm()
+    {
+        if (_link == null || !_link.IsOpen) { Log("台架直给要求先「开始接收」（下行要能从同一链路发出去）"); return; }
+
+        using var f = new BenchForm((cmd, id, v) =>
+        {
+            if (_link == null || !_link.IsOpen) return false;
+            return _link.Send(Proto.BuildCommand(cmd, id, v, _tok++));
+        });
+
+        Log("打开台架直给面板（SET_TARGET / SET_ENABLE，仅 CMD 模式生效）");
+        f.ShowDialog(this);
+        Log("台架直给面板已关闭（已发失能 + 归零）");
     }
 
     // ==================================================================
@@ -390,12 +423,16 @@ public sealed class MainForm : Form
         _btnRec = new Button { Text = "录制 CSV", Location = new Point(Dpi.Px(494), Dpi.Px(4)), Width = Dpi.Px(96), Height = Dpi.Px(26) };
         _btnRec.Click += (_, __) => ToggleRecord();
 
+        // 波形快照导出：与"录制"同一套表头，但倒出的是**已经收到**的那一段（不用提前按录制）。
+        _btnExport = new Button { Text = "导出", Location = new Point(Dpi.Px(680), Dpi.Px(4)), Width = Dpi.Px(58), Height = Dpi.Px(26) };
+        _btnExport.Click += (_, __) => ExportCsv();
+
         // ★ 轨迹图 / 波形图 切换：轨迹图是**只读**视图，与波形共用同一份 ChannelStore，
         //   不新增任何下发命令（没有"清空车端"这种动作，清空只清本机显示）。
         _btnTrack = new Button { Text = "轨迹图", Location = new Point(Dpi.Px(600), Dpi.Px(4)), Width = Dpi.Px(66), Height = Dpi.Px(26) };
         _btnTrack.Click += (_, __) => SetTrackMode(!_trackMode);
 
-        waveBar.Controls.AddRange(new Control[] { lbLayout, b1, b2, b4, lbWin, _cbWindow, _ckAutoY, _btnPause, _btnRec, _btnTrack });
+        waveBar.Controls.AddRange(new Control[] { lbLayout, b1, b2, b4, lbWin, _cbWindow, _ckAutoY, _btnPause, _btnRec, _btnExport, _btnTrack });
 
         // 波形与轨迹叠在同一块区域里，靠 Visible 切换（各自 Dock=Fill）
         _waveDock = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
@@ -838,9 +875,15 @@ public sealed class MainForm : Form
             _track?.Tick();                     // 轨迹图也按同一节拍重绘（隐藏时只 Invalidate，几乎无开销）
             UpdateValueLabels();
             UpdateDirtyLabel();
-            if (_rec.IsRecording) _rec.Tick(_sw.Elapsed.TotalSeconds);
         };
         _uiTimer.Start();
+
+        // ★ CSV 采样用**独立定时器**（10 ms），不挂在 30 FPS 重绘上：
+        //   重绘是 33 ms，挂在那里的话"20 ms 抽稀"实际会退化成 33 ms 一行。
+        //   与队友 CalibForm 的做法一致（它也是 10 ms 一个 tick）。
+        _recTimer = new System.Windows.Forms.Timer { Interval = 10 };
+        _recTimer.Tick += (_, __) => { if (_rec.IsRecording) _rec.Tick(NowMs()); };
+        _recTimer.Start();
 
         _statTimer = new System.Windows.Forms.Timer { Interval = 500 };
         _statTimer.Tick += (_, __) => UpdateStats();
@@ -1053,6 +1096,49 @@ public sealed class MainForm : Form
     // ==================================================================
     // 录制 / 统计 / 日志
     // ==================================================================
+
+    /// <summary>
+    /// CsvRecorder 的时间轴：**毫秒**（队友 CalibForm 用的是 Environment.TickCount64，这里保持一致）。
+    ///
+    /// ⚠ 原来这里传的是 `_sw.Elapsed.TotalSeconds` —— 单位错了。CsvRecorder 的抽稀是
+    /// `_next += periodMs`（毫秒），拿"秒"喂进去，两次落盘之间会隔 20 **秒**，
+    /// 录出来几乎是空表。ChannelStore / 波形 / CsvExport 用的是秒（另一条时间轴），不要混。
+    /// </summary>
+    private static double NowMs() => Environment.TickCount64;
+
+    /// <summary>当前勾选的通道号（录制与快照导出共用，避免两处逻辑走偏）。</summary>
+    private List<int> CheckedChannels()
+    {
+        var chans = new List<int>();
+        for (int i = 0; i < Defaults.Current.Count; i++)
+            if (_chkBoxes.TryGetValue(i, out var ck) && ck.Checked) chans.Add(i);
+        return chans;
+    }
+
+    /// <summary>把缓冲里已经收到的波形倒成 CSV（与 CsvRecorder 同一套表头）。</summary>
+    private void ExportCsv()
+    {
+        var chans = CheckedChannels();
+        if (chans.Count == 0) { Log("没有勾选任何通道，无法导出"); return; }
+        if (_store.Count == 0) { Log("缓冲里还没有数据，无法导出"); return; }
+
+        using var dlg = new SaveFileDialog
+        {
+            Filter = "CSV|*.csv",
+            FileName = System.IO.Path.GetFileName(CsvExport.DefaultPath()),
+            InitialDirectory = System.IO.Path.GetDirectoryName(CsvExport.DefaultPath()),
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            int rows = CsvExport.Dump(dlg.FileName, _store, chans, out string info);
+            if (rows == 0) Log("导出失败：" + info);
+            else Log($"波形快照已导出（{info}）→ {dlg.FileName}");
+        }
+        catch (Exception ex) { Log("导出失败：" + ex.Message); }
+    }
+
     private void ToggleRecord()
     {
         if (_rec.IsRecording)
@@ -1064,9 +1150,7 @@ public sealed class MainForm : Form
             return;
         }
 
-        var chans = new List<int>();
-        for (int i = 0; i < Defaults.Current.Count; i++)
-            if (_chkBoxes.TryGetValue(i, out var ck) && ck.Checked) chans.Add(i);
+        var chans = CheckedChannels();
         if (chans.Count == 0) { Log("没有勾选任何通道，无法录制"); return; }
 
         // ★ 文件名里带档案短名（full41 / calib18）：两种列义绝不能靠"用户记得"来区分，
@@ -1078,7 +1162,7 @@ public sealed class MainForm : Form
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
-        if (_rec.Start(dlg.FileName, 20, chans, _sw.Elapsed.TotalSeconds, out string err))
+        if (_rec.Start(dlg.FileName, 20, chans, NowMs(), out string err))
         {
             _btnRec.Text = "停止录制";
             _btnRec.BackColor = Theme.Err;
@@ -1268,6 +1352,12 @@ public sealed class MainForm : Form
             (8, "kp_s",    "舵机",  "比例 Kp",     0.000f, 1000.000f, 400.000f, 1.000f, "-"),
             (9, "u0_s",    "舵机",  "摩擦前馈 U0", 0.000f,10000.000f,1700.000f,10.000f, "-"),
             (10,"ki_s",    "舵机",  "积分 Ki",     0.000f, 1000.000f,  25.000f, 1.000f, "-"),
+            (16,"rt_ept",  "路表",  "停止时补终点1开0关", 0.000f, 1.000f, 1.000f, 1.000f, "-"),
+            (17,"pb_L",    "回放",  "有效轴距",    0.400f,   1.200f,   0.660f, 0.010f, "m"),
+            (18,"pb_ve",   "回放",  "速度剖面0关1开", 0.000f, 1.000f,  0.000f, 1.000f, "-"),
+            (19,"pb_alat", "回放",  "弯道横向加速度", 0.200f, 10.000f, 2.000f, 0.100f, "m/s2"),
+            (20,"pb_vmin", "回放",  "限速地板",    0.000f,   1.000f,   0.300f, 0.050f, "m/s"),
+            (21,"pb_kh",   "回放",  "手工k 0=自动2L/ld", 0.000f, 8.000f, 0.000f, 0.050f, "-"),
             (15,"tel_sel", "遥测",  "档案 0全量41 1标定18", 0.000f, 1.000f, 0.000f, 1.000f, "-"),
         };
         var list = new List<ParamMeta>();

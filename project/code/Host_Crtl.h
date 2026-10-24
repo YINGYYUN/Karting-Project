@@ -439,7 +439,13 @@
     X(12, "pb_v",    "回放|车速",          0.000f,    2.000f,    0.000f,  "m/s",  0.010f, &param_cache[PB_V_IDX])               \
     X(13, "pb_ld",   "回放|前视距离",      0.200f,    2.000f,    0.800f,  "m",    0.010f, &param_cache[PB_LD_IDX])             \
     X(14, "pb_smode","回放|转向通道0航向1直给", 0.000f,   1.000f,    0.000f, "-",    1.000f, &param_cache[PB_SMODE_IDX])        \
-    X(15, "tel_sel", "遥测|档案 0全量41 1标定18", 0.000f, 1.000f,   0.000f, "-",    1.000f, &param_cache[TEL_SEL_IDX])
+    X(15, "tel_sel", "遥测|档案 0全量41 1标定18", 0.000f, 1.000f,   0.000f, "-",    1.000f, &param_cache[TEL_SEL_IDX])         \
+    X(16, "rt_ept",  "路表|停止时补终点1开0关",  0.000f,   1.000f,   1.000f, "-",    1.000f, &param_cache[ROUTE_END_PT_IDX])    \
+    X(17, "pb_L",    "回放|有效轴距",      0.400f,    1.200f,    0.660f,  "m",    0.010f, &param_cache[ROUTE_PB_L_IDX])       \
+    X(18, "pb_ve",   "回放|速度剖面0关1开", 0.000f,   1.000f,    0.000f,  "-",    1.000f, &param_cache[PB_VE_IDX])           \
+    X(19, "pb_alat", "回放|弯道横向加速度", 0.200f,  10.000f,    2.000f,  "m/s2", 0.100f, &param_cache[PB_ALAT_IDX])         \
+    X(20, "pb_vmin", "回放|限速地板",      0.000f,   1.000f,    0.300f,  "m/s",  0.050f, &param_cache[PB_VMIN_IDX])         \
+    X(21, "pb_kh",   "回放|手工k 0自动2L/ld", 0.000f, 8.000f,   0.000f,  "-",    0.050f, &param_cache[PB_KH_IDX])
 
 /**********************************************************/
 /*----------------------------------------[E] 参数表 [E]--*/

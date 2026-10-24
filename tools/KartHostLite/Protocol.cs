@@ -104,10 +104,26 @@ public enum Cmd : byte
     LoadParams = 0x06,
     GetTable = 0x07,
     RouteDump = 0x08,   // ★ 读路表：车端把整张表分帧 dump 上来（见 FrameType.RouteHead/Data/End）
+
+    /// <summary>台架直给：ID 选目标量（<see cref="TargetId"/>），VALUE 放目标值。
+    /// 车端只在 CMD 模式 + 链路 ON + 心跳未锁存 + 对应使能位为 1 时才写驱动；
+    /// 越界回 NAK（不夹），所以上位机的滑条范围要和车端一致。</summary>
+    SetTarget = 0x09,
+
     RecordStart = 0x10,
     RecordStop = 0x11,
     MotionStart = 0x12,
     MotionStop = 0x13,
+}
+
+/// <summary>SET_TARGET 的 ID 字节：选哪个目标量（与车端 HOST_TGT_* 对齐）</summary>
+public enum TargetId : byte
+{
+    /// <summary>舵机目标角 deg（±28 = 软限位）</summary>
+    Steer = 0,
+
+    /// <summary>两轮目标 rps 同速（±3.2，不走差速）</summary>
+    Wheel = 1,
 }
 
 /// <summary>使能位定义（SET_ENABLE 的 VALUE 按位解释）</summary>
@@ -247,6 +263,10 @@ public static class Proto
 
     public static byte[] BuildSetParam(byte id, float v, ushort token)
         => BuildCommand(Cmd.SetParam, id, v, token);
+
+    /// <summary>台架直给一帧：<paramref name="t"/> 选目标量，<paramref name="v"/> 是目标值。</summary>
+    public static byte[] BuildSetTarget(TargetId t, float v, ushort token)
+        => BuildCommand(Cmd.SetTarget, (byte)t, v, token);
 
     public static byte[] BuildSimple(Cmd cmd, ushort token)
         => BuildCommand(cmd, 0, 0f, token);

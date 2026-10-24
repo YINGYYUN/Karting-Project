@@ -155,8 +155,56 @@ void ins_route_start (void)
     s_running = 1;
 }
 
+//--------------------------------------
+// 函数简介     停止录制
+// 备注信息     ★ 参数 ROUTE_END_PT = 1（默认）时，把"当前这一拍"强制补成路表最后一点。
+//
+//   为什么需要：采样是按**里程**触发的（每走 ins_route_ds 才落一点），
+//   所以按下停止那一刻如果距上一个点还不到一个点距，最后那一段就整段没有点。
+//   而终点往往正是**打着大角**的地方（收车、过弯尾）—— 少这一点，回放跑到末尾时
+//   最后一段既没有位置也没有正确的打角，会直接冲出赛道。
+//
+//   什么时候不补：位置没动且打角没变（说明上一点已经就是终点状态）。
+//   补点的阈值取得很小（2 mm / 1°），只用来挡"完全重复的点"——
+//   零长度线段会让回放的最近点搜索选中重复点、前视向量退化成 0。
+//--------------------------------------
 void ins_route_stop (void)
 {
+    if (0 == s_running) { return; }             /* 没在录：直接返回，重复调用必须无副作用 */
+
+    if ((ROUTE_END_PT >= 0.5f) && (s_head.count > 0u) &&
+        (s_head.count < INS_ROUTE_MAX_POINTS))
+    {
+        ins_odom_snap_t o;
+        uint16 idx = s_head.count;              /* 候选点写在第 count 槽，count 先不加 */
+        uint16 sc  = s_steer_cnt;
+        float  dx, dy;
+        int    dsteer;
+
+        ins_odom_snapshot(&o);
+        route_to_local(&o, idx, o.v_mps);        /* 展开候选点（会顺带累加 s_steer_cnt） */
+
+        dx     = s_wp[idx].x - s_wp[idx - 1u].x;
+        dy     = s_wp[idx].y - s_wp[idx - 1u].y;
+        dsteer = (int)s_wp[idx].steer_cdeg - (int)s_wp[idx - 1u].steer_cdeg;
+        if (dsteer < 0) { dsteer = -dsteer; }
+
+        if (((dx * dx + dy * dy) > (0.002f * 0.002f)) || (dsteer > 100))
+        {
+            s_head.total_dist = o.dist_abs - s_dist_at_start;
+            s_head.count      = (uint16)(idx + 1u);
+
+            if (s_head.count >= INS_ROUTE_MAX_POINTS)
+            {
+                s_flags |= INS_ROUTE_ST_FULL;
+            }
+        }
+        else
+        {
+            s_steer_cnt = sc;                   /* 没采用：把打角计数回滚 */
+        }
+    }
+
     s_running = 0;
     s_flags  &= (uint8)~INS_ROUTE_ST_RUNNING;
 }
