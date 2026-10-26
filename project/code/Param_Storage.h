@@ -17,8 +17,8 @@ CYT4BB 适配：存储位置为 Work Flash 第 0 页（sector 参数恒为 0）�
 #define PARAM_FLASH_SECTION         (0)
 #define PARAM_FLASH_PAGE            (0)
 
-// 参数总数（2 个后轮电机 × 4 + 舵机 × 3 + 路表 × 11 + 遥测档案 × 1）
-#define PARAM_COUNT                 (22)
+// 参数总数（2 个后轮电机 × 4 + 舵机 × 3 + 路表 × 13 + 遥测档案 × 1）
+#define PARAM_COUNT                 (24)
 
 // 上电强制重置falsh参数开关
 // 1：上电强制重写参数页flash
@@ -81,6 +81,16 @@ extern float param_cache[PARAM_COUNT];
 // ★ 航向增益手工覆盖 (21)：0 = 自动按 2L/ld（默认），> 0 = 直接用这个值做 A/B
 #define PB_KH_IDX                   21
 
+// ★★ 倒车录 / 倒序回放 (22, 23) —— 2026-10-24
+//   用途：让车**倒着**沿一条路录一张表，再**正着**开回去（同一点的朝向与所需前轮转角完全复用，
+//   只有遍历顺序相反）。这是队友 14.pp_for_backroute 那套做法，我们按同一语义实现。
+//     rt_rrec = 1：录制时把 v 存成 |v|（REV 位照打）—— 这张表此后只用于"正车倒序回放"
+//     rt_rply = 1：起跑时把点序原地倒过来（车正着开、沿表反向走）
+//   两者必须与"表的出身"一致：过半点是 REV ⇒ 倒车录的表。不一致时 route_pb_start() 拒绝起跑，
+//   原因写进 s_why（屏幕上看得到），避免"以为在正着开、其实表是正的"这种最危险的组合。
+#define RT_RREC_IDX                 22
+#define RT_RPLY_IDX                 23
+
 // 便捷访问宏
 #define MOTOR_LR_INV_K              param_cache[MOTOR_LR_INV_K_IDX]
 #define MOTOR_LR_U0                 param_cache[MOTOR_LR_U0_IDX]
@@ -119,6 +129,10 @@ extern float param_cache[PARAM_COUNT];
 
 // 航向增益手工覆盖：0 = 自动（2L/ld）
 #define ROUTE_PB_KH                 param_cache[PB_KH_IDX]
+
+// 倒车录表 / 倒序回放（0/1）
+#define ROUTE_REV_REC               param_cache[RT_RREC_IDX]
+#define ROUTE_REV_PLAY              param_cache[RT_RPLY_IDX]
 
 void    Param_Init          (void);     // 初始化(加载或设默认值)
 void    Param_Save          (void);     // 保存当前参数到 Flash —— **没改动就不写**（见 Param_Is_Dirty）

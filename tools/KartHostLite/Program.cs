@@ -23,6 +23,8 @@ internal static class Program
         }
 
         // DPI 必须在任何窗口创建之前设好（--shot-form 也会建窗口）
+        // 控制台输出统一 UTF-8：--audit / --sim 的报告要能直接重定向、也能被脚本读
+        try { Console.OutputEncoding = new System.Text.UTF8Encoding(false); } catch { }
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
         // ---- 路表相关（全部无界面，可脚本化）----
@@ -44,6 +46,20 @@ internal static class Program
             return;
         }
 
+        // --sim <bin> [pb_v] [ld]：逐点指令推演（旧逻辑 vs 新逻辑），不连车、不做动力学仿真
+        if (args.Length > 0 && args[0] == "--sim")
+        {
+            if (args.Length < 2) { Console.WriteLine("用法: --sim <镜像.bin> [pb_v=0.8] [ld=0.8]"); return; }
+
+            byte[] simg = RouteImage.Load(args[1], out string serr);
+            if (simg == null) { Console.WriteLine("读镜像失败：" + serr); return; }
+
+            double pv = args.Length > 2 && double.TryParse(args[2], out double a1) ? a1 : 0.80;
+            double sld = args.Length > 3 && double.TryParse(args[3], out double a2) ? a2 : 0.80;
+
+            Console.WriteLine(RouteSim.Run(simg, pv, sld).Text);
+            return;
+        }
         // --audit <bin> [报告.txt]：只体检一张镜像（不连车），报告打到 stdout 或文件
         if (args.Length > 0 && args[0] == "--audit")
         {

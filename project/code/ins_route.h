@@ -73,6 +73,19 @@ float   ins_route_get_total_dist (void);
 
 uint8   ins_route_mark_key  (void);         /* 标记最后一个已录点；1 = 标上了 */
 uint16  ins_route_key_count (void);
+
+/* ★★ 倒车录 / 倒序回放支持（2026-10-24，语义照 14.pp_for_backroute）
+ *
+ *   ins_route_rev_count()      —— 数一数本表有几个点打了 INS_WP_FL_REV（"录制时 v<0"）。
+ *                                 倒着录出来的表**过半**都是 REV ⇒ 用它判"这张表的出身"。
+ *   ins_route_reverse_points() —— 把点序**原地倒过来**，并把负速度取成正的。
+ *                                 幂等：连调两次 = 原序（停止/退出时用它复原）。
+ *                                 录制中拒绝（返回 0）。
+ *
+ * 为什么要取正速度：倒置的语义是"拿这张倒车表去做**正车**回放"，
+ * 新方向上车是往前开的 ⇒ 速度必须全正；REV 位保留不动（它是"表出身"的标记）。 */
+uint16  ins_route_rev_count       (void);
+uint8   ins_route_reverse_points  (void);
 uint16  ins_route_steer_count (void);
 
 const ins_wp_t          *ins_route_get_points (void);

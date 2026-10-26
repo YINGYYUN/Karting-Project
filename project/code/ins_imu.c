@@ -99,6 +99,7 @@ static float    s_mag_g[3] = {0.0f, 0.0f, 0.0f};
  *  为什么需要：上电 5 s 标定完零偏就**冻结**了，芯片升温会让零偏走掉 1~2 LSB，
  *  而六轴下 yaw 不可观测 ⇒ 静止时 yaw 匀速单调上升。ZUPT 是唯一能观测到零偏的窗口。
  *=================================================================================================================*/
+static volatile uint8  s_wheel_moving = 0;             /* 本拍后轮是否有计数（ins_imu_update 入参刷新） */
 static volatile uint8  s_is_static   = 1;               /* 上电先判"静止"（MM32 同做法：可立刻开始攒零偏） */
 static uint16   s_zupt_quiet  = INS_ZUPT_ENTER_MS;      /* 静止条件**连续**满足的时长(ms) */
 static uint16   s_zupt_noisy  = 0;                      /* 不满足的连续时长(ms)           */
@@ -413,6 +414,20 @@ static uint8 ins_zupt_step (const float g_dps[3], const float a_g[3], float dt,
     cond = (uint8)((gmax < INS_ZUPT_GYRO_LIMIT_DPS) &&
                    (fabsf(an - 1.0f) < INS_ZUPT_ACC_TOL_G));
 
+#if INS_ZUPT_WHEEL_GATE
+    /* ★ 轮速门控（2026-10-24）：陀螺 + 加计**判不出"匀速运动"** ——
+       倒车 0.27 m/s 走直线时陀螺≈0.3 dps、加速度≈1 g，条件全满足，会被判成静止，
+       于是 (a) 航向被冻结（实测 yaw 冻死 3.6 s），
+            (b) 零偏门控也满足 ⇒ 真实角速度被学进零偏。
+       轮子只要有计数就不是静止。用"有没有计数"而不是 m/s 阈值：
+       5 ms 一拍、1 计数 ≈ 22 mm/s ⇒ "有计数" ≈ "轮子在动"，无标定依赖。
+       ZUPT 进门要连续 150 ms 满足，所以偶发一个计数不会把 30 ms 的出门条件顶翻。 */
+    if (0u != s_wheel_moving)
+    {
+        cond = 0u;
+    }
+#endif
+
     if (0u != cond)
     {
         s_zupt_quiet = (s_zupt_quiet < 60000u) ? (uint16)(s_zupt_quiet + dt_ms) : 60000u;
@@ -713,11 +728,15 @@ static void ins_mahony_update (float dt)
 
 /*===================================================================================================================
  *  5ms 每拍
+ *  参数 wheel_moving：本拍后轮编码器**有没有计数**（1 = 有 ⇒ 车在动）。
+ *  静止判据必须吃这个信号，理由见 ins_imu.h 的 INS_ZUPT_WHEEL_GATE。
  *=================================================================================================================*/
-void ins_imu_update (void)
+void ins_imu_update (uint8 wheel_moving)
 {
     static uint8 mag_div = 0;
     float dt;
+
+    s_wheel_moving = (0u != wheel_moving) ? 1u : 0u;     /* ★ 先刷新：静止判据在本拍后面要用 */
 
     /* ★★ 器件没通就**一步都不碰 SPI**。
        这是本模块最重要的一条硬约束：`ins_imu_update()` 跑在 5ms 中断里，

@@ -16,7 +16,6 @@
 //   其余接口在页面主循环里调用。跨节拍共享的状态不加 volatile 的话，
 //   编译器可以把 Set_Target 写的值缓存在寄存器里，中断永远读到旧值 —— 这类 bug 只在 -O2 下出现。
 static volatile uint8 head_en  = 0;         // 1 = 接管 Servo_Target_Deg
-static volatile uint8 head_rev = 0;         // 1 = 按倒车算
 static volatile float head_tar = 0.0f;      // 目标航向（累积值）
 static volatile float head_err = 0.0f;      // 目标 - 实测，折到 ±180
 static volatile float head_kp  = HEAD_KP_DEFAULT;   // 航向环增益（回放会按 2L/ld 覆盖）
@@ -63,15 +62,10 @@ void Head_Crtl_Tick (void)
         return;
     }
 
-    // δ = -sgn(v)·K·err：倒车时 yaw 对 δ 的响应反号
-    if (0 != head_rev)
-    {
-        Servo_Target_Deg = head_kp * HEAD_KP_REV_SCALE * head_err;
-    }
-    else
-    {
-        Servo_Target_Deg = -head_kp * head_err;
-    }
+    // δ = −K·err（前进方向的 P 律）。**本层只管前进**：
+    // 倒车段不走这个环，而是由 route_pb.c 关掉它、开环回放录制打角
+    // （倒车时前视点落在车后，纯跟踪的 α 与这里的误差符号都失去意义）。
+    Servo_Target_Deg = -head_kp * head_err;
 }
 
 //--------------------------------------
@@ -87,11 +81,6 @@ void Head_Crtl_Set_Enable (uint8 en)
     }
 
     head_en = (0 != en) ? 1 : 0;
-}
-
-void Head_Crtl_Set_Reverse (uint8 rev)
-{
-    head_rev = (0 != rev) ? 1 : 0;
 }
 
 void Head_Crtl_Set_Target (float yaw_deg)

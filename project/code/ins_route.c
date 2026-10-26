@@ -103,7 +103,10 @@ static void route_to_local (const ins_odom_snap_t *o, uint16 idx, float v_mps)
     s_wp[idx].x   =  c * dx + s * dy;
     s_wp[idx].y   = -s * dx + c * dy;
     s_wp[idx].yaw =  o->yaw - s_head.origin_yaw;
-    s_wp[idx].v   =  v_mps;
+    /* ★ 倒车录表（rt_rrec = 1）：v 存成 |v|。
+       这张表此后只用于"正车倒序回放"，新方向上车是往前开的 ⇒ 速度必须全正。
+       下面 REV 位仍然用**带符号**的 v_mps 判 —— 那是"表的出身"标记，不能丢。 */
+    s_wp[idx].v   =  (ROUTE_REV_REC >= 0.5f) ? fabsf(v_mps) : v_mps;
 
     /* 打角列：记当拍实际施加的舵角（不是实测角，实测角带随动滞后） */
     d = Servo_Target_Applied_Deg;
@@ -1017,4 +1020,71 @@ uint16 ins_route_slot_read_bytes (uint8 slot, uint32 off, uint8 *dst, uint16 n)
     }
 
     return done;
+}
+
+/**********************************************************/
+/* ---- 倒车录 / 倒序回放支持（2026-10-24）---------------------------------------------
+ *
+ * 来历：队友 14.pp_for_backroute 的 ins_route_reverse_points() / ins_route_rev_count()。
+ *
+ * 这张表怎么来的：车**倒着**沿一条路开一遍录表（REV 位照打、速度存 |v|）。
+ * 它怎么用：回放时把点序**倒过来**，车**正着**开回起点。
+ * 为什么成立：同一点的车身朝向、以及通过该点所需的前轮转角完全相同，
+ *             只有"遍历顺序"相反 —— 所以不需要重算几何，只要把点序翻过来。
+ */
+/**********************************************************/
+
+//--------------------------------------
+// 函数简介     数本表打了 REV 位的点数（"表出身"判据）
+// 返回参数     REV 点个数
+// 使用示例     isrev = (ins_route_rev_count() * 2u >= n)
+// 备注信息     REV 位是**录制时 v < -0.02 m/s** 打的（ins_route.c 的录制分支）
+//--------------------------------------
+uint16 ins_route_rev_count (void)
+{
+    uint16 i;
+    uint16 c = 0u;
+
+    for (i = 0u; i < s_head.count; i ++)
+    {
+        if (0u != (s_wp[i].flags & (uint16)INS_WP_FL_REV)) { c ++; }
+    }
+
+    return c;
+}
+
+//--------------------------------------
+// 函数简介     把点序**原地**倒过来，并把负速度取正
+// 返回参数     1 = 成功；0 = 录制中 / 表太短（这两种情况不动点表）
+// 使用示例     ins_route_reverse_points();
+// 备注信息     ★ 幂等：连调两次 = 原序 —— 退出回放时用它复原（见 route_pb.c 的 pb_finish）
+//              ★ 录制中拒绝：录制器按 idx 递增写点，倒一次就全乱
+//              ★ yaw 不动：它记的是"录制时车头朝向"，倒序后仍然正确
+//                （新方向上前轮转角相同、朝向相同，只有遍历顺序变了）
+//--------------------------------------
+uint8 ins_route_reverse_points (void)
+{
+    uint16 i;
+    uint16 j;
+    ins_wp_t t;
+
+    if (0 != s_running)     { return 0u; }       // 录制中不许倒
+    if (s_head.count < 2u)  { return 0u; }
+
+    for (i = 0u, j = (uint16)(s_head.count - 1u); i < j; i ++, j --)
+    {
+        t       = s_wp[i];
+        s_wp[i] = s_wp[j];
+        s_wp[j] = t;
+    }
+
+    /* 倒置后新方向是"正着开" ⇒ 速度必须全正。
+       注意：录制时若开了 rt_rrec，v 本来就已是 |v|；没开的话是带符号的负数，
+       这里统一取绝对值，两种来源都能用。 */
+    for (i = 0u; i < s_head.count; i ++)
+    {
+        if (s_wp[i].v < 0.0f) { s_wp[i].v = -s_wp[i].v; }
+    }
+
+    return 1u;
 }

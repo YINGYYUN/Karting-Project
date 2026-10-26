@@ -95,6 +95,22 @@ internal static class SelfTest
         p5.Feed(badTail, badTail.Length);
         Check(n5 == 0, "帧尾不对 → 不交付", n5.ToString());
 
+        Section("倒车段回放（RouteSim：旧 vs 新）");
+        {
+            var revTab = MakeFwdRevTable(0.1, 15);
+            var sim = RouteSim.Run(revTab, 0.8, 0.8);
+            Check(sim.OldFullLock > 5, "旧逻辑在换向点附近会指令满舵", sim.OldFullLock.ToString());
+            Check(sim.NewFullLock == 0, "新逻辑（认倒车段）全程不满舵", sim.NewFullLock.ToString());
+            Check(sim.Rows.Count(z => z.Rev) == 15, "倒车点识别 15 个", sim.Rows.Count(z => z.Rev).ToString());
+            Check(sim.TailRev, "表尾状态 = 倒车段（末点是 v=0 收尾点，靠最后 3 点多数判出来）");
+
+            // 零回归：没有倒车段的表，新旧逻辑必须完全一致
+            var fw = RouteImage.BuildLine(10.0, 0.05, out _);
+            var s2 = RouteSim.Run(fw, 0.8, 0.8);
+            Check(s2.OldFullLock == s2.NewFullLock && Math.Abs(s2.OldMaxErr - s2.NewMaxErr) < 1e-9,
+                  "没有倒车段的表：新旧指令完全一致", $"{s2.OldFullLock}/{s2.NewFullLock}");
+            Check(!s2.TailRev, "表尾状态 = 前进段（不该误判成倒车）");
+        }
         Section("路表体检（RouteAudit）");
         {
             var ringImg = RouteImage.BuildRing(5.0, 0.05, out _);
@@ -390,5 +406,33 @@ internal static class SelfTest
             _fail++;
             _sb.Append($"  FAIL  {what}" + (actual != null ? $"   实际: {actual}" : "") + "\r\n");
         }
+    }
+
+    /// <summary>
+    /// 造一张"前进 + 原路倒回"的合成表：沿 +y 走 legPts 点，再沿 −y 走回来。
+    /// 直接改 BuildLine 出来的镜像（RouteSim 不校验 CRC，只算几何）。
+    /// </summary>
+    private static byte[] MakeFwdRevTable(double dsM, int legPts)
+    {
+        int n = legPts * 2;
+        var img = RouteImage.BuildLine(legPts * dsM, dsM, out int baseN);
+        if (baseN < n) Array.Resize(ref img, RouteImage.HeadBytes + n * RouteImage.RecBytes);
+
+        for (int i = 0; i < n; i++)
+        {
+            int o = RouteImage.HeadBytes + i * RouteImage.RecBytes;
+            bool rev = i >= legPts;
+            double yy = (rev ? (n - i) * dsM : i * dsM);
+
+            BitConverter.GetBytes((int)Math.Round(0.0 * 1000.0)).CopyTo(img, o + 0);
+            BitConverter.GetBytes((int)Math.Round(yy * 1000.0)).CopyTo(img, o + 4);
+            BitConverter.GetBytes((short)0).CopyTo(img, o + 8);                                  // yaw = 0
+            BitConverter.GetBytes((short)(rev ? -20 : 20)).CopyTo(img, o + 10);                  // v = ∓0.20 m/s
+            BitConverter.GetBytes((short)0).CopyTo(img, o + 12);                                 // steer
+            BitConverter.GetBytes((ushort)(RouteSim.FlagSteer | (rev ? RouteSim.FlagRev : 0))).CopyTo(img, o + 14);
+        }
+
+        BitConverter.GetBytes(n).CopyTo(img, 8);
+        return img;
     }
 }

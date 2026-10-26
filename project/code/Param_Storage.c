@@ -30,6 +30,8 @@ static const float DEFAULT_PARAMS[PARAM_COUNT] = {
     PB_VE_DEFAULT, PB_ALAT_DEFAULT, PB_VMIN_DEFAULT,
     // 航向增益手工覆盖：0 = 自动按 2L/ld
     PB_KH_DEFAULT,
+    // 倒车录表 / 倒序回放（默认都关：普通表行为完全不受影响）
+    0.0f, 0.0f,
 };
 
 // 参数缓存区(菜单直接修改此数组, Flash 读写也通过此数组)
@@ -157,6 +159,18 @@ static void fix_appended_params (void)
     if (!((ROUTE_PB_KH >= PB_KH_MIN) && (ROUTE_PB_KH <= PB_KH_MAX)))
     {
         ROUTE_PB_KH = PB_KH_DEFAULT;
+        fix = 1;
+    }
+
+    // 倒车录 / 倒序回放：只接受 0 或 1（存成浮点，其它值一律归 0）
+    if (!((ROUTE_REV_REC >= -0.5f) && (ROUTE_REV_REC <= 1.5f)))
+    {
+        ROUTE_REV_REC = 0.0f;
+        fix = 1;
+    }
+    if (!((ROUTE_REV_PLAY >= -0.5f) && (ROUTE_REV_PLAY <= 1.5f)))
+    {
+        ROUTE_REV_PLAY = 0.0f;
         fix = 1;
     }
 

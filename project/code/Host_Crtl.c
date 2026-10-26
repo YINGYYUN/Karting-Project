@@ -141,7 +141,9 @@ static uint8    Host_Auth       = HOST_AUTH_NONE;
 
 // 库函数要 char*（不能直接传字符串字面量，否则 IAR 会报 const 转换）
 static char     host_sock_type[]   = HOST_SOCK_TYPE;
-static char     host_target_ip[]   = HOST_TARGET_IP;
+// ★ 定长缓冲（不是 [] 自动取长）：这里要在运行期被候选表覆盖成别的 IP。
+//   20 字节足够放下 "192.168.50.247"（15）与 "172.20.10.1"（11）。
+static char     host_target_ip[20]  = HOST_TARGET_IP;
 static char     host_target_port[] = HOST_TARGET_PORT;
 static char     host_local_port[]  = HOST_LOCAL_PORT;
 
@@ -150,9 +152,10 @@ typedef struct
 {
     char *ssid;
     char *pwd;
+    char *ip;           // ★ 这一条对应的上位机 IP（选热点 = 选网络 = 选上位机，见 Host_Crtl.h）
 } Host_Wifi_t;
 
-#define HOST_WIFI_ENTRY(ssid, pwd)  { ssid, pwd },
+#define HOST_WIFI_ENTRY(ssid, pwd, ip)  { ssid, pwd, ip },
 static Host_Wifi_t host_wifi_list[] = { HOST_WIFI_LIST(HOST_WIFI_ENTRY) };
 #undef HOST_WIFI_ENTRY
 
@@ -400,18 +403,31 @@ static void host_send_event (const char *text)
 //   改成：每 5ms 发一项，发不出去就不推进 id、下一轮重试同一项。最多 10*5 = 50ms，
 //   而上位机本来就是"收到第一帧后 300ms 统一重建界面"，体感没有差别。
 #define HOST_PARAM_TX_GAP_MS    (5u)
+#define HOST_PARAM_TX_TRY_MAX   (200u)  // 连续失败这么多次就放弃整张表（模块坏了别死占带宽）
 
-static uint8    host_pt_pend = 0;       // 1 = 有一张参数表等着发
-static uint8    host_pt_id   = 0;       // 下一个要发的参数下标
-static uint32   host_pt_ms   = 0;       // 上次尝试发送的时刻
+static uint8    host_pt_pend  = 0;      // 1 = 有一张参数表等着发
+static uint8    host_pt_id    = 0;      // 下一个要发的参数下标
+static uint8    host_pt_stage = 0;      // 0 = 该发 META；1 = 该发 VALUE（**一拍只发一帧**）
+static uint16   host_pt_try   = 0;      // 连续失败次数（防模块坏了无限重试）
+static uint8    host_pt_arm   = 0;      // 1 = 等"对面说话"后再推整张参数表（见 Set_Link 的注释）
+static uint32   host_pt_ms    = 0;      // 上次尝试发送的时刻
 
 static void host_param_table_start (void)
 {
-    host_pt_id   = 0;
-    host_pt_pend = 1;                   // 只"武装"序列，真正的发送交给 host_param_table_tick
+    host_pt_id    = 0;
+    host_pt_stage = 0;
+    host_pt_try   = 0;
+    host_pt_pend  = 1;                  // 只"武装"序列，真正的发送交给 host_param_table_tick
 }
 
 // 由 Host_Crtl_Task() 每圈调用（自带 5ms 限频）
+//
+// ★★ 2026-10-24 修：以前是"发完 META 紧接着发 VALUE"，而 WiFi-SPI 模块收完一帧就进忙态，
+//    第二个 host_send_frame() 必然返回 0 ⇒ 代码 `return` 不推进 id ⇒ 下一拍重发同一个 META
+//    —— 实测卡在 id=7 上**无限重发**（3.4 s 发了 327 帧，VALUE 一帧都没出去，
+//    参数表永远下发不完，还白占 ~65% 带宽）。是用手机抓包（a-Shell + python）才发现的。
+//    现在改成两拍状态机：META 一拍、VALUE 一拍，中间至少隔 HOST_PARAM_TX_GAP_MS，
+//    天然给模块留出"从忙恢复到空闲"的时间。
 static void host_param_table_tick (void)
 {
     uint8  pl[73];                      // ID(1)+LO(4)+HI(4)+DEF(4)+STEP(4)+UNIT(8)+NAME(16)+LABEL(32)
@@ -421,32 +437,46 @@ static void host_param_table_tick (void)
     if ((uint32)(Sys_Tick_Ms - host_pt_ms) < HOST_PARAM_TX_GAP_MS) { return; }
     host_pt_ms = Sys_Tick_Ms;
 
-    memset(pl, 0, sizeof(pl));
-    n = 0;
-    pl[n ++] = host_param_meta[host_pt_id].id;
-    n = host_put_f32(pl, n, host_param_meta[host_pt_id].lo);
-    n = host_put_f32(pl, n, host_param_meta[host_pt_id].hi);
-    n = host_put_f32(pl, n, host_param_meta[host_pt_id].def);
-    n = host_put_f32(pl, n, host_param_meta[host_pt_id].step);
-
-    // 定长字符串：只写 cap-1 字节，末字节留 0（memset 已经补过 0）
-    strncpy((char *)(pl + 17), host_param_meta[host_pt_id].unit,  7);
-    strncpy((char *)(pl + 25), host_param_meta[host_pt_id].name, 15);
-    strncpy((char *)(pl + 41), host_param_meta[host_pt_id].label, 31);
-
-    if (0 == host_send_frame(HOST_TYPE_PARAM_META, pl, 73))
+    /* ---- 第一拍：META ---- */
+    if (0u == host_pt_stage)
     {
-        return;                         // 模块忙 -> 本项没发出去，下一轮重试同一个 id
+        memset(pl, 0, sizeof(pl));
+        n = 0;
+        pl[n ++] = host_param_meta[host_pt_id].id;
+        n = host_put_f32(pl, n, host_param_meta[host_pt_id].lo);
+        n = host_put_f32(pl, n, host_param_meta[host_pt_id].hi);
+        n = host_put_f32(pl, n, host_param_meta[host_pt_id].def);
+        n = host_put_f32(pl, n, host_param_meta[host_pt_id].step);
+
+        // 定长字符串：只写 cap-1 字节，末字节留 0（memset 已经补过 0）
+        strncpy((char *)(pl + 17), host_param_meta[host_pt_id].unit,  7);
+        strncpy((char *)(pl + 25), host_param_meta[host_pt_id].name, 15);
+        strncpy((char *)(pl + 41), host_param_meta[host_pt_id].label, 31);
+
+        if (0 == host_send_frame(HOST_TYPE_PARAM_META, pl, 73))
+        {
+            if (++ host_pt_try >= HOST_PARAM_TX_TRY_MAX) { host_pt_pend = 0; host_pt_try = 0; }
+
+            return;                     // 模块忙 -> 下一拍重试同一个 id
+        }
+
+        host_pt_try   = 0;
+        host_pt_stage = 1u;
+        return;                         // ★ 本拍到此为止：VALUE 留到下一拍
     }
 
-    // ★ 紧接着把【车端当前的数值】也报一份：META 帧里只有 lo/hi/def/step、没有"当前值"，
-    //   上位机的 MergeTable 只合并名字/量程、**不更新数值** —— 少了这一帧，
-    //   面板上显示的就只是它自己的本地值，用户分不清这个数是车上的还是自己上次留下的。
+    /* ---- 第二拍：VALUE ---- */
+    // META 帧里只有 lo/hi/def/step、没有"当前值"，上位机的 MergeTable 只合并名字/量程、
+    // **不更新数值** —— 少了这一帧，面板上显示的就只是它自己的本地值。
     if (0 == host_send_param_value(host_pt_id, *(host_param_meta[host_pt_id].ptr)))
     {
-        return;                         // 值没发出去就不推进 id，下一轮连 META 一起重发
+        if (++ host_pt_try >= HOST_PARAM_TX_TRY_MAX) { host_pt_pend = 0; host_pt_try = 0; }
+
+        return;
     }
 
+    host_pt_try   = 0;
+    host_pt_stage = 0u;
     host_pt_id ++;
     if (host_pt_id >= (uint8)HOST_PARAM_COUNT) { host_pt_pend = 0; }
 }
@@ -928,6 +958,10 @@ static void host_wifi_ui (void)
 
     ips200_show_string(10, 128, "CONFIRM: select");
     ips200_show_string(10, 144, "BACK: cancel");
+
+    // ★ y=160 放"光标所在条目对应的上位机 IP"（2026-10-24）。选中哪个网络，
+    //   就往那个网络的这个 IP 发 —— 换热点时**不用再重刷固件**，屏幕上也能直接核对。
+    ips200_show_string(10, 160, "IP: --------------");
 }
 
 //--------------------------------------
@@ -943,6 +977,21 @@ static uint8 host_wifi_open (uint8 idx)
     {
         host_err = HOST_ERR_WIFI;
         return HOST_ERR_WIFI;
+    }
+
+    /* ★ 选热点 = 选网络，也就等于选上位机 IP：把这一条自己的 IP 拷进运行时缓冲。
+       以前只有一个全局 HOST_TARGET_IP，换到手机热点就必然收不到 —— 因为手机热点的
+       网关（= 手机自己）恒为 172.20.10.1，与实验室路由不是同一个网段。 */
+    {
+        uint8 i = 0u;
+
+        while ((i < (uint8)(sizeof(host_target_ip) - 1u)) && ('\0' != host_wifi_list[idx].ip[i]))
+        {
+            host_target_ip[i] = host_wifi_list[idx].ip[i];
+            i ++;
+        }
+
+        host_target_ip[i] = '\0';
     }
 
     if (0 != wifi_spi_socket_connect(host_sock_type, host_target_ip, host_target_port, host_local_port))
@@ -1037,6 +1086,17 @@ uint8 Host_Crtl_WiFi_Select (void)
                 ips200_show_string(0, (uint16)(48 + 16 * i), " ");
             }
             ips200_show_string(0, (uint16)(48 + 16 * sel), ">");
+
+            // 同步显示这一条对应的上位机 IP（SKIP 时画横线，表示"不连接"）
+            if (sel < HOST_WIFI_COUNT)
+            {
+                ips200_show_string(10, 160, "IP: ");
+                ips200_show_string(42, 160, host_wifi_list[sel].ip);
+            }
+            else
+            {
+                ips200_show_string(10, 160, "IP: ------------");
+            }
         }
     }
 }
@@ -1069,6 +1129,9 @@ static void host_state_clear (void)
     host_rxacc_len  = 0;
     host_pt_pend    = 0;
     host_pt_id      = 0;
+    host_pt_stage   = 0;
+    host_pt_try     = 0;
+    host_pt_arm     = 0;
     host_pt_ms      = 0;
 }
 
@@ -1179,6 +1242,16 @@ void Host_Crtl_Task (void)
         host_send_telemetry();
     }
 
+    /* ★★ 参数表只在"对面真的在说话"时才推（2026-10-24）
+       手机抓包 / 只读监听端一个下行帧都不发；而参数表是 44 帧 × 84 B，占的带宽比遥测还多
+       （实测 95 帧/s vs 遥测 50 帧/s），还会和 WiFi-SPI 模块抢时间。
+       host_ever_rx 一旦置位（上位机发过任何合法下行帧），就照常自动推 —— 真实上位机无感。 */
+    if ((0u != host_pt_arm) && (0u != host_ever_rx))
+    {
+        host_pt_arm = 0u;
+        host_param_table_start();
+    }
+
     /* 参数表分批发送：必须每圈都调 —— 它自带 5ms 限频，
        不能挂在上面的限频分支里，否则会跟遥测的节拍互相饿死 */
     host_param_table_tick();
@@ -1269,7 +1342,13 @@ void Host_Crtl_Set_Link (uint8 on)
 
     if (0 != wifi_spi_inited)           // 防御：链路没建就发不出去，别白写 SPI
     {
-        host_param_table_start();       // 上位机据此长滑条
+        /* ★ 参数表**先不推**，等"对面真的在说话"再推（2026-10-24）。
+           理由：手机抓包 / 只读监听端**一个下行帧都不发**，而参数表是 44 帧 × 84 B，
+           会白占约 65% 带宽，还会和遥测抢模块（实测一次抓包里 327 帧全是 param-meta）。
+           上位机（KartHostLite）连上后会发 PING / GET_TABLE，`host_ever_rx` 一置位就照常自动推，
+           对真实上位机的行为完全不变。见 Host_Crtl_Task() 里那段武装逻辑。 */
+        host_pt_arm = 1;
+
         host_send_event("host link on");
     }
 }
@@ -1596,6 +1675,7 @@ static void Host_Crtl_UI (void)
     ips200_show_string(10 ,96 , "AGE:");
     ips200_show_string(HOST_UI_UNIT_X ,96 , "ms");
     ips200_show_string(10 ,112, "CRC:");
+    ips200_show_string(10 ,160, "IP:");             // ★ 当前目标 IP（跟着选中的热点走，见 HOST_WIFI_LIST）
     ips200_show_string(10 ,144, "BACK: MENU");
 }
 
@@ -1702,6 +1782,10 @@ static void host_ui_status (void)
     }
 
     Host_ShowU(HOST_UI_STA_X, 112, Host_Crtl_Crc_Err(), 6);
+
+    /* ★ 当前目标 IP：跟着"选中的热点"走。换网络（笔记本 <-> 手机）时不用重刷固件，
+       这一行就是现场核对"我到底在往谁发"的地方。 */
+    ips200_show_string(42, 160, host_target_ip);
 
     // 锁存提示：只在异常态出现，正常态清空（这就是"屏幕只减不增"里唯一那处新增）
     if (0 != Host_Lost)

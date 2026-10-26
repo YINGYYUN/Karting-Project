@@ -132,7 +132,9 @@ void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务
     /* ---- IMU 姿态解算（5ms）----
        必须排在 Motor_Crtl_Tick() 之后：控制律不能因 IMU 的 SPI 事务被推后。
        只更新姿态，不参与控制（yaw 目前只做显示与遥测 HOST_CH_YAW_DEG）。 */
-    ins_imu_update();
+    // ★ 把"轮子有没有动"喂给惯导：静止判据必须吃轮速，否则匀速倒车会被判成静止
+    //   （航向冻结 + 零偏被污染）。编码器增量在同一拍已由 ENC_LR/RR_Update 更新。
+    ins_imu_update((uint8)((0 != ENC_LR_DLT) || (0 != ENC_RR_DLT)));
 
     /* ---- 航位推算（5ms）----
        必须在编码器更新与 ins_imu_update() 之后：本拍要用的就是本拍的计数增量与航向。 */
