@@ -31,7 +31,7 @@
 #define MOTOR_SERVO                 3               // “舵机”
 // 通道 4 预留，暂不启用
 
-// PWM 频率 10kHz
+// PWM 频率 17kHz
 #define MOTOR_PWM_FREQ              ( 17000 )
 
 // 电机驱动引脚初始化

@@ -11,6 +11,7 @@
 #include "ins_odom.h"
 #include "ins_imu.h"
 #include "ins_route.h"
+#include "route_pb.h"       /* route_pb_active()：回放中不许改写 s_wp[]（= 队友 v15 ins_route.c:11） */
 
 #define DEG2RAD_F   (0.017453292519943295f)
 
@@ -25,6 +26,7 @@ static float   s_dist_at_start = 0.0f;  /* 起点处的 dist_abs */
 
 static uint16  s_key_cnt   = 0u;
 static uint16  s_steer_cnt = 0u;
+static uint8   s_rec_reverse = 0u;      /* 当前录制段的行驶方向（REV 位用），带滞回 */
 
 volatile float ins_route_ds = INS_ROUTE_DS_DEFAULT;
 
@@ -56,6 +58,10 @@ void ins_route_init (void)
 //--------------------------------------
 void ins_route_clear (void)
 {
+    /* 互斥闸门（= 队友 v15 ins_route.c:62）：录制中 / 回放中 / 写盘中都不许清表，
+       否则回放的点序会被人从背后换掉 */
+    if (route_pb_active() || ins_route_flash_busy() || s_running) { return; }
+
     s_head.count      = 0;
     s_head.total_dist = 0.0f;
     s_dist_acc  = 0.0f;
@@ -103,13 +109,24 @@ static void route_to_local (const ins_odom_snap_t *o, uint16 idx, float v_mps)
     s_wp[idx].x   =  c * dx + s * dy;
     s_wp[idx].y   = -s * dx + c * dy;
     s_wp[idx].yaw =  o->yaw - s_head.origin_yaw;
-    /* ★ 倒车录表（rt_rrec = 1）：v 存成 |v|。
-       这张表此后只用于"正车倒序回放"，新方向上车是往前开的 ⇒ 速度必须全正。
-       下面 REV 位仍然用**带符号**的 v_mps 判 —— 那是"表的出身"标记，不能丢。 */
-    s_wp[idx].v   =  (ROUTE_REV_REC >= 0.5f) ? fabsf(v_mps) : v_mps;
+    /* ★ 表里只存速度**幅值**，方向只由 REV 位承载（= 队友 v15 ins_route.c:115）。
+       以前按 rt_rrec 开关决定存不存负号，回放又拿 p[best].v 的符号当倒车速度 ——
+       方向有两个来源，剖面一旦要"整条翻号"就会打架。
+       旧表里 v 仍可能是负的：回放判据是 (REV 位 || v < 0)，历史表照样能读。 */
+    s_wp[idx].v   =  fabsf(v_mps);
 
-    /* 打角列：记当拍实际施加的舵角（不是实测角，实测角带随动滞后） */
-    d = Servo_Target_Applied_Deg;
+    /* 打角列：记**实测**方向盘角，不是指令角也不是遥控角。
+       ★ 为什么不用指令值：手推录制时舵机失能，指令列（Servo_Target_Applied_Deg）恒为 0，
+         但 STEER 位照置 —— 录出来的倒车段回放时一律打 0°，而回放拿的正是这一列。
+       ★ 为什么不用遥控指令角：RC 是指令，实测角才是车轮真正经历的转角。
+       ★ 实测角始终有效（Servo_Ctrl.c:131 无条件更新，与使能无关）；
+         失效时用 Servo_Enc_Fault 拦，避免把 0/4095 的假读数写成打角。
+       ★ 代价（可算，不是"可能有点滞后"）：内环稳态 实测 = 指令 + b，b = 静差。
+         记指令 ⇒ 回放喂同一个环，物理角 = C+b，误差只出现一次、轨迹可复现；
+         记实测 ⇒ 回放喂 M=C+b，物理角 = C+2b，误差被吃两次。
+         实测 b = −1.08°（steer_tgt=0 时 steer_deg=−1.08）⇒ 满舵 27° 的转弯半径
+         1.296 m 变 1.356 m，偏大 4.6%。**静差修掉后这一项自动归零。** */
+    d = (0u == Servo_Enc_Fault) ? Servo_Angle_Deg : 999.0f;
     if ((d > -40.0f) && (d < 40.0f))
     {
         s_wp[idx].steer_cdeg = (int16)(d * 100.0f);
@@ -121,7 +138,11 @@ static void route_to_local (const ins_odom_snap_t *o, uint16 idx, float v_mps)
         s_wp[idx].steer_cdeg = 0;
     }
 
-    if (v_mps < -0.02f) { fl |= (uint16)INS_WP_FL_REV; }
+    /* 方向带滞回（= 队友 v15 ins_route.c:130-132）：静止点没有方向信息，
+       继承上一段的方向。瞬时判据会让停车那一段丢方向，换向点位置跟着漂。 */
+    if (v_mps < -0.02f)      { s_rec_reverse = 1u; }
+    else if (v_mps > 0.02f)  { s_rec_reverse = 0u; }
+    if (0u != s_rec_reverse) { fl |= (uint16)INS_WP_FL_REV; }
 
     s_wp[idx].flags = fl;
 }
@@ -132,6 +153,9 @@ static void route_to_local (const ins_odom_snap_t *o, uint16 idx, float v_mps)
 void ins_route_start (void)
 {
     ins_odom_snap_t o;
+
+    /* 互斥闸门（= 队友 v15 ins_route.c:142）：回放中 / 写盘中不许起录 */
+    if (route_pb_active() || ins_route_flash_busy() || s_running) { return; }
 
     ins_odom_snapshot(&o);
 
@@ -150,6 +174,11 @@ void ins_route_start (void)
     s_key_cnt   = 0u;
     s_steer_cnt = 0u;
 
+    /* 起点方向预设（= v15 ins_route.c:144-146 按 rt_route_mode）：
+       用"倒车录表"开关当初始方向，车一动就由实测速度接管。
+       不预设的话，倒着起步的头几点会先被标成前进。 */
+    s_rec_reverse = (ROUTE_REV_REC >= 0.5f) ? 1u : 0u;
+
     route_to_local(&o, 0, 0.0f);
     s_head.count = 1;
 
@@ -160,16 +189,15 @@ void ins_route_start (void)
 
 //--------------------------------------
 // 函数简介     停止录制
-// 备注信息     ★ 参数 ROUTE_END_PT = 1（默认）时，把"当前这一拍"强制补成路表最后一点。
+// 备注信息     ★ 收笔补一点：表尾 = 车真正停住那一刻的位置与航向（= v15 ins_route.c:178-200）。
+//   为什么需要：采样按**里程**触发（每走 ins_route_ds 落一点），按下停止时若距上一点
+//   还不到一个点距，最后那一段就没有点；而终点往往正是打着大角的地方。
+//   判据只有**距离 ≥20 mm**；打角不再另设判据（v15 也没有）。
+//   v 强制写 0：末点是"停住"，不是"还在跑"；带当拍速度会让回放在表尾继续给目标速度。
+//   20 mm 同时挡住"完全重合的点"——零长度线段会让最近点搜索选中重复点、前视向量退化。
 //
-//   为什么需要：采样是按**里程**触发的（每走 ins_route_ds 才落一点），
-//   所以按下停止那一刻如果距上一个点还不到一个点距，最后那一段就整段没有点。
-//   而终点往往正是**打着大角**的地方（收车、过弯尾）—— 少这一点，回放跑到末尾时
-//   最后一段既没有位置也没有正确的打角，会直接冲出赛道。
-//
-//   什么时候不补：位置没动且打角没变（说明上一点已经就是终点状态）。
-//   补点的阈值取得很小（2 mm / 1°），只用来挡"完全重复的点"——
-//   零长度线段会让回放的最近点搜索选中重复点、前视向量退化成 0。
+//   与 v15 的差异只剩一处：ROUTE_END_PT 开关门控（v15 恒执行）。删参数 ID 会动到参数表
+//   契约，所以保留开关，默认 1 与 v15 行为一致。
 //--------------------------------------
 void ins_route_stop (void)
 {
@@ -182,17 +210,14 @@ void ins_route_stop (void)
         uint16 idx = s_head.count;              /* 候选点写在第 count 槽，count 先不加 */
         uint16 sc  = s_steer_cnt;
         float  dx, dy;
-        int    dsteer;
 
         ins_odom_snapshot(&o);
-        route_to_local(&o, idx, o.v_mps);        /* 展开候选点（会顺带累加 s_steer_cnt） */
+        route_to_local(&o, idx, 0.0f);           /* ★ v = 0：末点是停住那一拍 */
 
-        dx     = s_wp[idx].x - s_wp[idx - 1u].x;
-        dy     = s_wp[idx].y - s_wp[idx - 1u].y;
-        dsteer = (int)s_wp[idx].steer_cdeg - (int)s_wp[idx - 1u].steer_cdeg;
-        if (dsteer < 0) { dsteer = -dsteer; }
+        dx = s_wp[idx].x - s_wp[idx - 1u].x;
+        dy = s_wp[idx].y - s_wp[idx - 1u].y;
 
-        if (((dx * dx + dy * dy) > (0.002f * 0.002f)) || (dsteer > 100))
+        if ((dx * dx + dy * dy) >= (0.020f * 0.020f))
         {
             s_head.total_dist = o.dist_abs - s_dist_at_start;
             s_head.count      = (uint16)(idx + 1u);
@@ -250,9 +275,11 @@ void ins_route_poll (void)
 
         s_head.count ++;
 
-        /* 扣阈值而不是清零：清零会把这一圈多走的丢掉，点距会整体偏大 */
-        s_dist_acc -= ins_route_ds;
-        if (s_dist_acc < 0.0f) { s_dist_acc = 0.0f; }
+        /* 记一点后立即清零，**不留欠账**（= v15 ins_route.c:252-255）。
+           留欠账时，车静止或蠕行会每拍都满足阈值，写出一串位置相同的重复点；
+           零长度线段会让回放的最近点搜索选中重复点、前视向量退化成 0。
+           表长不靠点距累加：回放侧 total_dist 由 s_arc 的弦长和给出。 */
+        s_dist_acc = 0.0f;
 
         if (s_head.count >= INS_ROUTE_MAX_POINTS)
         {
@@ -376,6 +403,13 @@ static uint16 rt_crc16 (uint16 crc, const uint8 *p, uint32 n)
     return crc;
 }
 
+/* 浮点转整数：半 LSB 处远离 0 取整，正负对称（= v15 rt_round_i32）。
+   C 的截断对负数偏向 +inf，反复"落盘 → 载入"会朝一个方向累积漂移。 */
+static int32 rt_round_i32 (float v)
+{
+    return (int32)((v >= 0.0f) ? (v + 0.5f) : (v - 0.5f));
+}
+
 static int16 rt_wrap_cdeg (float yaw_deg)
 {
     float y = yaw_deg;
@@ -383,7 +417,7 @@ static int16 rt_wrap_cdeg (float yaw_deg)
     while (y >  180.0f) { y -= 360.0f; }
     while (y < -180.0f) { y += 360.0f; }
 
-    return (int16)(y * 100.0f);
+    return (int16)rt_round_i32(y * 100.0f);
 }
 
 static float rt_clampf (float v, float lo, float hi)
@@ -395,10 +429,10 @@ static float rt_clampf (float v, float lo, float hi)
 
 static void rt_rec_pack (const ins_wp_t *wp, rt_rec_t *r)
 {
-    r->x_mm       = (int32)(wp->x * 1000.0f);
-    r->y_mm       = (int32)(wp->y * 1000.0f);
+    r->x_mm       = rt_round_i32(wp->x * 1000.0f);
+    r->y_mm       = rt_round_i32(wp->y * 1000.0f);
     r->yaw_cdeg   = rt_wrap_cdeg(wp->yaw);
-    r->v_cmps     = (int16)rt_clampf(wp->v * 100.0f, -32000.0f, 32000.0f);
+    r->v_cmps     = (int16)rt_round_i32(rt_clampf(wp->v * 100.0f, -32000.0f, 32000.0f));
     r->steer_cdeg = wp->steer_cdeg;
     r->flags      = wp->flags;
 }
@@ -489,6 +523,10 @@ static void flash_arm (uint8 slot, uint32 count, uint32 ds_mm, uint32 lap_mm,
 //--------------------------------------
 void ins_route_flash_save_slot (uint8 slot)
 {
+    /* 互斥闸门：录制中（表还在长）/ 回放中（点序可能被原地翻过）/ 写盘中
+       —— 这三种状态下存出去的都不是"这张表" */
+    if (route_pb_active() || s_running || ins_route_flash_busy()) { return; }
+
     flash_arm(slot, (uint32)s_head.count,
               (uint32)(ins_route_ds * 1000.0f + 0.5f),
               (uint32)(s_head.total_dist * 1000.0f + 0.5f),
@@ -642,6 +680,10 @@ uint8 ins_route_flash_progress (void)
 uint8 ins_route_flash_load_slot (uint8 slot)
 {
     rt_head_t h;
+
+    /* 互斥闸门（= 队友 v15 ins_route.c:786）：回放中载入会把 s_wp[] 换成另一张表，
+       而回放正按自己的进度点在里面取值 */
+    if (route_pb_active() || s_running || ins_route_flash_busy()) { return 0u; }
     uint32    n;
     uint32    base;
 
@@ -758,6 +800,10 @@ uint8 ins_route_slot_set_active (uint8 slot, uint8 persist)
 {
     if (slot >= (uint8)INS_RT_SLOT_COUNT) { return 1u; }
 
+    /* 互斥闸门（= 队友 v15 ins_route.c:954）：回放/录制/写盘期间换槽会让
+       "当前槽"与 RAM 里的表不一致 */
+    if (route_pb_active() || s_running || ins_route_flash_busy()) { return 1u; }
+
     s_active_slot = slot;
 
     if (0u != persist)
@@ -847,6 +893,10 @@ uint8 ins_route_load_image (const uint8 *img, uint32 len)
     int16  oyaw;
 
     if ((NULL == img) || (len < 36u)) { return 0u; }
+
+    /* 互斥闸门（= 队友 v15 ins_route.c:860）：回放对点序是原地重排的，
+       此时灌进来一张表，回放会读到别人写了一半的 s_wp[] */
+    if (route_pb_active() || s_running || ins_route_flash_busy()) { return 0u; }
 
     magic   = (uint32)img[0]  | ((uint32)img[1]  << 8) | ((uint32)img[2]  << 16) | ((uint32)img[3]  << 24);
     ver     = (uint16)((uint16)img[4]  | ((uint16)img[5]  << 8));
@@ -1054,37 +1104,15 @@ uint16 ins_route_rev_count (void)
 }
 
 //--------------------------------------
-// 函数简介     把点序**原地**倒过来，并把负速度取正
-// 返回参数     1 = 成功；0 = 录制中 / 表太短（这两种情况不动点表）
-// 使用示例     ins_route_reverse_points();
-// 备注信息     ★ 幂等：连调两次 = 原序 —— 退出回放时用它复原（见 route_pb.c 的 pb_finish）
-//              ★ 录制中拒绝：录制器按 idx 递增写点，倒一次就全乱
-//              ★ yaw 不动：它记的是"录制时车头朝向"，倒序后仍然正确
-//                （新方向上前轮转角相同、朝向相同，只有遍历顺序变了）
+// 函数简介     【已废弃】原"把点序原地倒过来"——现在恒返回 0，不动点表
+// 返回参数     恒 0
+// 备注信息     ★ 为什么废弃：倒序回放改由回放侧在**私有副本**上做（route_pb.c 的 pb_build_play），
+//                录制表 s_wp[] 全程不改。原地翻转需要"退出时再倒一次复原"，
+//                漏一次表就停在倒序（下次起跑双重翻转 / 上位机读回反表），已删。
+//              ★ 保留这个符号只是为了让旧调用点继续编译（= 队友 v15 ins_route.c:293-296
+//                同样留了个恒返回 0 的旧 ABI 桩）。新代码不要用它。
 //--------------------------------------
 uint8 ins_route_reverse_points (void)
 {
-    uint16 i;
-    uint16 j;
-    ins_wp_t t;
-
-    if (0 != s_running)     { return 0u; }       // 录制中不许倒
-    if (s_head.count < 2u)  { return 0u; }
-
-    for (i = 0u, j = (uint16)(s_head.count - 1u); i < j; i ++, j --)
-    {
-        t       = s_wp[i];
-        s_wp[i] = s_wp[j];
-        s_wp[j] = t;
-    }
-
-    /* 倒置后新方向是"正着开" ⇒ 速度必须全正。
-       注意：录制时若开了 rt_rrec，v 本来就已是 |v|；没开的话是带符号的负数，
-       这里统一取绝对值，两种来源都能用。 */
-    for (i = 0u; i < s_head.count; i ++)
-    {
-        if (s_wp[i].v < 0.0f) { s_wp[i].v = -s_wp[i].v; }
-    }
-
-    return 1u;
+    return 0u;
 }

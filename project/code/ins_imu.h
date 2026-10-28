@@ -149,6 +149,16 @@
  *   判据用"本拍有没有计数"而不是 m/s 阈值 —— 5 ms 一拍、1 计数 ≈ 22 mm/s，
  *   "有计数" ≈ "轮子在动"，比任何速度阈值都灵敏，也没有标定依赖。
  * 置 0 = 回到旧行为（只用 IMU 判静止），只在对比实验时才这么做。 */
+/* ★ 轮速门控的"在动"阈值（m/s）：|odom 车速| 超过它才否决静止。
+ *   依据：实测静止时 |v| 最大 0.027 rps ≈ 0.022 m/s，取 0.08 m/s（3.6 倍余量）
+ *   ⇒ 既不会被静止抖动误否决，又能挡住"匀速低速直线被判静止"（0.27 m/s 那档）。
+ *   与队友 STEER/ZUPT 同一取值。 */
+#define INS_ZUPT_WHEEL_EPS          (0.08f)
+
+/* ★ 单拍航向合理性闸门（2026-10-28，取自 15.mix_mode_add）：
+ *   单拍航向增量上限 = 本值 × dt，再夹在 [10°, 180°]。
+ *   超限的拍**丢弃不累加**并计入 ins_imu_yaw_rej()，防脏拍把累积航向打飞。 */
+#define INS_YAW_REJ_DPS             (3000.0f)
 #define INS_ZUPT_WHEEL_GATE         (1)
 
 /* ---- 在线零偏估计（只在"确实静止"的窗口里开）----
@@ -209,10 +219,12 @@ uint8   ins_imu_init            (void);
 /* ★ 参数 wheel_moving = 本拍后轮编码器有没有计数（1 = 有 ⇒ 车在动）。
    为什么必须由调用方喂进来：见下面 INS_ZUPT_WHEEL_GATE 的说明。
    调用点唯一（pit0_ch11_isr），编码器增量在同一拍已经更新完。 */
-void    ins_imu_update          (uint8 wheel_moving);
+void    ins_imu_update          (void);
 
 uint8   ins_imu_ready           (void);
 uint16  ins_imu_flags           (void);
+/* 被"单拍航向合理性闸门"丢弃的拍数（诊断；正常应长期为 0） */
+uint16  ins_imu_yaw_rej         (void);
 
 /* ★★ 器件链路健康（1 = 通信正常）。为 0 时 ins_imu_update() **完全不碰 SPI_2** ——
  *   这样"IMU 没接好"永远不会把 5ms 中断拖住（中断里访问外部器件的唯一硬约束）。 */

@@ -279,7 +279,8 @@ int Route_Ctrl_Page (void)
             if (RC_ENGAGE_ON == RC_Engage) { Remote_Ctrl_Apply(); }
             else if ((RC_ENGAGE_STANDBY == RC_Engage) || (RC_ENGAGE_OFF == RC_Engage))
             {
-                if (0 == route_pb_active()) { Route_Drive_Idle(); }
+                // 释放期（回放刚收车、还没回中）别抢方向盘，见 route_pb_releasing()
+                if ((0 == route_pb_active()) && (0 == route_pb_releasing())) { Route_Drive_Idle(); }
             }
         }
         else
@@ -288,7 +289,8 @@ int Route_Ctrl_Page (void)
 
             if ((RC_ENGAGE_STANDBY == RC_Engage) || (RC_ENGAGE_OFF == RC_Engage))
             {
-                if (0 == route_pb_active()) { Route_Drive_Idle(); }
+                // 释放期（回放刚收车、还没回中）别抢方向盘，见 route_pb_releasing()
+                if ((0 == route_pb_active()) && (0 == route_pb_releasing())) { Route_Drive_Idle(); }
             }
             // ESTOP / FAILSAFE：保持锁存，目标已清 0
         }
@@ -322,6 +324,12 @@ int Route_Ctrl_Page (void)
                 {
                     route_state = ROUTE_ST_FAULT;
                     route_msg   = "FLASH BUSY";
+                }
+                else if (0u != route_pb_active())
+                {
+                    // 换槽要清表+重载，回放中做这个等于把人正在跑的表抽走
+                    route_state = ROUTE_ST_FAULT;
+                    route_msg   = "PB RUNNING";
                 }
                 else
                 {
@@ -381,6 +389,13 @@ int Route_Ctrl_Page (void)
                     {
                         route_state = ROUTE_ST_FAULT;
                         route_msg   = "FLASH BUSY";
+                    }
+                    else if (0u != route_pb_active())
+                    {
+                        // ins_route_start() 自带互斥闸门（回放中不许起录），这里必须先拦下，
+                        // 否则它静默返回而界面照样显示 RECORDING —— 人以为在录，其实没录
+                        route_state = ROUTE_ST_FAULT;
+                        route_msg   = "PB RUNNING";
                     }
                     else
                     {

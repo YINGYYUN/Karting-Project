@@ -85,7 +85,10 @@
 #define MOTOR_CTRL_INT_CLR_STEP     (0.30f)
 
 /* 目标绝对值上限 rps（该电机满占空比约 1.7 rps） */
-#define MOTOR_CTRL_TARGET_MAX       (3.2f)      /* 与队友 target_max 一致 */
+#define MOTOR_CTRL_TARGET_MAX       (3.0f)      /* 目标转速上限 rps
+                                                 * ★ 同一辆车统一取值：3.0（= 队友 SPD_TARGET_MAX_DEFAULT）。
+                                                 *   我们早期单独调到 3.2，会让"同一条路两边跑出的
+                                                 *   速度数据不可比"，已回落。 */
 /* 输出限幅（归一化）：0.8 = 80% 占空比 = 8000/PWM_DUTY_MAX（与队友 duty_limit 一致） */
 #define MOTOR_CTRL_OUT_MAX          (0.8f)
 
@@ -131,7 +134,11 @@
 #define MOTOR_DIFF_L_MIN            (0.30f)     // 轴距小于它视为无效，不差速
 #define MOTOR_DIFF_W                (0.605f)    // 轮距 m（左右轮心距，实测 60.5 cm）
 #define MOTOR_DIFF_MAX              (0.85f)     // 单侧偏差上限（内侧最低保留 15%），必须 < 1
-#define MOTOR_DIFF_V_MIN            (0.024f)    // 死区半宽：|v| 低于它不分速 rps（≈0.02 m/s）
+#define MOTOR_DIFF_V_MIN            (0.024f)    // 前进死区半宽：|v| 低于它不分速 rps（≈0.02 m/s）
+/* ★ 倒车差速门限（同一辆车统一取值 = 队友 SPD_DIFF_REV_V 0.246 m/s ÷ 0.8193）
+ *   倒车 |v| < 0.30 rps 时两轮同速：低速时内侧目标 0.15v 低于破冰转速、轮子被拖停，
+ *   停转的轮子编码器读 0、速度环积分一直堆，出弯来一脚（队友实测里程虚高 +22%~+40%）。 */
+#define MOTOR_DIFF_REV_V_MIN        (0.30f)
 #define MOTOR_DIFF_DEG2RAD          (0.0174532925f)
 #define MOTOR_DIFF_LPF              (0.25f)     // 实测角一阶低通系数（与队友一致）
 

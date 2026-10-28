@@ -94,8 +94,11 @@
 
 // 后轮速度目标的上限（单位：rps，与 Motor_Ctrl 同口径）
 // 油门 ±1.0 线性映射到这两个值：前进为正、后退为负（= 队友 rc_thr_max 3.2，前后对称）
-#define RC_THR_TARGET_FWD       ( 3.2f)
-#define RC_THR_TARGET_REV       (-3.2f)
+/* 遥控油门 -> 目标转速上限 rps
+ * ★ 同一辆车统一取值 3.0（= MOTOR_CTRL_TARGET_MAX = 队友 SPD_TARGET_MAX_DEFAULT）。
+ *   原来 3.2 比速度环上限还高，实际会被再夹一次，语义上是两个数并存。 */
+#define RC_THR_TARGET_FWD       ( 3.0f)
+#define RC_THR_TARGET_REV       (-3.0f)
 
 /**********************************************************/
 /*----------------------------------------[E] 换算参数 [E]*/

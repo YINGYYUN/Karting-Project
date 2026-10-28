@@ -24,9 +24,10 @@
 #include "zf_common_headfile.h"
 #include <math.h>
 #include "ins_imu.h"
-/* ★ 移植说明（2026-10-19）：原文件这里还有 `#include "ins_odom.h"`。
-   核对过：ins_imu.c 没有用到 ins_odom 的任何符号（航位推算在另一个模块里消费 yaw），
-   本工程不带 ins_odom，这行去掉，模块因此完全自包含。 */
+/* ★ 2026-10-28：轮速门控改用 odom 车速判据（与队友一致），故恢复对 ins_odom.h 的依赖。
+   只用两个只读接口：ins_odom_enable / ins_odom_get_v_mps()。 */
+#include "ins_odom.h"
+#include "Motor.h"          /* ENC_LR_DLT / ENC_RR_DLT：odom 未开时的轮速门控兜底判据 */
 
 #define DEG2RAD_F   (0.017453292519943295f)
 #define RAD2DEG_F   (57.29577951308232f)
@@ -82,6 +83,7 @@ static uint16   s_quick_cnt = 0;
 
 /* 输出 */
 static volatile float s_yaw_acc   = 0.0f;           /* ★ 累积航向（度） */
+static volatile uint16 s_yaw_rej  = 0u;             /* 被单拍合理性闸门丢弃的拍数（诊断） */
 static volatile float s_yaw_raw   = 0.0f;           /* Mahony 的 -180~180 */
 static volatile float s_roll      = 0.0f;
 static volatile float s_pitch     = 0.0f;
@@ -182,8 +184,15 @@ static float ins_dt_seconds (void)
         uint32 cyc = now - s_dwt_last;                  /* uint32 差值天然处理回绕 */
         s_dwt_last = now;
 
-        /* 250 MHz 主频: 1 拍 5ms ≈ 1.25e6 周期 */
-        dt = (float)cyc / 250000000.0f;
+        /* dt 用 SystemCoreClock 折算（2026-10-28，与 15.mix_mode_add 一致）：
+           原来硬编码 250 MHz，一旦改时钟树 dt 会静默错。读不到时退回 250 MHz。 */
+        {
+            float f_cpu = (float)SystemCoreClock;
+
+            if (f_cpu < 1.0e6f) { f_cpu = 250000000.0f; }
+
+            dt = (float)cyc / f_cpu;
+        }
 
         /* 合理区间 [T/2, 4T]；越界说明丢拍/抖动，钳回标称并置位 */
         if ((dt < (INS_T_S * 0.5f)) || (dt > (INS_T_S * 4.0f)))
@@ -415,14 +424,21 @@ static uint8 ins_zupt_step (const float g_dps[3], const float a_g[3], float dt,
                    (fabsf(an - 1.0f) < INS_ZUPT_ACC_TOL_G));
 
 #if INS_ZUPT_WHEEL_GATE
-    /* ★ 轮速门控（2026-10-24）：陀螺 + 加计**判不出"匀速运动"** ——
-       倒车 0.27 m/s 走直线时陀螺≈0.3 dps、加速度≈1 g，条件全满足，会被判成静止，
-       于是 (a) 航向被冻结（实测 yaw 冻死 3.6 s），
-            (b) 零偏门控也满足 ⇒ 真实角速度被学进零偏。
-       轮子只要有计数就不是静止。用"有没有计数"而不是 m/s 阈值：
-       5 ms 一拍、1 计数 ≈ 22 mm/s ⇒ "有计数" ≈ "轮子在动"，无标定依赖。
-       ZUPT 进门要连续 150 ms 满足，所以偶发一个计数不会把 30 ms 的出门条件顶翻。 */
-    if (0u != s_wheel_moving)
+    /* ★ 轮速门控：陀螺 + 加计**判不出"匀速直线"** —— 倒车 0.27 m/s 时 gz≈0.3 dps、|a|≈1 g，
+       条件全满足会被判静止：航向被冻结（实测 3.6 s），真实角速度还会被学进零偏。
+       两条判据按 odom 是否在跑切换（2026-10-28 与队友对齐）：
+         ① odom 在跑 -> |v| > INS_ZUPT_WHEEL_EPS 才算在动
+            阈值高于静止噪声（实测 |v| ≤ 0.027 rps ≈ 0.022 m/s），不会被抖动误否决
+         ② odom 关闭 -> v 恒 0，退回"本拍后轮有计数就否决"（无标定依赖，绝不静默失效）
+       ZUPT 进门要连续 150 ms 满足，偶发一个计数不会把 30 ms 的出门条件顶翻。 */
+    if (fabsf(ins_odom_enable) > 0.5f)
+    {
+        if (fabsf(ins_odom_get_v_mps()) > INS_ZUPT_WHEEL_EPS)
+        {
+            cond = 0u;
+        }
+    }
+    else if (0u != s_wheel_moving)
     {
         cond = 0u;
     }
@@ -681,10 +697,16 @@ static void ins_mahony_update (float dt)
 
     /* --- 四元数积分 + 归一化 --- */
     halfT = 0.5f * dt;
-    q0 += (-q1 * gx - q2 * gy - q3 * gz) * halfT;
-    q1 += ( q0 * gx + q2 * gz - q3 * gy) * halfT;
-    q2 += ( q0 * gy - q1 * gz + q3 * gx) * halfT;
-    q3 += ( q0 * gz + q1 * gy - q2 * gx) * halfT;
+    /* ★ 四个增量必须先算完再一起加：原地自增会让后三式吃到**已更新**的 q0，
+       单拍误差 O(ω·dt²)，高角速度时是系统性偏差（2026-10-28 改，与 15.mix_mode_add 一致）。 */
+    {
+        float d0 = (-q1 * gx - q2 * gy - q3 * gz) * halfT;
+        float d1 = ( q0 * gx + q2 * gz - q3 * gy) * halfT;
+        float d2 = ( q0 * gy - q1 * gz + q3 * gx) * halfT;
+        float d3 = ( q0 * gz + q1 * gy - q2 * gx) * halfT;
+
+        q0 += d0; q1 += d1; q2 += d2; q3 += d3;
+    }
 
     mag_sum = q0*q0 + q1*q1 + q2*q2 + q3*q3;
     if ((mag_sum < 1e-6f) || (mag_sum > 1e6f) || (mag_sum != mag_sum))   /* NaN/Inf 保护 */
@@ -708,7 +730,24 @@ static void ins_mahony_update (float dt)
         float rel_z = pw * q3 - px * q2 + py * q1 - pz * q0;
         float dyaw  = 2.0f * atan2f(rel_z, rel_w) * RAD2DEG_F;
 
-        s_yaw_acc += dyaw;
+        /* ★ 单拍合理性闸门（2026-10-28，闸门取自 15.mix_mode_add）：
+       单拍航向增量超过 INS_YAW_REJ_DPS × dt 就丢弃并计数，防个别脏拍把累积航向打飞
+       （s_yaw_acc 是"逐拍累加、永不卷绕"，一旦被打飞就永久偏）。 */
+    {
+        float lim = INS_YAW_REJ_DPS * dt;
+
+        if (lim <  10.0f) { lim =  10.0f; }
+        if (lim > 180.0f) { lim = 180.0f; }
+
+        if ((dyaw > lim) || (dyaw < -lim))
+        {
+            s_yaw_rej ++;
+        }
+        else
+        {
+            s_yaw_acc += dyaw;
+        }
+    }
     }
 
     s_q[0] = q0; s_q[1] = q1; s_q[2] = q2; s_q[3] = q3;
@@ -731,12 +770,14 @@ static void ins_mahony_update (float dt)
  *  参数 wheel_moving：本拍后轮编码器**有没有计数**（1 = 有 ⇒ 车在动）。
  *  静止判据必须吃这个信号，理由见 ins_imu.h 的 INS_ZUPT_WHEEL_GATE。
  *=================================================================================================================*/
-void ins_imu_update (uint8 wheel_moving)
+void ins_imu_update (void)
 {
     static uint8 mag_div = 0;
     float dt;
 
-    s_wheel_moving = (0u != wheel_moving) ? 1u : 0u;     /* ★ 先刷新：静止判据在本拍后面要用 */
+    /* ★ 本拍后轮有没有计数（2026-10-28：签名改成 (void)，与 15.mix_mode_add 一致）。
+       odom 在跑时用不上它（门控走 |v| 阈值），只在 ins_odom_enable = 0 时当兜底判据。 */
+    s_wheel_moving = ((0 != ENC_LR_DLT) || (0 != ENC_RR_DLT)) ? 1u : 0u;
 
     /* ★★ 器件没通就**一步都不碰 SPI**。
        这是本模块最重要的一条硬约束：`ins_imu_update()` 跑在 5ms 中断里，
@@ -956,6 +997,7 @@ uint8  ins_imu_try_recover (void)
 }
 
 float  ins_imu_get_yaw (void)       { return INS_YAW_SIGN * s_yaw_acc; }
+uint16 ins_imu_yaw_rej (void)       { return s_yaw_rej; }
 float  ins_imu_get_roll (void)      { return s_roll; }
 float  ins_imu_get_pitch (void)     { return s_pitch; }
 float  ins_imu_get_gyro_z_dps (void){ return s_gz_dps; }

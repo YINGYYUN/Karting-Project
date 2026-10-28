@@ -368,11 +368,14 @@ void Motor_Diff_Alloc (float v_rps, float delta_deg, float L_m, float *vl, float
 
         /* 倒车/静止：不做分配，但**让低通跟上**当前角，免得下次前进第一拍跳变
            （队友 spd_diff_alloc() 里也是这个处理） */
-        if ((v_rps < MOTOR_DIFF_V_MIN) && (v_rps > -MOTOR_DIFF_V_MIN))
-        {
-            s_diff_dm = delta_deg;
-            return;
-        }
+        /* 静止 / 前进低速直通；倒车低速（|v| < MOTOR_DIFF_REV_V_MIN）也直通，
+       理由见 Motor_Ctrl.h 的 MOTOR_DIFF_REV_V_MIN。 */
+    if (((v_rps >= 0.0f) && (v_rps < MOTOR_DIFF_V_MIN)) ||
+        ((v_rps <  0.0f) && (v_rps > -MOTOR_DIFF_REV_V_MIN)))
+    {
+        s_diff_dm = delta_deg;
+        return;
+    }
 
         if (L_m < MOTOR_DIFF_L_MIN) { return; }             // 轴距没配好：宁可不差速
 

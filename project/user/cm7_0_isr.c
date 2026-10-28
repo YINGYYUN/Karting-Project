@@ -132,7 +132,7 @@ void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务
     /* ---- IMU 姿态解算（5ms）---- */
     // 必须排在 Motor_Ctrl_Tick() 之后：电机控制律不能因 IMU 的 SPI 事务被推后。
     // 现在ZUPT的静止判据需要查看轮子是否移动
-    ins_imu_update((uint8)((0 != ENC_LR_DLT) || (0 != ENC_RR_DLT)));
+    ins_imu_update();                                   /* 轮速门控的输入改由模块内部取（见 ins_imu.c） */
 
     /* ---- 航位推算（5ms）---- */
     // 必须在编码器和姿态解算后

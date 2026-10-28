@@ -33,7 +33,7 @@ typedef struct
     float   y;              /* 米，               y 向前 */
     float   yaw;            /* 度，相对录制起点 */
     float   v;              /* m/s，录制瞬间车速 */
-    int16   steer_cdeg;     /* 当拍实际施加的舵角，0.01° */
+    int16   steer_cdeg;     /* 当拍**实测**方向盘角，0.01°（不是指令值，见 ins_route.c 的 route_to_local） */
     uint16  flags;          /* INS_WP_FL_* */
 } ins_wp_t;
 

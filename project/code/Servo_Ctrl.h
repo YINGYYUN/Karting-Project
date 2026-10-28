@@ -29,17 +29,17 @@
 //============================== 机械限位 ==============================
 // 限位读数的重复性波动约 ±1°（右 98 计数、左 124 计数），来源是手动推力差异与限位处柔性，
 // 因此不宜用"限位读数"当作角度基准，标定只依赖上面的中点与比例。
-// 注：实际方向盘的转动角度应该只是在30°左右，为了方便开发直接定义为30°，请留意！！！
 #define SERVO_LIMIT_DEG         (30.0f)         // 物理限位：方向盘左右各 30°
 #define SERVO_ENC_LEFT_AVG      (654.5f)        // 左限位均值读数
 #define SERVO_ENC_RIGHT_AVG     (3659.3f)       // 右限位均值读数
 #define SERVO_ENC_LEFT_MIN      (595)           // 左限位实测极值（留档）
 #define SERVO_ENC_RIGHT_MAX     (3698)          // 右限位实测极值（留档）
 
-// 软限位：比物理限位留 SERVO_SOFT_MARGIN_DEG 余量，让控制器永远不会主动把方向盘推向限位结构。
-// 余量需大于上述波动量（±1.2°），余量需要留出裕度
-#define SERVO_SOFT_MARGIN_DEG   (2.0f)
-#define SERVO_SOFT_LIMIT_DEG    (SERVO_LIMIT_DEG - SERVO_SOFT_MARGIN_DEG)   // 28.0°
+// 软限位：离物理限位留余量，控制器永不主动顶限位结构；余量须大于上面的 ±1.2° 波动。
+// ★ 同一辆车统一取值 27°（= 队友 STEER_ABS_LIMIT_DEG_HARD，也就是他们的硬限位），
+//   与 route_pb 的 PB_DELTA_MAX 27 一致 ⇒ 两边可用行程完全相同。
+#define SERVO_SOFT_MARGIN_DEG   (3.0f)
+#define SERVO_SOFT_LIMIT_DEG    (SERVO_LIMIT_DEG - SERVO_SOFT_MARGIN_DEG)   // 27.0°
 
 //============================== 控制参数 ==============================
 #define SERVO_KP_DEFAULT        (400.0f)        // 位置环比例增益的"上电默认值"
@@ -67,9 +67,10 @@
 #define SERVO_ENC_RAW_INVALID_LOW   (3)         // 原始读数 <= 它 视为无效
 #define SERVO_ENC_RAW_INVALID_HIGH  (4092)      // 原始读数 >= 它 视为无效
 
-// 判定前提使用"指令侧"的 |Servo_Out|：反馈一旦失效，误差就不再收敛、输出会顶到限幅，
-// 很快超过 1800（实测启动阈值约 1300~1600）
-#define SERVO_ENC_LOST_OUT      (1800)          // |Servo_Out| 超过它才算"在出力"
+// 判定前提是"指令侧"的 |Servo_Out|：反馈失效后误差不收敛、输出顶到限幅，很快超过门限。
+// ★ 同一辆车统一取值 800（= 队友 STEER_ENC_LOST_OUT）；原来 1800/1000 要 10~18% 占空比
+//   才侦察，轻载失效会漏判。
+#define SERVO_ENC_LOST_OUT      (800)           // |Servo_Out| 超过它才算"在出力"
 #define SERVO_ENC_LOST_MS       (200)           // 连续多少 ms 读到无效值就停机（锁存，Servo_Ctrl_Reset() 才清）
 #define SERVO_TICK_MS           (5)             // 节拍周期 ms，与 PIT_CH1 一致
 
