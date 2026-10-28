@@ -1131,16 +1131,16 @@
             <name>$PROJ_DIR$\..\..\code\flash_map.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Head_Crtl.c</name>
+            <name>$PROJ_DIR$\..\..\code\Head_Ctrl.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Head_Crtl.h</name>
+            <name>$PROJ_DIR$\..\..\code\Head_Ctrl.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Host_Crtl.c</name>
+            <name>$PROJ_DIR$\..\..\code\Host_Ctrl.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Host_Crtl.h</name>
+            <name>$PROJ_DIR$\..\..\code\Host_Ctrl.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\ins_imu.c</name>
@@ -1179,10 +1179,10 @@
             <name>$PROJ_DIR$\..\..\code\Motor.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Motor_Crtl.c</name>
+            <name>$PROJ_DIR$\..\..\code\Motor_Ctrl.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Motor_Crtl.h</name>
+            <name>$PROJ_DIR$\..\..\code\Motor_Ctrl.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Param_Page.c</name>
@@ -1197,16 +1197,16 @@
             <name>$PROJ_DIR$\..\..\code\Param_Storage.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Remote_Crtl.c</name>
+            <name>$PROJ_DIR$\..\..\code\Remote_Ctrl.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Remote_Crtl.h</name>
+            <name>$PROJ_DIR$\..\..\code\Remote_Ctrl.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Route_Crtl.c</name>
+            <name>$PROJ_DIR$\..\..\code\Route_Ctrl.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Route_Crtl.h</name>
+            <name>$PROJ_DIR$\..\..\code\Route_Ctrl.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\route_link.c</name>
@@ -1215,10 +1215,10 @@
             <name>$PROJ_DIR$\..\..\code\route_link.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Servo_Crtl.c</name>
+            <name>$PROJ_DIR$\..\..\code\Servo_Ctrl.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Servo_Crtl.h</name>
+            <name>$PROJ_DIR$\..\..\code\Servo_Ctrl.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>

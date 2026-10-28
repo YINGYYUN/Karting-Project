@@ -7,8 +7,8 @@
     v 实测转速   rps
     r 目标转速   rps
     u 输出       归一化占空比，±1 对应 ±100%
-                 （只在真正写 PWM 的那一刻乘 PWM_DUTY_MAX，见 Motor_Crtl.c）
-  编码器原始计数 -> rps 的换算在 Motor_Crtl.c 里做，每转计数 = MOTOR_CRTL_CPR。
+                 （只在真正写 PWM 的那一刻乘 PWM_DUTY_MAX，见 Motor_Ctrl.c）
+  编码器原始计数 -> rps 的换算在 Motor_Ctrl.c 里做，每转计数 = MOTOR_CTRL_CPR。
 
 ---- 控制律（每路独立）-------------------------------------------------------
         u = u_ff(r)  +  k_v*(r - v)  +  k_z*∫(r - v)dt
@@ -34,8 +34,8 @@
 *******************************************************************************/
 
 
-#ifndef __MOTOR_CRTL_H__
-#define __MOTOR_CRTL_H__
+#ifndef __MOTOR_CTRL_H__
+#define __MOTOR_CTRL_H__
 
 
 #include "zf_common_headfile.h"
@@ -46,76 +46,76 @@
 /**********************************************************/
 
 /* 控制周期，必须与调用它的 PIT 中断一致（当前 PIT_CH11 = 5ms） */
-#define MOTOR_CRTL_T_S              (0.005f)
+#define MOTOR_CTRL_T_S              (0.005f)
 
 /* 每【电机转】计数：编码器 1024 线（只数上升沿）× 增速 49/27 = 1858
    （轮子与电机同轴，所以这同时也是每轮转计数）。 */
-#define MOTOR_CRTL_CPR              (1858.0f)
+#define MOTOR_CTRL_CPR              (1858.0f)
 
 /* ---- 四个主增益 ----
    与队友工程 10 同源同车，u0 / k_z 取户外落地值（原 0.033 / 2.32 是空转台架值）。
    ★ u0 与 k_z 成对整定，不要单独改其中一个。
    只适用于后轮电机，与转向电机（K≈215）差 33 倍，不能互抄。 */
-#define MOTOR_CRTL_INV_K_DEFAULT    (0.1548f)       /* 1/K，占空比/rps（台架空载值） */
-#define MOTOR_CRTL_U0_DEFAULT       (0.057f)        /* 摩擦截距（归一化占空比） */
-#define MOTOR_CRTL_K_V_DEFAULT      (0.164f)        /* 比例增益 u/rps */
-#define MOTOR_CRTL_K_Z_DEFAULT      (0.512f)        /* 积分增益 u/(rps·s) */
+#define MOTOR_CTRL_INV_K_DEFAULT    (0.1548f)       /* 1/K，占空比/rps（台架空载值） */
+#define MOTOR_CTRL_U0_DEFAULT       (0.057f)        /* 摩擦截距（归一化占空比） */
+#define MOTOR_CTRL_K_V_DEFAULT      (0.164f)        /* 比例增益 u/rps */
+#define MOTOR_CTRL_K_Z_DEFAULT      (0.512f)        /* 积分增益 u/(rps·s) */
 
 /* ============================================================================
    [保护参数] 四条，集中定义于此，便于对照与调参
    ----------------------------------------------------------------------------
    作用与编号 1)~4) 对应本文件顶部"保护"一节。
-   任一项置 0 即关闭该项（Motor_Crtl.c 里有 0 判断），便于标定时临时旁路。
+   任一项置 0 即关闭该项（Motor_Ctrl.c 里有 0 判断），便于标定时临时旁路。
    ============================================================================ */
 
 /* 1) 前馈死区 rps：|r| 小于它就不加摩擦截距 u0，
       否则目标 0 附近输出会在 ±u0 之间来回抖 */
-#define MOTOR_CRTL_FF_DEADBAND      (0.05f)
+#define MOTOR_CTRL_FF_DEADBAND      (0.05f)
 
 /* 2) 积分状态限幅 rps·s：给 ∫e·dt 设上下限，防积分裹死（windup）。
       是条件积分抗饱和之外的"最后一道"：大误差长时间存在时，把 z 摁在物理合理范围 */
-#define MOTOR_CRTL_Z_MAX            (5.0f)
+#define MOTOR_CTRL_Z_MAX            (5.0f)
 
 /* 3) 目标斜坡速率 rps/s：把滑条阶跃变成斜坡，
       避免 ①前馈瞬间打满 ②阶跃期间积分攒一堆；20 ⇒ 0→1.5rps 用 75ms */
-#define MOTOR_CRTL_SLEW             (20.0f)
+#define MOTOR_CTRL_SLEW             (20.0f)
 
 /* 4) 大跳变清积分阈值 rps：相邻两拍指令之差超过它就清 z，
       防止旧设定值的"悬念"留在积分里 */
-#define MOTOR_CRTL_INT_CLR_STEP     (0.30f)
+#define MOTOR_CTRL_INT_CLR_STEP     (0.30f)
 
 /* 目标绝对值上限 rps（该电机满占空比约 1.7 rps） */
-#define MOTOR_CRTL_TARGET_MAX       (3.2f)      /* 与队友 target_max 一致 */
+#define MOTOR_CTRL_TARGET_MAX       (3.2f)      /* 与队友 target_max 一致 */
 /* 输出限幅（归一化）：0.8 = 80% 占空比 = 8000/PWM_DUTY_MAX（与队友 duty_limit 一致） */
-#define MOTOR_CRTL_OUT_MAX          (0.8f)
+#define MOTOR_CTRL_OUT_MAX          (0.8f)
 
 /* 主节拍周期 ms（必须与 PIT 一致），编码器脱落计时用 */
-#define MOTOR_CRTL_TICK_MS          (5)
+#define MOTOR_CTRL_TICK_MS          (5)
 
 /* ---- 心跳门限 ----
-   由"正在监督电机运行的那个循环"每圈调 Motor_Crtl_HB_Feed()；
-   5ms 中断里判定，超过 MOTOR_CRTL_HB_TIMEOUT_MS 没喂 -> 门控不过、输出 0。
+   由"正在监督电机运行的那个循环"每圈调 Motor_Ctrl_HB_Feed()；
+   5ms 中断里判定，超过 MOTOR_CTRL_HB_TIMEOUT_MS 没喂 -> 门控不过、输出 0。
    ★★ 喂心跳的必须是**真正在转的那个循环**。会启动后轮闭环的页面有三个：
         - MOTOR-PID 调试页（两处 while 循环）
-        - Remote_Crtl 遥控页（一处 while 循环）
-        - Host_Crtl 上位机页（一处 while 循环；已按规矩每圈喂。
+        - Remote_Ctrl 遥控页（一处 while 循环）
+        - Host_Ctrl 上位机页（一处 while 循环；已按规矩每圈喂。
           该页在 CMD 模式下**会**使能后轮（还有心跳超时的锁存刹停），所以这个喂不能省；
           UP 模式虽然不碰后轮，但页面的结构不变，不要按模式去加/删这一句）
       它们都必须每圈喂；**新加任何"会使能后轮闭环"的页面，也必须喂**，
       否则该页面里电机会毫无反应（原因是心跳门一直判定"监督循环已死"）。
       Menu_Show() 的循环不用喂：它被页面顶住，而且不进页面时电机本来就是关的。 */
-#define MOTOR_CRTL_HB_TIMEOUT_MS    (200)
+#define MOTOR_CTRL_HB_TIMEOUT_MS    (200)
 
 /* ---- 编码器脱落 / 堵转保护 ----
    判据只能用"指令侧"的量：编码器坏了就没有转速可读，不能拿转速当条件。
-   |out| 超过 MOTOR_CRTL_ENC_LOST_OUT、且本路编码器连续 MOTOR_CRTL_ENC_LOST_MS
-   一点不动（单拍增量为 0）-> 判定反馈失效，锁存停机（Motor_Crtl_Reset 才清）。
-   MOTOR_CRTL_ENC_LOST_OUT = 0.3（= 30% 占空比 = 3000/PWM_DUTY_MAX）的依据：
+   |out| 超过 MOTOR_CTRL_ENC_LOST_OUT、且本路编码器连续 MOTOR_CTRL_ENC_LOST_MS
+   一点不动（单拍增量为 0）-> 判定反馈失效，锁存停机（Motor_Ctrl_Reset 才清）。
+   MOTOR_CTRL_ENC_LOST_OUT = 0.3（= 30% 占空比 = 3000/PWM_DUTY_MAX）的依据：
      正常巡航（1.0 rps）前馈约 0.21，低于门限；
      反馈一旦失效，误差恒为 r，积分会把输出一路顶到限幅（0.5），很快突破门限。
    副作用：真被外力堵住的轮子同样满足判据 -> 一起停（观测量分不开，宁停勿冲）。 */
-#define MOTOR_CRTL_ENC_LOST_OUT     (0.3f)
-#define MOTOR_CRTL_ENC_LOST_MS      (200)
+#define MOTOR_CTRL_ENC_LOST_OUT     (0.3f)
+#define MOTOR_CTRL_ENC_LOST_MS      (200)
 
 /* ---- 电子差速（阿克曼）----
    按实测方向盘角把目标转速分配到左右轮：左 = v(1+r)、右 = v(1-r)，平均仍等于 v。
@@ -139,7 +139,7 @@
  * 编码器脱落停机：软锁存 + 有限次自动重试（2026-10-24）
  *
  * 现场问题：某一拍起步打滑 / 插头抖一下 / 被顶住，本路编码器 200 ms 没有脉冲
- * ⇒ 该路输出被**永久**清零，只有 `Motor_Crtl_Reset()`（上电或调试页）能解。
+ * ⇒ 该路输出被**永久**清零，只有 `Motor_Ctrl_Reset()`（上电或调试页）能解。
  * 表现极具误导性：**那个轮子从此只是被拖着走**（编码器照样报转速），于是
  * "左轮永远比右轮快"，而且直线、左转、右转都一样 —— 看起来像差速算错了。
  *
@@ -147,8 +147,8 @@
  * ⚠ 重试不是"带病继续跑"：每次重试前输出已经清零、积分与斜坡都已复位，
  *   所以它等价于"重新使能一次"，反馈真没动就 200 ms 后再次停机。
  * ------------------------------------------------------------- */
-#define MOTOR_CRTL_ENC_RETRY_MAX    (3u)
-#define MOTOR_CRTL_ENC_RETRY_MS     (1000u)
+#define MOTOR_CTRL_ENC_RETRY_MAX    (3u)
+#define MOTOR_CTRL_ENC_RETRY_MS     (1000u)
 
 /**********************************************************/
 /*----------------------------------------[E] 默认参数 [E]*/
@@ -187,14 +187,14 @@ typedef struct
     uint8   enc_fault;          // 1 = 本路因编码器脱落/堵转停机（锁存，Reset 才清）
     uint8   retry;              // 已经自动重试过几次（软锁存）
     uint32  fault_ms;           // 上次停机的时刻（Sys_Tick_Ms）：冷却到点才允许重试
-} Motor_Crtl_t;
+} Motor_Ctrl_t;
 
 // 两路实例
-extern Motor_Crtl_t     Motor_LR_Crtl;      // 左后轮
-extern Motor_Crtl_t     Motor_RR_Crtl;      // 右后轮
+extern Motor_Ctrl_t     Motor_LR_Ctrl;      // 左后轮
+extern Motor_Ctrl_t     Motor_RR_Ctrl;      // 右后轮
 
 // 闭环总使能（0 = 两路输出强制 0，并清积分与斜坡状态）
-extern volatile uint8   Motor_Crtl_Enable;
+extern volatile uint8   Motor_Ctrl_Enable;
 
 /**********************************************************/
 /*----------------------------------------[E] 控制器实例 [E]*/
@@ -206,21 +206,21 @@ extern volatile uint8   Motor_Crtl_Enable;
 /**********************************************************/
 
 // 初始化（清状态 + 电机输出归零）
-void    Motor_Crtl_Init     (void);
+void    Motor_Ctrl_Init     (void);
 // 复位：清积分、斜坡状态与目标（进/出调试页时用）
-void    Motor_Crtl_Reset    (void);
+void    Motor_Ctrl_Reset    (void);
 // 5ms 主节拍：门控 -> 取反馈 -> 两路控制 -> 写输出
-void    Motor_Crtl_Tick     (void);
+void    Motor_Ctrl_Tick     (void);
 // 单路控制计算（通用函数写法，与 PID 基础函数同一风格）
-void    Motor_Crtl_Update   (Motor_Crtl_t *p);
+void    Motor_Ctrl_Update   (Motor_Ctrl_t *p);
 // 电子差速：按实测方向盘角分配左右轮目标 rps（|v| 低于死区不分配）
 // ★ L_m 由调用方给（回放传 ROUTE_PB_L 参数）：以前这里内用宏 MOTOR_DIFF_L，
 //   与回放的 2L/ld 各用一份轴距，改一个另一个不动 —— 现在只有一个来源。
 void    Motor_Diff_Alloc    (float v_rps, float delta_deg, float L_m, float *vl, float *vr);
-// 心跳：由正在监督电机运行的循环每圈调用（见 MOTOR_CRTL_HB_TIMEOUT_MS 的说明）
-void    Motor_Crtl_HB_Feed  (void);
+// 心跳：由正在监督电机运行的循环每圈调用（见 MOTOR_CTRL_HB_TIMEOUT_MS 的说明）
+void    Motor_Ctrl_HB_Feed  (void);
 // 距上次喂心跳的毫秒数（调试页显示用）
-uint32  Motor_Crtl_HB_Age_Ms(void);
+uint32  Motor_Ctrl_HB_Age_Ms(void);
 
 /**********************************************************/
 /*----------------------------------------[E] 接口 [E]----*/

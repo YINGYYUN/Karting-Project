@@ -12,7 +12,7 @@
 /*[S] 内部状态 [S]----------------------------------------*/
 /**********************************************************/
 
-// ★ 全部 volatile：Head_Crtl_Tick() 在 5 ms 中断里跑（pit0_ch1_isr），
+// ★ 全部 volatile：Head_Ctrl_Tick() 在 5 ms 中断里跑（pit0_ch1_isr），
 //   其余接口在页面主循环里调用。跨节拍共享的状态不加 volatile 的话，
 //   编译器可以把 Set_Target 写的值缓存在寄存器里，中断永远读到旧值 —— 这类 bug 只在 -O2 下出现。
 static volatile uint8 head_en  = 0;         // 1 = 接管 Servo_Target_Deg
@@ -53,7 +53,7 @@ static float Head_Wrap180 (float d)
 // 函数简介     每拍算一次舵角
 // 备注信息     不论使能与否都刷新误差；只有使能时才写 Servo_Target_Deg
 //--------------------------------------
-void Head_Crtl_Tick (void)
+void Head_Ctrl_Tick (void)
 {
     head_err = Head_Wrap180(head_tar - ins_imu_get_yaw());
 
@@ -73,7 +73,7 @@ void Head_Crtl_Tick (void)
 // 备注信息     0->1 那一拍把目标对齐当前航向，防止带着旧目标进来甩一把
 //              （上层紧接着 Set_Target 会覆盖它）
 //--------------------------------------
-void Head_Crtl_Set_Enable (uint8 en)
+void Head_Ctrl_Set_Enable (uint8 en)
 {
     if ((0 != en) && (0 == head_en))
     {
@@ -83,7 +83,7 @@ void Head_Crtl_Set_Enable (uint8 en)
     head_en = (0 != en) ? 1 : 0;
 }
 
-void Head_Crtl_Set_Target (float yaw_deg)
+void Head_Ctrl_Set_Target (float yaw_deg)
 {
     head_tar = yaw_deg;
 }
@@ -92,7 +92,7 @@ void Head_Crtl_Set_Target (float yaw_deg)
 // 函数简介     设置航向环增益
 // 备注信息     夹在 0.3~8：超出这一段不是"更灵敏"，是会振
 //--------------------------------------
-void Head_Crtl_Set_Kp (float kp)
+void Head_Ctrl_Set_Kp (float kp)
 {
     if (kp < 0.3f) { kp = 0.3f; }
     if (kp > 8.0f) { kp = 8.0f; }
@@ -100,22 +100,22 @@ void Head_Crtl_Set_Kp (float kp)
     head_kp = kp;
 }
 
-void Head_Crtl_Sync (void)
+void Head_Ctrl_Sync (void)
 {
     head_tar = ins_imu_get_yaw();
 }
 
-uint8 Head_Crtl_Enabled (void)
+uint8 Head_Ctrl_Enabled (void)
 {
     return head_en;
 }
 
-float Head_Crtl_Get_Target (void)
+float Head_Ctrl_Get_Target (void)
 {
     return head_tar;
 }
 
-float Head_Crtl_Get_Err (void)
+float Head_Ctrl_Get_Err (void)
 {
     return head_err;
 }

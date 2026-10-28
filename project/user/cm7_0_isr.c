@@ -91,13 +91,13 @@ void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务�
 
     #endif
 
-    // ---- 航向外环：必须排在 Servo_Crtl_Tick() 之前 ----
-    // 外环算出的目标角写进 Servo_Target_Deg，内环紧接着读它；顺序反了目标就晚一拍。
-    // 放在 5 ms 里（而不是某个页面的主循环）是为了周期确定 —— 外环是纯 P，周期抖动会直接改变等效带宽。
-    Head_Crtl_Tick();
+    // ---- 航向外环：必须排在 Servo_Ctrl_Tick() 之前 ----
+    // 外环算出的目标角写进 Servo_Target_Deg，内环紧接着读它
+    // 放在 5 ms 里是为了周期确定
+    Head_Ctrl_Tick();
 
     // ---- 转向角换算（原始读数 -> 方向盘角度）+ 舵机位置环 ----
-    Servo_Crtl_Tick();
+    Servo_Ctrl_Tick();
 }
 
 void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      
@@ -114,7 +114,7 @@ void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务
     Sys_Tick_Ms ++;
 }
 
-void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数（后轮速度环 5ms + 姿态解算）
+void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数（后轮速度环  + 姿态解算） 5ms
 {
     pit_isr_flag_clear(PIT_CH11);
 
@@ -127,17 +127,15 @@ void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务
     ENC_RR_Update();
 
     // 后轮电机速度闭环：门控 -> 取反馈 -> 控制 -> 输出
-    Motor_Crtl_Tick();
+    Motor_Ctrl_Tick();
 
-    /* ---- IMU 姿态解算（5ms）----
-       必须排在 Motor_Crtl_Tick() 之后：控制律不能因 IMU 的 SPI 事务被推后。
-       只更新姿态，不参与控制（yaw 目前只做显示与遥测 HOST_CH_YAW_DEG）。 */
-    // ★ 把"轮子有没有动"喂给惯导：静止判据必须吃轮速，否则匀速倒车会被判成静止
-    //   （航向冻结 + 零偏被污染）。编码器增量在同一拍已由 ENC_LR/RR_Update 更新。
+    /* ---- IMU 姿态解算（5ms）---- */
+    // 必须排在 Motor_Ctrl_Tick() 之后：电机控制律不能因 IMU 的 SPI 事务被推后。
+    // 现在ZUPT的静止判据需要查看轮子是否移动
     ins_imu_update((uint8)((0 != ENC_LR_DLT) || (0 != ENC_RR_DLT)));
 
-    /* ---- 航位推算（5ms）----
-       必须在编码器更新与 ins_imu_update() 之后：本拍要用的就是本拍的计数增量与航向。 */
+    /* ---- 航位推算（5ms）---- */
+    // 必须在编码器和姿态解算后
     ins_odom_update();
 
 

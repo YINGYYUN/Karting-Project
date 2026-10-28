@@ -1,5 +1,5 @@
-#ifndef _HEAD_CRTL_H
-#define _HEAD_CRTL_H
+#ifndef _HEAD_CTRL_H
+#define _HEAD_CTRL_H
 
 #include "zf_common_headfile.h"
 
@@ -23,18 +23,18 @@
 // 实际航向不经过本层，全项目统一读 ins_imu_get_yaw()
 
 // 每拍调用：刷新误差；使能时把 δ 写进 Servo_Target_Deg
-void    Head_Crtl_Tick         (void);
+void    Head_Ctrl_Tick         (void);
 // 1 = 接管 Servo_Target_Deg。0->1 那一拍会把目标对齐当前航向（防甩头），上层随后可再 Set_Target 覆盖
-void    Head_Crtl_Set_Enable   (uint8 en);
+void    Head_Ctrl_Set_Enable   (uint8 en);
 // 上层写目标航向（累积值，度）
-void    Head_Crtl_Set_Target   (float yaw_deg);
+void    Head_Ctrl_Set_Target   (float yaw_deg);
 // 设置航向环增益（回放按 2L/ld 覆盖；超出 0.3~8 会被夹）
-void    Head_Crtl_Set_Kp       (float kp);
+void    Head_Ctrl_Set_Kp       (float kp);
 // 目标对齐当前航向
-void    Head_Crtl_Sync         (void);
+void    Head_Ctrl_Sync         (void);
 
-uint8   Head_Crtl_Enabled      (void);
-float   Head_Crtl_Get_Target   (void);
-float   Head_Crtl_Get_Err      (void);
+uint8   Head_Ctrl_Enabled      (void);
+float   Head_Ctrl_Get_Target   (void);
+float   Head_Ctrl_Get_Err      (void);
 
 #endif

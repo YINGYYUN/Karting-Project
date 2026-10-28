@@ -3,7 +3,7 @@ namespace KartHost;
 /// <summary>
 /// 一套遥测档案：4 张**平行**表（Names / Units / Cn / Tips）+ 分图预设 + 实时值格子 + 轨迹通道。
 ///
-/// <para><b>下标即协议</b>：第 i 项必须与车端 <c>Host_Crtl.h</c> 的 <c>HOST_CH_*</c>（全量）
+/// <para><b>下标即协议</b>：第 i 项必须与车端 <c>Host_Ctrl.h</c> 的 <c>HOST_CH_*</c>（全量）
 /// 或 <c>HOST_CT_*</c>（标定）一一对应。改顺序 = 改协议，历史 CSV 的列义会整体错位
 /// （而且**不报错、不越界，只是名字全挪位**）。</para>
 ///
@@ -200,7 +200,7 @@ public static class Defaults
             /*  5 */ "下标 5  CH_U_R\nu_r\n右后轮实际输出（%），同 u_l",
             /*  6 */ "下标 6  CH_UFF_L\nuff_l\n左后轮前馈分量（%）\n速度环里由目标转速直接算出的那一部分，不是 PI 输出",
             /*  7 */ "下标 7  CH_UFF_R\nuff_r\n右后轮前馈分量（%）",
-            /*  8 */ "下标 8  CH_Z_L\nz_l\n左后轮积分状态（rps*s）\n看它是否顶在 ±MOTOR_CRTL_Z_MAX 就知道积分有没有裹死",
+            /*  8 */ "下标 8  CH_Z_L\nz_l\n左后轮积分状态（rps*s）\n看它是否顶在 ±MOTOR_CTRL_Z_MAX 就知道积分有没有裹死",
             /*  9 */ "下标 9  CH_Z_R\nz_r\n右后轮积分状态（rps*s）",
             /* 10 */ "下标 10 CH_POS_L\npos_l\n左后轮带符号累计编码器计数（cnt）\n标 cpr 用；不是米",
             /* 11 */ "下标 11 CH_POS_R\npos_r\n右后轮累计计数（cnt）",

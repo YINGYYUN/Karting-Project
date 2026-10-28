@@ -7,7 +7,7 @@ namespace KartHost;
 ///
 /// <para>用法：<c>KartHostLite.exe --selftest [out.txt]</c>，退出码 = 失败项数。</para>
 ///
-/// <para>为什么值得写：车端 <c>Host_Crtl.c</c> 的帧编码我无法在这里跑（要 IAR + 板子），
+/// <para>为什么值得写：车端 <c>Host_Ctrl.c</c> 的帧编码我无法在这里跑（要 IAR + 板子），
 /// 所以 PC 侧至少要把「CRC 算得一样、切帧状态机经得起半包/垃圾字节/坏 CRC」这两件事钉死。
 /// 现场出现"收不到帧"时，先跑它 —— 能把"协议不一致"和"线/端口/IP 不对"分开。</para>
 /// </summary>
@@ -359,7 +359,7 @@ internal static class SelfTest
         return _fail;
     }
 
-    // ---- 构造（与车端 Host_Crtl.c 的组帧逻辑逐字节对应，用于自测）----
+    // ---- 构造（与车端 Host_Ctrl.c 的组帧逻辑逐字节对应，用于自测）----
     private static byte[] BuildTelemetry(int seq, uint ts, float[] ch)
     {
         int pl = Proto.TELEM_OVERHEAD + ch.Length * 4;

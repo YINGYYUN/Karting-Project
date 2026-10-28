@@ -123,7 +123,7 @@ t_ms,note,<通道名>[<单位>],<通道名>[<单位>],...
 > `CsvRecorder` 的抽稀是 `_next += periodMs`（毫秒）—— 结果两次落盘之间隔 20 **秒**，
 > 录出来几乎是空表。现在统一走 `NowMs()`，并把采样从 30 FPS 重绘定时器挪到独立的 10 ms 定时器。
 
-## 与车端的协议约定（`Host_Crtl.c` 那一侧）
+## 与车端的协议约定（`Host_Ctrl.c` 那一侧）
 
 - 上行 `A5 5A | TYPE | LEN | PAYLOAD | CRC16 | 00 00 80 7F`；CRC16-MODBUS(0xA001)，全小端。
 - 遥测载荷 `SEQ(2) + TS(2→4) + MASK(2) + COUNT(2) + float32×N`；`MASK=0xFFFF` 是「全部有效」哨兵。

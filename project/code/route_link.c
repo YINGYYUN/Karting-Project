@@ -53,7 +53,7 @@ static uint16 rl_crc16 (uint16 crc, const uint8 *p, uint32 n)
     uint8  j;
 
     /* CRC16-MODBUS：初值 0xFFFF / 反射多项式 0xA001。
-       本工程有四处实现（ins_route.c 的 rt_crc16、Host_Crtl.c 的 host_crc16、这里、
+       本工程有四处实现（ins_route.c 的 rt_crc16、Host_Ctrl.c 的 host_crc16、这里、
        PC 端 RouteLink.Crc16），必须算出同一个值 —— 否则现象是"帧看着发出去了、
        对面永远不回 ACK"，而各处都自认为正确。改一处要一起改。 */
     for (i = 0; i < n; i ++)

@@ -124,10 +124,10 @@ void Debug_UART_RC_UI(void)
     ips200_show_string(10 ,144, "ST:#   FRM:#####");
 }
 
-// ★ WiFi 选择连接界面已**统一**到 Host_Crtl（唯一实现 = `Host_Crtl_WiFi_Select()`）——
+// ★ WiFi 选择连接界面已**统一**到 Host_Ctrl（唯一实现 = `Host_Ctrl_WiFi_Select()`）——
 //   本文件原来的 `Debug_WiFi_SPI_UI()` + `Debug_WiFi_SSID[]/Debug_WiFi_PASS[]`
 //   （第二份界面 + 第二张候选表）已删除。
-//   候选表 / 密码 / 目标 IP 现在只有 `Host_Crtl.h` 一份（`HOST_WIFI_LIST` / `HOST_TARGET_*`），
+//   候选表 / 密码 / 目标 IP 现在只有 `Host_Ctrl.h` 一份（`HOST_WIFI_LIST` / `HOST_TARGET_*`），
 //   改那里两个入口同时生效。**不要再在这里复制一份。**
 
 /**********************************************************/
@@ -140,7 +140,7 @@ void Debug_UART_RC_UI(void)
 /**********************************************************/
 
 // 相关函数提前声明
-// ※ 原 `Debug_WiFi_SPI()` 已删除：WiFi 界面统一走 `Host_Crtl_WiFi_Select()`（见调试页第 1 项）
+// ※ 原 `Debug_WiFi_SPI()` 已删除：WiFi 界面统一走 `Host_Ctrl_WiFi_Select()`（见调试页第 1 项）
 int Debug_Motor         (void);
 int Debug_Motor_PID     (void);
 int Debug_IMU           (void);
@@ -202,8 +202,8 @@ int Debug_Page_Menu(void)
         if (Debug_Page_flag_temp == 1)
         {
             ips200_clear();
-            // ★ WiFi 选择连接界面统一在 Host_Crtl（候选表 / 密码 / 目标 IP 只有那一份配置）
-            Host_Crtl_WiFi_Select();
+            // ★ WiFi 选择连接界面统一在 Host_Ctrl（候选表 / 密码 / 目标 IP 只有那一份配置）
+            Host_Ctrl_WiFi_Select();
             
             // 从子界面返回后
             ips200_clear();
@@ -314,9 +314,9 @@ int Debug_Page_Menu(void)
 //  ## ##    #    #        #    
 //  #   #  #####  #      #####  
 //
-// ※ WiFi SPI 初始化界面已**统一**到 Host_Crtl：本页第 1 项现在直接调用 `Host_Crtl_WiFi_Select()`，
+// ※ WiFi SPI 初始化界面已**统一**到 Host_Ctrl：本页第 1 项现在直接调用 `Host_Ctrl_WiFi_Select()`，
 //   原来这里那份独立界面 + 独立候选表已删除（两份配置要各自维护，是历史包袱）。
-//   要改 WiFi 界面 / 候选表请去 `Host_Crtl.c` / `Host_Crtl.h`。
+//   要改 WiFi 界面 / 候选表请去 `Host_Ctrl.c` / `Host_Ctrl.h`。
 
 //	#   #   ###   #####   ###   ####   
 //  ## ##  #   #    #    #   #  #   #  
@@ -471,14 +471,14 @@ int Debug_Motor (void)
 int Debug_Motor_PID (void)
 {
     // 目标值相关，为方便调用元素数量为3（只用 [1] [2]）
-    // ★ 单位：0.01 rps（与 Motor_Crtl 同口径），写入 target 时 ×0.01
+    // ★ 单位：0.01 rps（与 Motor_Ctrl 同口径），写入 target 时 ×0.01
     int16_t enc_tar[3] = {0};
     // 重置闭环状态
-    Motor_Crtl_Reset();
+    Motor_Ctrl_Reset();
     // 电机速度重置
     Motor_SET_Zero_ALL();
 
-    Motor_Crtl_Enable = 1;
+    Motor_Ctrl_Enable = 1;
 
 	Debug_Motor_PID_UI();
 	ips200_show_string(0 ,32 , ">");
@@ -503,7 +503,7 @@ int Debug_Motor_PID (void)
         // 上/下按键是否被按下过
         uint8_t key_pressed = 0;
 
-        Motor_Crtl_HB_Feed();       // 心跳：MOTOR-PID 主页循环还活着
+        Motor_Ctrl_HB_Feed();       // 心跳：MOTOR-PID 主页循环还活着
 
         /* 按键处理 */
         if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
@@ -529,9 +529,9 @@ int Debug_Motor_PID (void)
         {
             key_clear_state(KEY_BACK);
 
-            Motor_Crtl_Enable = 0;
+            Motor_Ctrl_Enable = 0;
             // 重置闭环状态
-            Motor_Crtl_Reset();
+            Motor_Ctrl_Reset();
             // 电机速度重置
             Motor_SET_Zero_ALL();
             // 返回上一级界面
@@ -547,7 +547,7 @@ int Debug_Motor_PID (void)
             // 电机手动设置
             while(1)
             {
-                Motor_Crtl_HB_Feed();   // 心跳：目标编辑循环还活着
+                Motor_Ctrl_HB_Feed();   // 心跳：目标编辑循环还活着
 
                 /* 按键解析 */
                 if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
@@ -555,8 +555,8 @@ int Debug_Motor_PID (void)
                     key_clear_state(KEY_UP);
                     enc_tar[Debug_M_P_f] += 2;      // 步进 2 = 0.02 rps
                     if (enc_tar[Debug_M_P_f] > 300)enc_tar[Debug_M_P_f] = 300;   // 上限 3.00 rps
-                    Motor_LR_Crtl.target = enc_tar[1] * 0.01f;
-                    Motor_RR_Crtl.target = enc_tar[2] * 0.01f;
+                    Motor_LR_Ctrl.target = enc_tar[1] * 0.01f;
+                    Motor_RR_Ctrl.target = enc_tar[2] * 0.01f;
                     ips200_printf(66 ,16 + 16*Debug_M_P_f, "%d  ", enc_tar[Debug_M_P_f]);
                 }
                 else if (KEY_SHORT_PRESS == key_get_state(KEY_DOWN))
@@ -564,8 +564,8 @@ int Debug_Motor_PID (void)
                     key_clear_state(KEY_DOWN);
                     enc_tar[Debug_M_P_f] -= 2;      // 步进 2 = 0.02 rps
                     if (enc_tar[Debug_M_P_f] < -300)enc_tar[Debug_M_P_f] = -300; // 下限 -3.00 rps
-                    Motor_LR_Crtl.target = enc_tar[1] * 0.01f;
-                    Motor_RR_Crtl.target = enc_tar[2] * 0.01f;
+                    Motor_LR_Ctrl.target = enc_tar[1] * 0.01f;
+                    Motor_RR_Ctrl.target = enc_tar[2] * 0.01f;
                     ips200_printf(66 ,16 + 16*Debug_M_P_f, "%d  ", enc_tar[Debug_M_P_f]);
                 }
                 else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM) || 
@@ -584,13 +584,13 @@ int Debug_Motor_PID (void)
                 {
                     Time_Count1 = 0;
 
-                    ips200_printf(154,32, "%d    ", (int16_t)(Motor_LR_Crtl.actual * 100.0f));   // 0.01 rps
-                    ips200_printf(154,48, "%d    ", (int16_t)(Motor_RR_Crtl.actual * 100.0f));
-                    ips200_printf(66 ,112, "%d    ", (int16_t)(Motor_LR_Crtl.out * 10000.0f));   // 等效 duty
-                    ips200_printf(66 ,128, "%d    ", (int16_t)(Motor_RR_Crtl.out * 10000.0f));
-                    ips200_printf(58 ,80 , "%d    ", (int)Motor_Crtl_HB_Age_Ms());
-                    ips200_printf(66 ,96 , "%d ", Motor_LR_Crtl.enc_fault);
-                    ips200_printf(114,96 , "%d ", Motor_RR_Crtl.enc_fault);
+                    ips200_printf(154,32, "%d    ", (int16_t)(Motor_LR_Ctrl.actual * 100.0f));   // 0.01 rps
+                    ips200_printf(154,48, "%d    ", (int16_t)(Motor_RR_Ctrl.actual * 100.0f));
+                    ips200_printf(66 ,112, "%d    ", (int16_t)(Motor_LR_Ctrl.out * 10000.0f));   // 等效 duty
+                    ips200_printf(66 ,128, "%d    ", (int16_t)(Motor_RR_Ctrl.out * 10000.0f));
+                    ips200_printf(58 ,80 , "%d    ", (int)Motor_Ctrl_HB_Age_Ms());
+                    ips200_printf(66 ,96 , "%d ", Motor_LR_Ctrl.enc_fault);
+                    ips200_printf(114,96 , "%d ", Motor_RR_Ctrl.enc_fault);
                     ips200_printf(34 ,208, "%d     ", ENC_LR_POS);
                     ips200_printf(34 ,224, "%d     ", ENC_RR_POS);
                 }
@@ -602,7 +602,7 @@ int Debug_Motor_PID (void)
                     if(wifi_spi_inited) 
                     {
                         char buf[64];
-                        sprintf(buf, "%d,%d,%d\n", (int16_t)(Motor_RR_Crtl.actual * 100.0f), (int16_t)(Motor_RR_Crtl.target * 100.0f), (int16_t)(Motor_RR_Crtl.out * 10000.0f));
+                        sprintf(buf, "%d,%d,%d\n", (int16_t)(Motor_RR_Ctrl.actual * 100.0f), (int16_t)(Motor_RR_Ctrl.target * 100.0f), (int16_t)(Motor_RR_Ctrl.out * 10000.0f));
                         wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
                     }
                 }
@@ -617,13 +617,13 @@ int Debug_Motor_PID (void)
         {
             Time_Count1 = 0;
 
-            ips200_printf(154,32, "%d    ", (int16_t)(Motor_LR_Crtl.actual * 100.0f));   // 0.01 rps
-            ips200_printf(154,48, "%d    ", (int16_t)(Motor_RR_Crtl.actual * 100.0f));
-            ips200_printf(66 ,112, "%d    ", (int16_t)(Motor_LR_Crtl.out * 10000.0f));   // 等效 duty
-            ips200_printf(66 ,128, "%d    ", (int16_t)(Motor_RR_Crtl.out * 10000.0f));
-            ips200_printf(58 ,80 , "%d    ", (int)Motor_Crtl_HB_Age_Ms());
-            ips200_printf(66 ,96 , "%d ", Motor_LR_Crtl.enc_fault);
-            ips200_printf(114,96 , "%d ", Motor_RR_Crtl.enc_fault);
+            ips200_printf(154,32, "%d    ", (int16_t)(Motor_LR_Ctrl.actual * 100.0f));   // 0.01 rps
+            ips200_printf(154,48, "%d    ", (int16_t)(Motor_RR_Ctrl.actual * 100.0f));
+            ips200_printf(66 ,112, "%d    ", (int16_t)(Motor_LR_Ctrl.out * 10000.0f));   // 等效 duty
+            ips200_printf(66 ,128, "%d    ", (int16_t)(Motor_RR_Ctrl.out * 10000.0f));
+            ips200_printf(58 ,80 , "%d    ", (int)Motor_Ctrl_HB_Age_Ms());
+            ips200_printf(66 ,96 , "%d ", Motor_LR_Ctrl.enc_fault);
+            ips200_printf(114,96 , "%d ", Motor_RR_Ctrl.enc_fault);
             ips200_printf(34 ,208, "%d     ", ENC_LR_POS);
             ips200_printf(34 ,224, "%d     ", ENC_RR_POS);
         }
@@ -635,7 +635,7 @@ int Debug_Motor_PID (void)
             if(wifi_spi_inited) 
             {
                 char buf[64];
-                sprintf(buf, "%d,%d,%d\n", (int16_t)(Motor_RR_Crtl.actual * 100.0f), (int16_t)(Motor_RR_Crtl.target * 100.0f), (int16_t)(Motor_RR_Crtl.out * 10000.0f));
+                sprintf(buf, "%d,%d,%d\n", (int16_t)(Motor_RR_Ctrl.actual * 100.0f), (int16_t)(Motor_RR_Ctrl.target * 100.0f), (int16_t)(Motor_RR_Ctrl.out * 10000.0f));
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }
@@ -930,9 +930,9 @@ int Debug_SERVO(void)
     int32_t servo_tar10 = 0;            // 目标角度   单位 0.1°
     int32_t servo_err10 = 0;            // 误差       单位 0.1°
 
-    // 进入本页：目标清 0（临时量），使能一并清（Servo_Crtl_Reset 内部已置 Enable=0）
+    // 进入本页：目标清 0（临时量），使能一并清（Servo_Ctrl_Reset 内部已置 Enable=0）
     // 此时输出为 0，进页面本身不会产生任何动作
-    Servo_Crtl_Reset();
+    Servo_Ctrl_Reset();
 
     while(1)
     {
@@ -940,7 +940,7 @@ int Debug_SERVO(void)
         if (KEY_SHORT_PRESS == key_get_state(KEY_BACK))
         {
             key_clear_state(KEY_BACK);
-            Servo_Crtl_Enable = 0;      // 退出固定置 0（输出由 Tick 里的门控清零）
+            Servo_Ctrl_Enable = 0;      // 退出固定置 0（输出由 Tick 里的门控清零）
             // 返回上一级界面
             return 0;
         }
@@ -962,7 +962,7 @@ int Debug_SERVO(void)
         else if (KEY_SHORT_PRESS == key_get_state(KEY_CONFIRM))
         {
             key_clear_state(KEY_CONFIRM);
-            Servo_Crtl_Enable = (0 == Servo_Crtl_Enable) ? 1 : 0;   // 切换闭环使能
+            Servo_Ctrl_Enable = (0 == Servo_Ctrl_Enable) ? 1 : 0;   // 切换闭环使能
         }
 
         /* 数据读取 + WiFi 发送（约 20ms 周期） */
@@ -995,7 +995,7 @@ int Debug_SERVO(void)
             Debug_SERVO_ShowDeg(130, 32, servo_deg10);
             Debug_SERVO_ShowDeg(42 , 48, servo_tar10);
             Debug_SERVO_ShowDeg(130, 48, servo_err10);
-            ips200_printf(66 ,64 , "%d ", (int)Servo_Crtl_Enable);
+            ips200_printf(66 ,64 , "%d ", (int)Servo_Ctrl_Enable);
             ips200_printf(130,64 , "%d    ", (int)Servo_Out);
             ips200_printf(42 ,80 , "%d ", (int)Servo_Enc_Fault);
         }

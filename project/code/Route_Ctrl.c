@@ -56,7 +56,7 @@ static const char *Route_State_Text (void)
     return "IDLE ";
 }
 
-static void Route_Crtl_UI (void)
+static void Route_Ctrl_UI (void)
 {
     ips200_show_string(8  ,0  , "[ROUTE]");
     ips200_show_string(0  ,16 , "==============================");
@@ -102,25 +102,25 @@ static void Route_Crtl_UI (void)
 
 //--------------------------------------
 // 函数简介     空闲态：后轮自由轮；手推录制时舵机也松开
-// 备注信息     后轮不使能，方便手推；不经过 Remote_Crtl_Apply()，避免它按 RC_Online 锁 FAILSAFE
+// 备注信息     后轮不使能，方便手推；不经过 Remote_Ctrl_Apply()，避免它按 RC_Online 锁 FAILSAFE
 //--------------------------------------
 static void Route_Drive_Idle (void)
 {
     // 手推录制：舵机也失能，否则电机顶着 0° 妨碍人转方向盘
     if ((ROUTE_MODE_REC == route_mode) && (ROUTE_ST_RUN == route_state))
     {
-        Servo_Crtl_Enable = 0;
+        Servo_Ctrl_Enable = 0;
     }
     else
     {
-        Servo_Crtl_Enable = 1;
+        Servo_Ctrl_Enable = 1;
         Servo_Target_Deg  = 0.0f;
     }
 
-    Motor_Crtl_Enable    = 0;
-    Motor_LR_Crtl.target = 0.0f;
-    Motor_RR_Crtl.target = 0.0f;
-    Head_Crtl_Set_Enable(0);
+    Motor_Ctrl_Enable    = 0;
+    Motor_LR_Ctrl.target = 0.0f;
+    Motor_RR_Ctrl.target = 0.0f;
+    Head_Ctrl_Set_Enable(0);
 }
 
 //--------------------------------------
@@ -146,7 +146,7 @@ static void Route_Rec_Stop (void)
 //--------------------------------------
 // 函数简介     上电初始化（载入 active 槽）
 //--------------------------------------
-void Route_Crtl_Init (void)
+void Route_Ctrl_Init (void)
 {
     ins_route_init();
     ins_route_slot_init();
@@ -156,9 +156,9 @@ void Route_Crtl_Init (void)
 //--------------------------------------
 // 函数简介     页面主循环
 //--------------------------------------
-int Route_Crtl_Page (void)
+int Route_Ctrl_Page (void)
 {
-    Route_Crtl_UI();
+    Route_Ctrl_UI();
 
     route_state  = ROUTE_ST_IDLE;
     route_cursor = 3;
@@ -193,15 +193,15 @@ int Route_Crtl_Page (void)
             }
             else
             {
-                Host_Crtl_Set_Link(HOST_LINK_OFF);  // 退出即静默，不留上行
-                Remote_Crtl_Release();
+                Host_Ctrl_Set_Link(HOST_LINK_OFF);  // 退出即静默，不留上行
+                Remote_Ctrl_Release();
                 return 0;
             }
         }
 
-        Motor_Crtl_HB_Feed();               // 本页会使能后轮闭环
+        Motor_Ctrl_HB_Feed();               // 本页会使能后轮闭环
 
-        Remote_Crtl_Update();
+        Remote_Ctrl_Update();
 
         if (0 != RC_Online) { route_rc_seen = 1; }
 
@@ -243,7 +243,7 @@ int Route_Crtl_Page (void)
             }
 
             RC_Engage = RC_ENGAGE_ESTOP;
-            Remote_Crtl_Apply();                    // 后轮使能 + 目标 0（主动刹停）
+            Remote_Ctrl_Apply();                    // 后轮使能 + 目标 0（主动刹停）
         }
         // 接收机在线后突然断连：停本次运行并刹停。只报一次，之后按"脱机"继续（可手推）
         else if ((ROUTE_ST_RUN == route_state) && (0 != route_rc_seen) && (0 == RC_Online))
@@ -259,7 +259,7 @@ int Route_Crtl_Page (void)
             }
 
             RC_Engage = RC_ENGAGE_FAILSAFE;
-            Remote_Crtl_Apply();                    // 后轮使能 + 目标 0（刹停）
+            Remote_Ctrl_Apply();                    // 后轮使能 + 目标 0（刹停）
         }
         // CH6：显式把驾驶权交给遥控；回 0 收回待命
         else if (1 == RC_Sw6)
@@ -276,7 +276,7 @@ int Route_Crtl_Page (void)
                 RC_Engage = RC_ENGAGE_ON;
             }
 
-            if (RC_ENGAGE_ON == RC_Engage) { Remote_Crtl_Apply(); }
+            if (RC_ENGAGE_ON == RC_Engage) { Remote_Ctrl_Apply(); }
             else if ((RC_ENGAGE_STANDBY == RC_Engage) || (RC_ENGAGE_OFF == RC_Engage))
             {
                 if (0 == route_pb_active()) { Route_Drive_Idle(); }
@@ -353,16 +353,16 @@ int Route_Crtl_Page (void)
                     uint8 r;
 
                     ips200_clear();
-                    r = Host_Crtl_WiFi_Select();
+                    r = Host_Ctrl_WiFi_Select();
 
                     ips200_clear();
-                    Route_Crtl_UI();
+                    Route_Ctrl_UI();
                     Time_Count1 = 0;
 
                     if (HOST_OK == r)
                     {
-                        Host_Crtl_Set_Link(HOST_LINK_OFF);  // 换了链路 -> 重发参数表
-                        Host_Crtl_Set_Link(HOST_LINK_ON);
+                        Host_Ctrl_Set_Link(HOST_LINK_OFF);  // 换了链路 -> 重发参数表
+                        Host_Ctrl_Set_Link(HOST_LINK_ON);
                         route_msg = "LINK ON";
                     }
                     else        // BACK 取消沿用原状态；选了 SKIP 则已在那边关掉
@@ -449,7 +449,7 @@ int Route_Crtl_Page (void)
         }
 
         // WiFi 上行（链路没建 / 没开时整个函数空转；放在控制与写盘之后，先保控制节拍）
-        Host_Crtl_Task();
+        Host_Ctrl_Task();
 
         /* 屏幕显示更新（100ms） */
         if (Time_Count1 >= 10)

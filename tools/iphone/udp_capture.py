@@ -18,7 +18,7 @@ Karting 上行遥测接收器（iPhone / iSH 版）
   3) iOS 设置 → iSH → 本地网络 = 开
   4) iSH 保持前台、自动锁屏设"永不"
 
-帧格式（车端 Host_Crtl.c: host_send_telemetry）：
+帧格式（车端 Host_Ctrl.c: host_send_telemetry）：
     A5 5A | TYPE=01 | LEN(u16) | SEQ(u16) | TS(u32) | MASK(u16) | CNT(u16) | DATA CNT×f32 | CRC16(u16) | 00 00 80 7F
     LEN = 10 + CNT*4      CRC16-MODBUS 覆盖 [2, 2+3+LEN)
 """

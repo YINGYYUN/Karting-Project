@@ -21,23 +21,23 @@ void Peripheral_Init(void)
     key_init(10);
 
     Motor_init();
-    Motor_Crtl_Init();          // 后轮电机速度闭环变量重置（上电默认不使能）
+    Motor_Ctrl_Init();          // 后轮电机速度闭环变量重置（上电默认不使能）
 
     ENC_MAG_Init();             // 磁编码器初始化（硬件 SPI3/SCB6, P3.0/3.1/3.2/3.3）
     absolute_encoder_init();    // 绝对值角度编码器初始化（硬件 SPI4/SCB5, P7.0/7.1/7.2, CS P7.3）
-    Servo_Crtl_Init();          // 舵机位置环变量重置（上电默认不使能）
+    Servo_Ctrl_Init();          // 舵机位置环变量重置（上电默认不使能）
 
     uart_receiver_init();       // uart接收机初始化(P14.0 P14.1)
 
     Param_Init();
 
-    Route_Crtl_Init();          // 路表：读槽索引 + 载入 active 槽（阻塞，必须在 PIT 打开前）
+    Route_Ctrl_Init();          // 路表：读槽索引 + 载入 active 槽（阻塞，必须在 PIT 打开前）
 
     route_link_init();          // 串口灌表：清收发状态 + 放开日志门闩（收字节在 uart0_isr，
                                 //   解析/写盘在 route_link_tick()，调用点在参数页的循环里）
 
-    Host_Crtl_Init();           // 上位机对接：只重置链路状态（不连 WiFi，避免卡住上电）
-                                // 调用纪律（静默 / 链路来源）见 Host_Crtl.h 文件头
+    Host_Ctrl_Init();           // 上位机对接：只重置链路状态（不连 WiFi，避免卡住上电）
+                                // 调用纪律（静默 / 链路来源）见 Host_Ctrl.h 文件头
 }
 
 
@@ -53,9 +53,9 @@ void Menu_UI(void)
     ips200_show_string(10 ,32 , "Process");
     ips200_show_string(10 ,48 , "Debug");
     ips200_show_string(10 ,64 , "Param");
-    ips200_show_string(10 ,80 , "Remote_Crtl");
-    ips200_show_string(10 ,96 , "Host_Crtl");
-    ips200_show_string(10 ,112, "Route_Crtl");
+    ips200_show_string(10 ,80 , "Remote_Ctrl");
+    ips200_show_string(10 ,96 , "Host_Ctrl");
+    ips200_show_string(10 ,112, "Route_Ctrl");
 }
 /**********************************************************/
 /*----------------------------------------[E] 界面样式 [E]*/
@@ -139,7 +139,7 @@ void Menu_Show(void)
         else if (menu_flag_temp == 4)
         {
             ips200_clear();
-            Remote_Crtl_Page();
+            Remote_Ctrl_Page();
 
             // 从遥控界面返回，显示主菜单界面
             ips200_clear();
@@ -149,7 +149,7 @@ void Menu_Show(void)
         else if (menu_flag_temp == 5)
         {
             ips200_clear();
-            Host_Crtl_Page();
+            Host_Ctrl_Page();
 
             // 从上位机界面返回，显示主菜单界面
             ips200_clear();
@@ -159,7 +159,7 @@ void Menu_Show(void)
         else if (menu_flag_temp == 6)
         {
             ips200_clear();
-            Route_Crtl_Page();
+            Route_Ctrl_Page();
 
             // 从路表界面返回，显示主菜单界面
             ips200_clear();

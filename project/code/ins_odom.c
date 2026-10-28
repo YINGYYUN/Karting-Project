@@ -87,8 +87,8 @@ void ins_odom_update (void)
     float yaw_deg = ins_imu_get_yaw();
     int16 dl      = ENC_LR_DLT;                 // 本拍原始增量（已含方向与极性，未经滑动平均）
     int16 dr      = ENC_RR_DLT;
-    float dl_m    = ((float)dl / MOTOR_CRTL_CPR) * ins_m_per_rev;
-    float dr_m    = ((float)dr / MOTOR_CRTL_CPR) * ins_m_per_rev;
+    float dl_m    = ((float)dl / MOTOR_CTRL_CPR) * ins_m_per_rev;
+    float dr_m    = ((float)dr / MOTOR_CTRL_CPR) * ins_m_per_rev;
     float ds      = (dl_m + dr_m) * 0.5f;       // 取两后轮中部
     uint8 flags   = 0;
 

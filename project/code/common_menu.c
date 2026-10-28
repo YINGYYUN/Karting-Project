@@ -337,6 +337,15 @@ static void show_data(void)
                     ips200_printf(150, y, "N");
                 break;
 
+            /* ★ 浮点式开关：ON /OFF（定宽 3 字符，防"ON"比"OFF"短留残影）。
+               数据仍是 float 的 0.0f / 1.0f —— 参数表、Flash、上位机、CSV 全不用动。 */
+            case switch_Box:
+                if (*(float *)s->data > 0.5f)
+                    ips200_printf(150, y, "ON ");
+                else
+                    ips200_printf(150, y, "OFF");
+                break;
+
             default:
                 break;
         }
@@ -397,15 +406,22 @@ static void key_enter(void)
 // 选中/取消选中
 static void key_select(void)
 {
-    if (key->kind != MENU_Folder && key->kind != bool_Box)
+    if (key->kind != MENU_Folder && key->kind != bool_Box && key->kind != switch_Box)
         key->select = !key->select;
 }
 
-// 切换 bool 值
+// 切换 bool 值 / 开关值
 static void key_toggle(void)
 {
     if (key->kind == bool_Box)
+    {
         *(bool *)key->data = !*(bool *)key->data;
+    }
+    else if (key->kind == switch_Box)       /* 浮点开关：直接写 0.0f / 1.0f，不受全局步长影响 */
+    {
+        float *p = (float *)key->data;
+        *p = (*p > 0.5f) ? 0.0f : 1.0f;
+    }
 }
 
 // 步进值循环切换(加)
@@ -599,7 +615,7 @@ void key_enter_btn(void)
 {
     if (key->kind == MENU_Folder)
         key_enter();
-    else if (key->kind == bool_Box)
+    else if (key->kind == bool_Box || key->kind == switch_Box)
         key_toggle();
     else
         key_select();
@@ -650,7 +666,7 @@ void key_right_btn(void)
 {
     if (key->kind == MENU_Folder)
         key_enter();
-    else if (key->kind == bool_Box)
+    else if (key->kind == bool_Box || key->kind == switch_Box)
         key_toggle();
     else
         key_select();

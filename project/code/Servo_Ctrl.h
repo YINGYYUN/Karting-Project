@@ -1,10 +1,10 @@
 /*******************************************************************************
-转向角测量与控制 - Servo_Crtl.h
+转向角测量与控制 - Servo_Ctrl.h
 数据来源：绝对值角度编码器（ENC_ABS_ANG，CH1 的 5ms 中断采集，与位置环同拍，见 cm7_0_isr.c）
 控制对象：Motor 3（MOTOR_SERVO）
 *******************************************************************************/
-#ifndef _servo_crtl_h_
-#define _servo_crtl_h_
+#ifndef _servo_ctrl_h_
+#define _servo_ctrl_h_
 
 #include "zf_common_typedef.h"
 
@@ -43,10 +43,10 @@
 
 //============================== 控制参数 ==============================
 #define SERVO_KP_DEFAULT        (400.0f)        // 位置环比例增益的"上电默认值"
-                                                // 实际生效值放在 Servo_Crtl_Kp，由参数页/Flash 提供
+                                                // 实际生效值放在 Servo_Ctrl_Kp，由参数页/Flash 提供
 #define SERVO_U0_DEFAULT        (1700.0f)       // 摩擦截距前馈的"上电默认值"
                                                 // 实测（整车落地、不前后运动）启动阈值约 1300 （注：摩擦似乎也和当前方向盘角度有关）
-                                                // 实际生效值放在 Servo_Crtl_U0，由参数页/Flash 提供
+                                                // 实际生效值放在 Servo_Ctrl_U0，由参数页/Flash 提供
 #define SERVO_U_MAX             (9000.0f)       // 输出限幅（与 Motor_Set 刻度一致：±10000 = ±100%）
 #define SERVO_ERR_DEADBAND_DEG  (0.15f)         // 误差死区：Kp 的门限，也是前馈滞环的**关门**门限
 #define SERVO_BRK_DEG           (0.25f)         // 前馈滞环的**开门**门限，必须 > SERVO_ERR_DEADBAND_DEG
@@ -70,7 +70,7 @@
 // 判定前提使用"指令侧"的 |Servo_Out|：反馈一旦失效，误差就不再收敛、输出会顶到限幅，
 // 很快超过 1800（实测启动阈值约 1300~1600）
 #define SERVO_ENC_LOST_OUT      (1800)          // |Servo_Out| 超过它才算"在出力"
-#define SERVO_ENC_LOST_MS       (200)           // 连续多少 ms 读到无效值就停机（锁存，Servo_Crtl_Reset() 才清）
+#define SERVO_ENC_LOST_MS       (200)           // 连续多少 ms 读到无效值就停机（锁存，Servo_Ctrl_Reset() 才清）
 #define SERVO_TICK_MS           (5)             // 节拍周期 ms，与 PIT_CH1 一致
 
 //============================== 输出极性 ==============================
@@ -90,17 +90,17 @@ extern volatile float Servo_Target_Applied_Deg; // 控制器真正使用的目�
                                                 // 个人认定该变量主要作为调试接口
 extern volatile float Servo_Err_Deg;            // 本拍误差 数值（度）
 extern volatile int16 Servo_Out;                // 本拍实际写入电机的输出
-extern volatile uint8 Servo_Crtl_Enable;        // 0 = 输出强制 0 并清状态
-extern volatile float Servo_Crtl_Kp;            // 位置环比例增益（上电默认 SERVO_KP_DEFAULT，参数页可改）
-extern volatile float Servo_Crtl_U0;            // 摩擦截距前馈（上电默认 SERVO_U0_DEFAULT，参数页可改）
-extern volatile float Servo_Crtl_Ki;            // 位置环积分增益（上电默认 SERVO_KI_DEFAULT，参数页/Flash 会覆盖）
-extern volatile float Servo_I_Sum;              // 积分累加值（deg·拍）。上限由 Servo_Crtl_Ki 与
+extern volatile uint8 Servo_Ctrl_Enable;        // 0 = 输出强制 0 并清状态
+extern volatile float Servo_Ctrl_Kp;            // 位置环比例增益（上电默认 SERVO_KP_DEFAULT，参数页可改）
+extern volatile float Servo_Ctrl_U0;            // 摩擦截距前馈（上电默认 SERVO_U0_DEFAULT，参数页可改）
+extern volatile float Servo_Ctrl_Ki;            // 位置环积分增益（上电默认 SERVO_KI_DEFAULT，参数页/Flash 会覆盖）
+extern volatile float Servo_I_Sum;              // 积分累加值（deg·拍）。上限由 Servo_Ctrl_Ki 与
                                                 // SERVO_I_MAX 反算，只供调试观察，外部不要写它
-extern volatile uint8 Servo_Enc_Fault;          // 1 = 反馈源失效已锁存（Servo_Crtl_Reset 才清）
+extern volatile uint8 Servo_Enc_Fault;          // 1 = 反馈源失效已锁存（Servo_Ctrl_Reset 才清）
 
 //============================== 接口 ==============================
-void Servo_Crtl_Init  (void);                   // 初始化（清状态、失能、输出归零）
-void Servo_Crtl_Reset (void);                   // 失能 + 清目标 / 误差 / 积分 / 输出 / 故障锁存（目标归 0）
-void Servo_Crtl_Tick  (void);                   // 5ms 调用：换算 + 位置环 + 输出
+void Servo_Ctrl_Init  (void);                   // 初始化（清状态、失能、输出归零）
+void Servo_Ctrl_Reset (void);                   // 失能 + 清目标 / 误差 / 积分 / 输出 / 故障锁存（目标归 0）
+void Servo_Ctrl_Tick  (void);                   // 5ms 调用：换算 + 位置环 + 输出
 
 #endif

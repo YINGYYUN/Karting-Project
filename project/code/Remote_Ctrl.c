@@ -1,6 +1,6 @@
 /*******************************************************************************
 遥控（目前对应 HotRc 手持枪式遥控器）
-换算规则、标定值与通道分配见 Remote_Crtl.h
+换算规则、标定值与通道分配见 Remote_Ctrl.h
 *******************************************************************************/
 
 
@@ -24,7 +24,7 @@ volatile uint8  RC_Online    = 0;
 volatile uint8  RC_Engage    = RC_ENGAGE_OFF;
 
 // ★★ 累计接收机帧数（导出给遥测通道 HOST_CH_RC_FRAMES）。
-//    只由 Remote_Crtl_Update() 消费 finsh_flag 时自增 —— 遥控页不再自己数一遍，
+//    只由 Remote_Ctrl_Update() 消费 finsh_flag 时自增 —— 遥控页不再自己数一遍，
 //    否则两个消费者抢同一个 finsh_flag：谁先清谁得，另一个永远数不到（症状是
 //    "遥控页显示的帧数不涨，但遥测通道在涨"，或者反过来）。
 volatile uint32 RC_Frames   = 0;
@@ -173,7 +173,7 @@ static int8 RC_Pick3 (uint16 v)
 /**********************************************************/
 
 // 遥控态：CH1 直通舵角（Servo_Target_Deg = RC_Steer_Deg），航向环不接管。
-// 航向环（Head_Crtl）只由路表回放（route_pb）启用。
+// 航向环（Head_Ctrl）只由路表回放（route_pb）启用。
 
 /**********************************************************/
 /*----------------------------------------[E] 舵角来源 [E]*/
@@ -181,7 +181,7 @@ static int8 RC_Pick3 (uint16 v)
 
 //--------------------------------------
 // 函数简介     油门 -> 后轮速度目标
-// 返回参数     float	rps（前进为正，与 Motor_Crtl 同口径）
+// 返回参数     float	rps（前进为正，与 Motor_Ctrl 同口径）
 // 备注信息     前进 / 后退各自限幅，两个上限都由宏给
 //--------------------------------------
 static float RC_ThrottleToTarget (void)
@@ -204,14 +204,14 @@ static float RC_ThrottleToTarget (void)
 //--------------------------------------
 // 函数简介     从接收机快照换算一次
 // 参数说明     void
-// 使用示例     Remote_Crtl_Update();
+// 使用示例     Remote_Ctrl_Update();
 // 备注信息     只读 uart_receiver（10ms 中断里解析好的快照），不碰驱动
 //              ★★ 本函数是 `uart_receiver.finsh_flag` **唯一**的消费者（2026-10-22 统一）：
 //                以前这个累加写在遥控页的 20ms 分支里，于是
 //                ① 遥测通道（Host 页）拿不到这个数，② 两个页面各数一遍会互相饿死。
 //                现在无论 Host 页还是遥控页，只要在调 Update 就在计，RC_Frames 始终是真值。
 //--------------------------------------
-void Remote_Crtl_Update (void)
+void Remote_Ctrl_Update (void)
 {
     int thr;
 
@@ -274,11 +274,11 @@ void Remote_Crtl_Update (void)
 //--------------------------------------
 // 函数简介     跑一次介入状态机并写目标
 // 参数说明     void
-// 使用示例     Remote_Crtl_Apply();
-// 备注信息     调用前必须先 Remote_Crtl_Update()；
-//              四种状态的处理见 Remote_Crtl.h 里 RC_ENGAGE_* 的说明
+// 使用示例     Remote_Ctrl_Apply();
+// 备注信息     调用前必须先 Remote_Ctrl_Update()；
+//              四种状态的处理见 Remote_Ctrl.h 里 RC_ENGAGE_* 的说明
 //--------------------------------------
-void Remote_Crtl_Apply (void)
+void Remote_Ctrl_Apply (void)
 {
     float tgt = RC_ThrottleToTarget();
 
@@ -295,7 +295,7 @@ void Remote_Crtl_Apply (void)
     }
 
     // 遥控态永远不接管航向环（本函数与 route_pb 分属不同页面，不会同拍跑）
-    Head_Crtl_Set_Enable(0);
+    Head_Ctrl_Set_Enable(0);
 
     if (RC_ENGAGE_ON != RC_Engage) { s_prev_on = 0; }
 
@@ -307,55 +307,55 @@ void Remote_Crtl_Apply (void)
                那个锁存原本只有上电或调试页能解：一次瞬时丢脉冲（起步打滑、插头抖、
                被顶住）就会让**某一路永久停机**，而那个轮子只是被拖着走、编码器照样报数
                ⇒ 现场看到的是"左侧永远比右侧快"，且与打角方向无关。
-               真有故障时 200 ms 内会重新锁上，保护不会丢（见 Motor_Crtl.h 的说明）。 */
+               真有故障时 200 ms 内会重新锁上，保护不会丢（见 Motor_Ctrl.h 的说明）。 */
             if (0 == s_prev_on)
             {
-                Motor_Crtl_Reset();
+                Motor_Ctrl_Reset();
                 s_prev_on = 1;
             }
 
-            Servo_Crtl_Enable    = 1;
-            Motor_Crtl_Enable    = 1;
+            Servo_Ctrl_Enable    = 1;
+            Motor_Ctrl_Enable    = 1;
 
             Servo_Target_Deg     = RC_Steer_Deg;
 
             // 电子差速：用实测方向盘角分配（目标角有滞后，会让后轮提前分速）
             Motor_Diff_Alloc(tgt, Servo_Angle_Deg, ROUTE_PB_L,
-                             &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
+                             &Motor_LR_Ctrl.target, &Motor_RR_Ctrl.target);
             break;
         }
 
         case RC_ENGAGE_STANDBY:         // 待命：双闭环使能，但目标 0（遥控还没接管）
-            Servo_Crtl_Enable    = 1;
-            Motor_Crtl_Enable    = 1;
+            Servo_Ctrl_Enable    = 1;
+            Motor_Ctrl_Enable    = 1;
             Servo_Target_Deg     = 0.0f;
-            Motor_LR_Crtl.target = 0.0f;
-            Motor_RR_Crtl.target = 0.0f;
+            Motor_LR_Ctrl.target = 0.0f;
+            Motor_RR_Ctrl.target = 0.0f;
             break;
 
         case RC_ENGAGE_ESTOP:           // 急停：后轮保持使能、目标 0（主动刹停）
-            Servo_Crtl_Enable    = 1;   // 舵机仍使能，保住转向
-            Motor_Crtl_Enable    = 1;
-            Motor_LR_Crtl.target = 0.0f;
-            Motor_RR_Crtl.target = 0.0f;
+            Servo_Ctrl_Enable    = 1;   // 舵机仍使能，保住转向
+            Motor_Ctrl_Enable    = 1;
+            Motor_LR_Ctrl.target = 0.0f;
+            Motor_RR_Ctrl.target = 0.0f;
             // 故意不写 Servo_Target_Deg：保持急停前的转向，
             // 避免车在减速过程中突然自己回正（那会更危险）
             break;
 
         case RC_ENGAGE_FAILSAFE:        // 失控挂起：舵机失能；后轮保持使能、目标 0
-            Servo_Crtl_Enable    = 0;
+            Servo_Ctrl_Enable    = 0;
             Servo_Target_Deg     = 0.0f;
-            Motor_Crtl_Enable    = 1;
-            Motor_LR_Crtl.target = 0.0f;
-            Motor_RR_Crtl.target = 0.0f;
+            Motor_Ctrl_Enable    = 1;
+            Motor_LR_Ctrl.target = 0.0f;
+            Motor_RR_Ctrl.target = 0.0f;
             break;
 
         default:                        // OFF：全部失能、目标 0
-            Servo_Crtl_Enable    = 0;
+            Servo_Ctrl_Enable    = 0;
             Servo_Target_Deg     = 0.0f;
-            Motor_Crtl_Enable    = 0;
-            Motor_LR_Crtl.target = 0.0f;
-            Motor_RR_Crtl.target = 0.0f;
+            Motor_Ctrl_Enable    = 0;
+            Motor_LR_Ctrl.target = 0.0f;
+            Motor_RR_Ctrl.target = 0.0f;
             break;
     }
 }
@@ -366,17 +366,17 @@ void Remote_Crtl_Apply (void)
 // 使用示例     离开遥控页面时调用
 // 备注信息     不依赖下一拍：直接把输出侧的使能与目标收干净
 //--------------------------------------
-void Remote_Crtl_Release (void)
+void Remote_Ctrl_Release (void)
 {
     RC_Engage = RC_ENGAGE_OFF;
 
-    Head_Crtl_Set_Enable(0);
+    Head_Ctrl_Set_Enable(0);
 
-    Servo_Crtl_Enable    = 0;
+    Servo_Ctrl_Enable    = 0;
     Servo_Target_Deg     = 0.0f;
-    Motor_Crtl_Enable    = 0;
-    Motor_LR_Crtl.target = 0.0f;
-    Motor_RR_Crtl.target = 0.0f;
+    Motor_Ctrl_Enable    = 0;
+    Motor_LR_Ctrl.target = 0.0f;
+    Motor_RR_Ctrl.target = 0.0f;
 }
 
 /**********************************************************/
@@ -390,7 +390,7 @@ void Remote_Crtl_Release (void)
 
 //-------------------------------------------------------------------------------------------------------------------
 // [一级界面]遥控页面
-// 数据源：Remote_Crtl_Update() 换算出来的指令量（原始值来自 10ms 中断的 uart_receiver 快照）
+// 数据源：Remote_Ctrl_Update() 换算出来的指令量（原始值来自 10ms 中断的 uart_receiver 快照）
 // WiFi 上行：CH1,CH2,DEG10,THR,K3,S4,K5,K6,ST,EN,TGT,FRAMES （20ms 一行）
 //   DEG10 = 方向盘指令角，单位 0.1°；THR = 油门千分比（-1000~+1000）
 //   ST = 接收机状态；TGT = 后轮目标(0.01 rps)
@@ -398,7 +398,7 @@ void Remote_Crtl_Release (void)
 //   FRAMES = 累计收帧数（一直不涨 -> 接收机没在发 / 帧格式对不上）
 //-------------------------------------------------------------------------------------------------------------------
 
-static void Remote_Crtl_UI (void)
+static void Remote_Ctrl_UI (void)
 {
     ips200_show_string(8  ,0  , "[REMOTE]");
     ips200_show_string(0  ,16 , "==============================");
@@ -414,7 +414,7 @@ static void Remote_Crtl_UI (void)
 }
 
 // 屏幕输出：带符号的整数（分符号输出，避免依赖 %+d 的格式支持）
-static void Remote_Crtl_ShowInt (uint16 x, uint16 y, int32_t v)
+static void Remote_Ctrl_ShowInt (uint16 x, uint16 y, int32_t v)
 {
     if (v < 0)
     {
@@ -427,7 +427,7 @@ static void Remote_Crtl_ShowInt (uint16 x, uint16 y, int32_t v)
 }
 
 // 屏幕输出：带符号的角度，单位 0.1°
-static void Remote_Crtl_ShowDeg (uint16 x, uint16 y, int32_t deg10)
+static void Remote_Ctrl_ShowDeg (uint16 x, uint16 y, int32_t deg10)
 {
     int32_t v = (deg10 >= 0) ? deg10 : -deg10;
 
@@ -441,12 +441,12 @@ static void Remote_Crtl_ShowDeg (uint16 x, uint16 y, int32_t deg10)
     }
 }
 
-int Remote_Crtl_Page (void)
+int Remote_Ctrl_Page (void)
 {
-    Remote_Crtl_UI();
+    Remote_Ctrl_UI();
 
     // 重置舵机状态，包括强制失能舵机闭环一次
-    Servo_Crtl_Reset();
+    Servo_Ctrl_Reset();
 
     // 进页面即让双闭环"待命"：两路使能、目标 0。
     // 车不会动，但方向盘会被驱动回 0°；按下确认键后遥控才接管目标
@@ -456,7 +456,7 @@ int Remote_Crtl_Page (void)
     Time_Count1 = 0;
     Time_Count2 = 0;
 
-    // ★ 累计帧数改用全局 RC_Frames（见 Remote_Crtl.h）：累加动作已挪进 Remote_Crtl_Update()，
+    // ★ 累计帧数改用全局 RC_Frames（见 Remote_Ctrl.h）：累加动作已挪进 Remote_Ctrl_Update()，
     //   本页不再自己数 —— 否则两处抢同一个 finsh_flag，必然有一处永远不涨。
 
     while(1)
@@ -464,17 +464,17 @@ int Remote_Crtl_Page (void)
         if (KEY_SHORT_PRESS == key_get_state(KEY_BACK))
         {
             key_clear_state(KEY_BACK);
-            Remote_Crtl_Release();      // 退出即解除：双闭环失能、目标清零
+            Remote_Ctrl_Release();      // 退出即解除：双闭环失能、目标清零
             // 返回主菜单
             return 0;
         }
 
         // 心跳：本页面在监督后轮闭环，必须每圈喂一次。
-        // 漏喂 -> Motor_Crtl 的心跳门会一直判定"监督循环已死"，电机输出恒为 0。
-        Motor_Crtl_HB_Feed();
+        // 漏喂 -> Motor_Ctrl 的心跳门会一直判定"监督循环已死"，电机输出恒为 0。
+        Motor_Ctrl_HB_Feed();
 
         // 先算遥控指令量（纯算术，开销可忽略）
-        Remote_Crtl_Update();
+        Remote_Ctrl_Update();
 
         // 确认键：只有接收机状态正常（ST = 1）才允许让遥控接管 / 收回
         // （遥控收回后回到 STANDBY：闭环仍然使能，只是目标回到 0）
@@ -489,14 +489,14 @@ int Remote_Crtl_Page (void)
         }
 
         // 跑介入状态机并写目标
-        Remote_Crtl_Apply();
+        Remote_Ctrl_Apply();
 
         /* WiFi 发送（约 20ms 周期） */
         if (Time_Count2 >= 2)   // 10ms * 2
         {
             Time_Count2 = 0;
 
-            // FRAMES 的累加已在 Remote_Crtl_Update() 里统一做掉（消费 finsh_flag），
+            // FRAMES 的累加已在 Remote_Ctrl_Update() 里统一做掉（消费 finsh_flag），
             // 本页只负责显示 —— 不要再在这里数一遍。
 
             // 打印所有遥控器数据的演示
@@ -508,7 +508,7 @@ int Remote_Crtl_Page (void)
             //             (int)(RC_Steer_Deg * 10.0f), (int)(RC_Throttle * 1000.0f),
             //             (int)RC_Sw3, (int)RC_Sw4, (int)RC_Sw5, (int)RC_Sw6,
             //             (int)RC_Online, (int)RC_Engage,
-            //             (int)(Motor_LR_Crtl.target * 100.0f), (int)RC_Frames);
+            //             (int)(Motor_LR_Ctrl.target * 100.0f), (int)RC_Frames);
             //     wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             // }
 
@@ -530,7 +530,7 @@ int Remote_Crtl_Page (void)
                         (int)Servo_Out,                         // PWM 输出 duty
                         (int)(ins_imu_get_yaw() * 100.0f),       // 实测航向 0.01°
                         (int)(Servo_Err_Deg * 100.0f),          // 舵机误差 0.01°
-                        (int)Head_Crtl_Enabled());              // 航向环接管（回放时 1）
+                        (int)Head_Ctrl_Enabled());              // 航向环接管（回放时 1）
                 wifi_spi_send_buffer((uint8_t *)buf, (uint32)strlen(buf));
             }
         }
@@ -542,22 +542,22 @@ int Remote_Crtl_Page (void)
 
             ips200_printf(42 ,32 , "%d    ", (int)RC_Raw_Ch1);
             ips200_printf(154,32 , "%d    ", (int)RC_Raw_Ch2);
-            Remote_Crtl_ShowDeg(42 ,48 , (int32_t)(RC_Steer_Deg * 10.0f));
-            Remote_Crtl_ShowInt(138,48 , (int32_t)(RC_Throttle * 1000.0f));
+            Remote_Ctrl_ShowDeg(42 ,48 , (int32_t)(RC_Steer_Deg * 10.0f));
+            Remote_Ctrl_ShowInt(138,48 , (int32_t)(RC_Throttle * 1000.0f));
             ips200_printf(34 ,64 , "%d ", (int)RC_Sw3);
             ips200_printf(74 ,64 , "%d ", (int)RC_Sw5);
             ips200_printf(114,64 , "%d ", (int)RC_Sw6);
-            Remote_Crtl_ShowInt(162,64 , (int32_t)RC_Sw4);
+            Remote_Ctrl_ShowInt(162,64 , (int32_t)RC_Sw4);
             ips200_printf(34 ,80 , "%d ", (int)RC_Online);
             ips200_printf(90 ,80 , "%d    ", (int)RC_Frames);
             ips200_printf(34 ,96 , "%d ", (int)RC_Engage);
-            Remote_Crtl_ShowInt(90 ,96 , (int32_t)(Motor_LR_Crtl.target * 100.0f));   // 0.01 rps
-            Remote_Crtl_ShowDeg(42 ,112, (int32_t)(ins_imu_get_yaw() * 10.0f));       // 0.1 deg
-            Remote_Crtl_ShowInt(130,112, (int32_t)Head_Crtl_Enabled());                // 1 = 航向环接管（回放）
-            Remote_Crtl_ShowDeg(42 ,128, (int32_t)(Servo_Angle_Deg * 10.0f));          // 实测舵角 0.1°
-            Remote_Crtl_ShowDeg(130,128, (int32_t)(Servo_Err_Deg * 10.0f));            // 舵机误差 0.1°
-            ips200_printf(82 ,144, "%d ", (int)Motor_LR_Crtl.enc_fault);               // 左后轮编码器停机
-            ips200_printf(122,144, "%d ", (int)Motor_RR_Crtl.enc_fault);               // 右后轮编码器停机
+            Remote_Ctrl_ShowInt(90 ,96 , (int32_t)(Motor_LR_Ctrl.target * 100.0f));   // 0.01 rps
+            Remote_Ctrl_ShowDeg(42 ,112, (int32_t)(ins_imu_get_yaw() * 10.0f));       // 0.1 deg
+            Remote_Ctrl_ShowInt(130,112, (int32_t)Head_Ctrl_Enabled());                // 1 = 航向环接管（回放）
+            Remote_Ctrl_ShowDeg(42 ,128, (int32_t)(Servo_Angle_Deg * 10.0f));          // 实测舵角 0.1°
+            Remote_Ctrl_ShowDeg(130,128, (int32_t)(Servo_Err_Deg * 10.0f));            // 舵机误差 0.1°
+            ips200_printf(82 ,144, "%d ", (int)Motor_LR_Ctrl.enc_fault);               // 左后轮编码器停机
+            ips200_printf(122,144, "%d ", (int)Motor_RR_Ctrl.enc_fault);               // 右后轮编码器停机
         }
     }
 }

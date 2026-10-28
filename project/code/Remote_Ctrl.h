@@ -7,8 +7,8 @@
 *******************************************************************************/
 
 
-#ifndef __REMOTE_CRTL_H__
-#define __REMOTE_CRTL_H__
+#ifndef __REMOTE_CTRL_H__
+#define __REMOTE_CTRL_H__
 
 
 #include "zf_common_headfile.h"
@@ -92,7 +92,7 @@
 // 8 计数 = 8/800 × 28° = 0.28°，刚好盖住 0.2°
 #define RC_STEER_DEADBAND       (8)
 
-// 后轮速度目标的上限（单位：rps，与 Motor_Crtl 同口径）
+// 后轮速度目标的上限（单位：rps，与 Motor_Ctrl 同口径）
 // 油门 ±1.0 线性映射到这两个值：前进为正、后退为负（= 队友 rc_thr_max 3.2，前后对称）
 #define RC_THR_TARGET_FWD       ( 3.2f)
 #define RC_THR_TARGET_REV       (-3.2f)
@@ -126,7 +126,7 @@
 /*[S] 对外数据 [S]----------------------------------------*/
 /**********************************************************/
 
-// 以下都由 Remote_Crtl_Update() 刷新
+// 以下都由 Remote_Ctrl_Update() 刷新
 extern volatile uint16 RC_Raw_Ch1;                  // CH1 原始值（标定/显示用）
 extern volatile uint16 RC_Raw_Ch2;                  // CH2 原始值
 extern volatile float  RC_Steer_Deg;                // 方向盘指令角（度，向右为正）
@@ -140,8 +140,8 @@ extern volatile uint8  RC_Engage;                   // 闭环介入状态，取 
 
 // ★★ 累计收到的完整接收机帧数（**全局**，2026-10-22 从遥控页的局部变量提上来）。
 //    为什么必须是全局：遥测通道 HOST_CH_RC_FRAMES（下标 24）要发它，而遥控页不一定在跑。
-//    谁在消费 `uart_receiver.finsh_flag`：**只有 Remote_Crtl_Update()** —— 它每圈被
-//    Host_Crtl_Page / Remote_Crtl_Page 调用，所以只要这两个页面之一开着就在计。
+//    谁在消费 `uart_receiver.finsh_flag`：**只有 Remote_Ctrl_Update()** —— 它每圈被
+//    Host_Ctrl_Page / Remote_Ctrl_Page 调用，所以只要这两个页面之一开着就在计。
 //    ⚠ 不要在别的页面/模块里再去清 finsh_flag 或自增本变量，否则会漏计或算两遍。
 //    判读：一直不涨 = 接收机没在发 / 帧格式对不上（与 ST 位同源看）。
 extern volatile uint32 RC_Frames;
@@ -156,13 +156,13 @@ extern volatile uint32 RC_Frames;
 /**********************************************************/
 
 // 从接收机快照换算一次（本模块不主动调用驱动，只读 uart_receiver 快照）
-void    Remote_Crtl_Update  (void);
+void    Remote_Ctrl_Update  (void);
 // 跑一次介入状态机并写目标（遥控页面每圈调用；调用前先 Update 一次）
-void    Remote_Crtl_Apply   (void);
+void    Remote_Ctrl_Apply   (void);
 // 解除介入：双闭环失能、目标清零（离开遥控页面时调用）
-void    Remote_Crtl_Release (void);
+void    Remote_Ctrl_Release (void);
 // 主菜单里的遥控页面
-int     Remote_Crtl_Page    (void);
+int     Remote_Ctrl_Page    (void);
 
 /**********************************************************/
 /*----------------------------------------[E] 接口 [E]----*/

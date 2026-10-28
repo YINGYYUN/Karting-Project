@@ -55,8 +55,8 @@ extern float param_cache[PARAM_COUNT];
 
 // ★ 遥测档案选择 (15)：0 = 全量 41 路 / 1 = 标定精简 18 路（2026-10-22 新增）
 //   同样是"只准往后加"：它必须排在最后，否则 Flash 里已有的 15 项会整体错位。
-//   语义与消费者见 Host_Crtl.h 的 HOST_TEL_SEL_*；本参数**不经过** Flash_SyncTo_Param
-//   （没有对应的控制器副本），由 Host_Crtl.c 每帧直接读 param_cache[TEL_SEL_IDX]。
+//   语义与消费者见 Host_Ctrl.h 的 HOST_TEL_SEL_*；本参数**不经过** Flash_SyncTo_Param
+//   （没有对应的控制器副本），由 Host_Ctrl.c 每帧直接读 param_cache[TEL_SEL_IDX]。
 #define TEL_SEL_IDX                 15
 
 // ★ 录制终点补点 (16)：1 = 停止录制时把"当前这一拍"强制补进路表，0 = 关

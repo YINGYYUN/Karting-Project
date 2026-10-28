@@ -180,7 +180,7 @@ public sealed class MainForm : Form
             AutoSize = true,
             Location = new Point(Dpi.Px(366), Dpi.Px(14)),
             ForeColor = Theme.Text,
-            Checked = false,     // ★ 默认关：车端当前不依赖心跳（见 Host_Crtl.h 的 monitor 决定）
+            Checked = false,     // ★ 默认关：车端当前不依赖心跳（见 Host_Ctrl.h 的 monitor 决定）
         };
 
         _lbProfile = new Label
@@ -1024,7 +1024,7 @@ public sealed class MainForm : Form
                     _stProfile.Text = $"⚠ 未知档案 COUNT={bad}，已丢弃 {_droppedUnknown} 帧（本机只认 41 / 18）";
                     _stProfile.ForeColor = Theme.Err;
                     Log($"⚠⚠ 帧头 COUNT={bad}，既不是全量 41 也不是标定 18 —— 该帧已丢弃。"
-                      + "请确认车端 Host_Crtl.h 的通道表与工具 Channels.cs 对齐，或 tel_sel 是不是被拖到了中间值。");
+                      + "请确认车端 Host_Ctrl.h 的通道表与工具 Channels.cs 对齐，或 tel_sel 是不是被拖到了中间值。");
                 }));
             }
             return;

@@ -33,7 +33,7 @@ internal sealed class BenchForm : Form
     private long _framesSent;
 
     private const float SteerMax = 28.0f;     // = 车端 SERVO_SOFT_LIMIT_DEG
-    private const float WheelMax = 3.2f;      // = 车端 MOTOR_CRTL_TARGET_MAX
+    private const float WheelMax = 3.2f;      // = 车端 MOTOR_CTRL_TARGET_MAX
 
     public BenchForm(Func<Cmd, byte, float, bool> send)
     {

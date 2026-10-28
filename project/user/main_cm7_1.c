@@ -48,7 +48,7 @@ int main(void)
 
     while(true)
     {
-        // 无事可做。不要在别的核上再初始化 IMU：SPI_2 现在归 CM7_0 独占。
+        // 无事可做。
     }
 }
 

@@ -36,21 +36,20 @@ static void param_page_init(void)
     DynamicCreate_Menu_LimitNumber(folder_sv, "ki", &SERVO_KI, float_01_Box, 0, 1000);
 
     // 路表
-    // ★ 2026-10-24：`sm / L / ept / ve / alat / vmin / kh` 七项**从板载菜单移出**。
-    //   它们仍然是参数（param_cache 里位置不变、Flash 照旧存、上位机滑条照旧能改），
-    //   只是不在车上的参数页里显示了 —— 板上只留"跑之前一定会动"的这几项。
-    //   ⚠ 不要为了"少几项"去改它们的 IDX：那样会错位整个参数表（存档与上位机都跟着废）。
+    // 2026-10-24：`sm / L / ept / ve / alat / vmin / kh` 七项**从板载菜单移出**。
     Menu_Item *folder_rt = DynamicCreate_Menu_Folder(&head, "Route");
     DynamicCreate_Menu_LimitNumber(folder_rt, "ds", &ROUTE_DS, float_03_Box,
                                    INS_ROUTE_DS_MIN, INS_ROUTE_DS_MAX);
     DynamicCreate_Menu_LimitNumber(folder_rt, "v",  &ROUTE_PB_V,  float_02_Box, PB_V_MIN,  PB_V_MAX);
     DynamicCreate_Menu_LimitNumber(folder_rt, "ld", &ROUTE_PB_LD, float_02_Box, PB_LD_MIN, PB_LD_MAX);
     // 倒车录 / 倒序回放（两项必须与"表的出身"一致，否则回放拒绝起跑并在屏幕显示原因）
-    DynamicCreate_Menu_LimitNumber(folder_rt, "rrec", &ROUTE_REV_REC,  float_01_Box, 0, 1);            // 录制时 v 存 |v|
-    DynamicCreate_Menu_LimitNumber(folder_rt, "rply", &ROUTE_REV_PLAY, float_01_Box, 0, 1);            // 起跑时倒点序
+    // ★ 用 switch_Box：光标停在上面按确认 = ON/OFF 直接切换，**不受全局步长影响**
+    //   （底层仍是 float 的 0.0f/1.0f，参数表/Flash/上位机全不用动）
+    DynamicCreate_Menu_LimitNumber(folder_rt, "rrec", &ROUTE_REV_REC,  switch_Box, 0, 1);              // 录制时 v 存 |v|
+    DynamicCreate_Menu_LimitNumber(folder_rt, "rply", &ROUTE_REV_PLAY, switch_Box, 0, 1);              // 起跑时倒点序
 
     // 遥测（顶层文件夹）：档案选择 0 = 全量 41 路 / 1 = 标定精简 18 路
-    // ★ 切换后**无需重启**：Host_Crtl.c 每帧按 tel_sel 现算通道数与表，
+    // ★ 切换后**无需重启**：Host_Ctrl.c 每帧按 tel_sel 现算通道数与表，
     //   帧头 COUNT 随之变化，上位机按 COUNT 自动切档案。
     Menu_Item *folder_tel = DynamicCreate_Menu_Folder(&head, "Tele");
     DynamicCreate_Menu_LimitNumber(folder_tel, "sel", &TEL_SEL, float_01_Box, 0, 1);

@@ -61,7 +61,7 @@ def crc16_modbus(buf):
     return c & 0xFFFF
 
 
-# 上行帧类型（Host_Crtl.c / Protocol.cs 同一套）
+# 上行帧类型（Host_Ctrl.c / Protocol.cs 同一套）
 TYPE_NAME = {1: "telemetry", 2: "param-meta", 3: "param-value",
              4: "ack", 5: "nak", 6: "event"}
 

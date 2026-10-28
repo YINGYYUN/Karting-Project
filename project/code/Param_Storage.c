@@ -6,7 +6,7 @@
 #include "Param_Storage.h"
 
 
-// 注意：Motor_LR_Crtl / Motor_RR_Crtl 已在 Motor_Crtl.h 中声明
+// 注意：Motor_LR_Ctrl / Motor_RR_Ctrl 已在 Motor_Ctrl.h 中声明
 
 // 默认参数值
 static const float DEFAULT_PARAMS[PARAM_COUNT] = {
@@ -261,19 +261,19 @@ void Param_Erase(void)
 // 将缓存区值同步到实际应用参数
 void Flash_SyncTo_Param(void)
 {
-    Motor_LR_Crtl.inv_K = MOTOR_LR_INV_K;
-    Motor_LR_Crtl.u0    = MOTOR_LR_U0;
-    Motor_LR_Crtl.k_v   = MOTOR_LR_KV;
-    Motor_LR_Crtl.k_z   = MOTOR_LR_KZ;
+    Motor_LR_Ctrl.inv_K = MOTOR_LR_INV_K;
+    Motor_LR_Ctrl.u0    = MOTOR_LR_U0;
+    Motor_LR_Ctrl.k_v   = MOTOR_LR_KV;
+    Motor_LR_Ctrl.k_z   = MOTOR_LR_KZ;
 
-    Motor_RR_Crtl.inv_K = MOTOR_RR_INV_K;
-    Motor_RR_Crtl.u0    = MOTOR_RR_U0;
-    Motor_RR_Crtl.k_v   = MOTOR_RR_KV;
-    Motor_RR_Crtl.k_z   = MOTOR_RR_KZ;
+    Motor_RR_Ctrl.inv_K = MOTOR_RR_INV_K;
+    Motor_RR_Ctrl.u0    = MOTOR_RR_U0;
+    Motor_RR_Ctrl.k_v   = MOTOR_RR_KV;
+    Motor_RR_Ctrl.k_z   = MOTOR_RR_KZ;
 
-    Servo_Crtl_Kp = SERVO_KP;
-    Servo_Crtl_U0 = SERVO_U0;
-    Servo_Crtl_Ki = SERVO_KI;
+    Servo_Ctrl_Kp = SERVO_KP;
+    Servo_Ctrl_U0 = SERVO_U0;
+    Servo_Ctrl_Ki = SERVO_KI;
 
     ins_route_ds = ROUTE_DS;
 }

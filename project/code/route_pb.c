@@ -159,10 +159,10 @@ static uint8 pb_tail_stop_wait (float v_now)
         s_tail_ms   = Sys_Tick_Ms;
     }
 
-    Motor_Crtl_Enable    = 1;
-    Motor_LR_Crtl.target = 0.0f;
-    Motor_RR_Crtl.target = 0.0f;
-    Head_Crtl_Set_Enable(0);
+    Motor_Ctrl_Enable    = 1;
+    Motor_LR_Ctrl.target = 0.0f;
+    Motor_RR_Ctrl.target = 0.0f;
+    Head_Ctrl_Set_Enable(0);
 
     if (fabsf(v_now) <= PB_TAIL_V)                      { return 0u; }
     if ((uint32)(Sys_Tick_Ms - s_tail_ms) >= PB_TAIL_MS) { return 0u; }
@@ -311,11 +311,11 @@ static void pb_finish (uint8 st, const char *why)
     pb_set_why(why);
 
     Servo_Target_Deg     = 0.0f;
-    Head_Crtl_Set_Kp(HEAD_KP_DEFAULT);      // 收回动态增益，别把回放的 k 留给遥控
-    Head_Crtl_Set_Enable(0);
-    Motor_Crtl_Enable    = 0;       // 自由轮
-    Motor_LR_Crtl.target = 0.0f;
-    Motor_RR_Crtl.target = 0.0f;
+    Head_Ctrl_Set_Kp(HEAD_KP_DEFAULT);      // 收回动态增益，别把回放的 k 留给遥控
+    Head_Ctrl_Set_Enable(0);
+    Motor_Ctrl_Enable    = 0;       // 自由轮
+    Motor_LR_Ctrl.target = 0.0f;
+    Motor_RR_Ctrl.target = 0.0f;
 }
 
 /**********************************************************/
@@ -415,10 +415,10 @@ uint8 route_pb_start (void)
     s_why[0] = '\0';
 
     // 直接给 δ 的通道先把航向环关掉；走航向通道时由 poll 每拍打开
-    if (ROUTE_PB_SMODE >= 0.5f) { Head_Crtl_Set_Enable(0); }
+    if (ROUTE_PB_SMODE >= 0.5f) { Head_Ctrl_Set_Enable(0); }
 
     // 回放要打角：手推录制时舵机是失能的，这里自己打开
-    Servo_Crtl_Enable = 1;
+    Servo_Ctrl_Enable = 1;
 
     s_st = PB_ST_RUN;
     return 1u;
@@ -591,18 +591,18 @@ void route_pb_poll (void)
 
         if ((v < 0.005f) && (v > -0.005f))      // |v| 太小：自由轮
         {
-            Motor_Crtl_Enable    = 0;
-            Motor_LR_Crtl.target = 0.0f;
-            Motor_RR_Crtl.target = 0.0f;
+            Motor_Ctrl_Enable    = 0;
+            Motor_LR_Ctrl.target = 0.0f;
+            Motor_RR_Ctrl.target = 0.0f;
         }
         else
         {
             float mpr  = (ins_m_per_rev > 1.0e-4f) ? ins_m_per_rev : 0.8193f;
             float vrps = v / mpr;
 
-            Motor_Crtl_Enable = 1;
+            Motor_Ctrl_Enable = 1;
             Motor_Diff_Alloc(vrps, Servo_Angle_Deg, ROUTE_PB_L,
-                             &Motor_LR_Crtl.target, &Motor_RR_Crtl.target);
+                             &Motor_LR_Ctrl.target, &Motor_RR_Ctrl.target);
         }
     }
 
@@ -625,7 +625,7 @@ void route_pb_poll (void)
         s_ld  = 0.0f;                   // 倒车段没有前视距离这个概念
         s_aim = best;
 
-        Head_Crtl_Set_Enable(0);
+        Head_Ctrl_Set_Enable(0);
         Servo_Target_Deg = d;
         return;
     }
@@ -670,7 +670,7 @@ void route_pb_poll (void)
                 if (d < -PB_DELTA_MAX) { d = -PB_DELTA_MAX; }
 
                 s_aim = best;
-                Head_Crtl_Set_Enable(0);
+                Head_Ctrl_Set_Enable(0);
                 Servo_Target_Deg = d;
                 return;
             }
@@ -691,16 +691,16 @@ void route_pb_poll (void)
         if (ROUTE_PB_SMODE < 0.5f)
         {
             // 航向通道：目标航向 + k = 2L/ld（与 Pure Pursuit 等价）
-            // 实际施加由 5 ms 中断里的 Head_Crtl_Tick() 完成，这里只给目标与增益。
+            // 实际施加由 5 ms 中断里的 Head_Ctrl_Tick() 完成，这里只给目标与增益。
             // pb_kh > 0 时用手填值覆盖（做 A/B 用），见 route_pb.h 的说明。
             float k = (ROUTE_PB_KH > 1.0e-3f) ? ROUTE_PB_KH : (2.0f * ROUTE_PB_L / s_ld);
 
             if (k < PB_K_MIN) { k = PB_K_MIN; }
             if (k > PB_K_MAX) { k = PB_K_MAX; }
 
-            Head_Crtl_Set_Kp(k);
-            Head_Crtl_Set_Target(pb_wrap180(o.yaw - alpha * PB_R2D));
-            Head_Crtl_Set_Enable(1);
+            Head_Ctrl_Set_Kp(k);
+            Head_Ctrl_Set_Target(pb_wrap180(o.yaw - alpha * PB_R2D));
+            Head_Ctrl_Set_Enable(1);
         }
         else
         {
@@ -711,7 +711,7 @@ void route_pb_poll (void)
             if (delta >  PB_DELTA_MAX) { delta =  PB_DELTA_MAX; }
             if (delta < -PB_DELTA_MAX) { delta = -PB_DELTA_MAX; }
 
-            Head_Crtl_Set_Enable(0);
+            Head_Ctrl_Set_Enable(0);
             Servo_Target_Deg = delta;
         }
     }

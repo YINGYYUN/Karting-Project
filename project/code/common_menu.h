@@ -22,7 +22,12 @@ typedef enum MENU_KIND {
     float_02_Box,       // 浮点：显示保留 2 位小数
     float_03_Box,       // 浮点：显示保留 3 位小数
     float_04_Box,       // 浮点：显示保留 4 位小数
-    bool_Box,
+    bool_Box,           // 真 bool：按 bool*（1 字节）读写，显示 Y/N
+    switch_Box,         // ★ 浮点式开关：按 float*（4 字节）读写 0.0f/1.0f，显示 ON /OFF
+                        //   为什么不让 0/1 参数直接用 bool_Box：那会把 float 的 4 字节
+                        //   当 1 字节 bool 读 —— `1.0f` 的首字节是 0x00 ⇒ 明明是 1 却显示 N，
+                        //   写入 true 只会改首字节 ⇒ 参数变成 1.4e-45。参数表里全是 float，
+                        //   所以必须走这个"float 底、开关脸"的类型。
 }MENU_KIND;
 
 typedef struct Menu_Item {

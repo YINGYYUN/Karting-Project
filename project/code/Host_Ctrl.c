@@ -1,7 +1,7 @@
 /*******************************************************************************
 上位机对接（PC 端 = 队友的 KartHost）— 链路层 + 页面 + WiFi 选择界面
 协议、帧格式、解析纪律与队友车端 motor_link.c 逐字节对齐；
-分层说明、调用纪律、链路来源见 Host_Crtl.h
+分层说明、调用纪律、链路来源见 Host_Ctrl.h
 *******************************************************************************/
 
 
@@ -11,7 +11,7 @@
 
 
 /**********************************************************/
-/*[S] 参数表元数据 [S]（由 Host_Crtl.h 的 X-Macro 展开）--*/
+/*[S] 参数表元数据 [S]（由 Host_Ctrl.h 的 X-Macro 展开）--*/
 /**********************************************************/
 
 typedef struct
@@ -83,7 +83,7 @@ static const Host_Param_t host_param_meta[] = { HOST_PARAM_TABLE(HOST_DEF_META) 
  * VALUE 里放 float（与 SET_PARAM 同一编码），ID 选目标量： */
 #define HOST_CMD_SET_TARGET     (0x09)      /* ★ 0x08 留给"WiFi 读路表"（上位机 Cmd.RouteDump 已占位） */
 #define HOST_TGT_STEER          (0)         // 舵机目标角 deg（向右为正；按 SERVO_SOFT_LIMIT_DEG 夹）
-#define HOST_TGT_WHEEL          (1)         // 两轮目标 rps（同速、不走差速；按 MOTOR_CRTL_TARGET_MAX 夹）
+#define HOST_TGT_WHEEL          (1)         // 两轮目标 rps（同速、不走差速；按 MOTOR_CTRL_TARGET_MAX 夹）
 
 // 下行帧固定长度：MAGIC(2) + TYPE(1) + LEN(2) + CMD(1) + ID(1) + VALUE(4) + TOKEN(2) + CRC(2) = 15
 #define HOST_DN_FRAME_LEN       (15)
@@ -101,7 +101,7 @@ static const Host_Param_t host_param_meta[] = { HOST_PARAM_TABLE(HOST_DEF_META) 
 /*[S] 对外数据 [S]----------------------------------------*/
 /**********************************************************/
 
-// 三个开关的实体（声明在 Host_Crtl.h）。**只由 Host_Crtl_Set_Mode / Set_Link / Lost_Clear 写**，
+// 三个开关的实体（声明在 Host_Ctrl.h）。**只由 Host_Ctrl_Set_Mode / Set_Link / Lost_Clear 写**，
 // 别在页面里直接赋值 —— 那会绕过"Link = ON 不许改 Mode""关 Link 要清驱动"这些约束。
 volatile uint8 Host_Mode = HOST_MODE_UP;
 volatile uint8 Host_Link = HOST_LINK_OFF;
@@ -132,7 +132,7 @@ static uint32   host_crc_err    = 0;        // CRC 校验失败次数
 static uint8    host_err        = HOST_ERR_NOT_INIT;
 
 // "这一圈谁在写驱动侧"（取值见下方"驾驶权仲裁"段的 HOST_AUTH_*）。
-// 只在本文件内用 —— 通道表已冻结，不往上位机送。放在这里是因为 Host_Crtl_Release 也要清它。
+// 只在本文件内用 —— 通道表已冻结，不往上位机送。放在这里是因为 Host_Ctrl_Release 也要清它。
 #define HOST_AUTH_NONE          (0)         // 没人开：UP + 遥控关 / CMD + Link 关 + CH6 = 0
 #define HOST_AUTH_HOST          (1)         // 上位机在开（CMD + Link = ON）
 #define HOST_AUTH_REMOTE        (2)         // 遥控在开（UP 直接给，CMD 要 CH6 = 1）
@@ -147,12 +147,12 @@ static char     host_target_ip[20]  = HOST_TARGET_IP;
 static char     host_target_port[] = HOST_TARGET_PORT;
 static char     host_local_port[]  = HOST_LOCAL_PORT;
 
-// WiFi 候选表（由 Host_Crtl.h 的 HOST_WIFI_LIST 展开；那边的"第二份"警告要先读）
+// WiFi 候选表（由 Host_Ctrl.h 的 HOST_WIFI_LIST 展开；那边的"第二份"警告要先读）
 typedef struct
 {
     char *ssid;
     char *pwd;
-    char *ip;           // ★ 这一条对应的上位机 IP（选热点 = 选网络 = 选上位机，见 Host_Crtl.h）
+    char *ip;           // ★ 这一条对应的上位机 IP（选热点 = 选网络 = 选上位机，见 Host_Ctrl.h）
 } Host_Wifi_t;
 
 #define HOST_WIFI_ENTRY(ssid, pwd, ip)  { ssid, pwd, ip },
@@ -179,7 +179,7 @@ static uint16   host_ch_count = HOST_CH_COUNT_MAX;
 
 // ★ 标定档 18 路 → 全量档 41 路的下标映射（下标严格照 teammate motor_link.h 的 CT_*）。
 //   0xFF = 我方无对应物，固定发 0（**非等价**，不要拿别的量去凑）。
-//   ⚠ 这张表和 Host_Crtl.h 的 HOST_CT_* 必须逐项对齐；顺序即协议。
+//   ⚠ 这张表和 Host_Ctrl.h 的 HOST_CT_* 必须逐项对齐；顺序即协议。
 static const uint8 host_calib_from_full[HOST_CT_COUNT] =
 {
     HOST_CH_TARGET_L,       // CT_TARGET_L     0
@@ -420,7 +420,7 @@ static void host_param_table_start (void)
     host_pt_pend  = 1;                  // 只"武装"序列，真正的发送交给 host_param_table_tick
 }
 
-// 由 Host_Crtl_Task() 每圈调用（自带 5ms 限频）
+// 由 Host_Ctrl_Task() 每圈调用（自带 5ms 限频）
 //
 // ★★ 2026-10-24 修：以前是"发完 META 紧接着发 VALUE"，而 WiFi-SPI 模块收完一帧就进忙态，
 //    第二个 host_send_frame() 必然返回 0 ⇒ 代码 `return` 不推进 id ⇒ 下一拍重发同一个 META
@@ -495,7 +495,7 @@ static void host_param_table_tick (void)
 // 参数说明     void
 // 返回参数     uint16 位图（0 = 一切正常）
 // 使用示例     内部调用（host_fill_channels）
-// 备注信息     ★★ **只做映射，不新增任何安全判据**。逐位含义见 Host_Crtl.h 的 HOST_SAFETY_*，
+// 备注信息     ★★ **只做映射，不新增任何安全判据**。逐位含义见 Host_Ctrl.h 的 HOST_SAFETY_*，
 //              那里写清了哪几位是"我方有依据的近似"、哪几位恒 0（我方无对应判据）。
 //              所以这个值和队友的 SAFETY **不等价**，上位机只当"0 = 正常"用。
 //              0x0002 / 0x0010 故意不置 —— 宁可不报，也不要拿不相干的量去凑一个假报警。
@@ -506,8 +506,8 @@ static uint16 host_safety_bits (void)
 
     if (0 == host_ever_rx)                              { b |= HOST_SAFETY_NEVER_RX; }
     if (0 != Host_Lost)                                 { b |= HOST_SAFETY_LOST; }
-    if (Motor_Crtl_HB_Age_Ms() > MOTOR_CRTL_HB_TIMEOUT_MS) { b |= HOST_SAFETY_HB_LOST; }
-    if ((0 != Motor_LR_Crtl.sat) || (0 != Motor_RR_Crtl.sat)) { b |= HOST_SAFETY_SAT; }
+    if (Motor_Ctrl_HB_Age_Ms() > MOTOR_CTRL_HB_TIMEOUT_MS) { b |= HOST_SAFETY_HB_LOST; }
+    if ((0 != Motor_LR_Ctrl.sat) || (0 != Motor_RR_Ctrl.sat)) { b |= HOST_SAFETY_SAT; }
     if (RC_ENGAGE_ON == RC_Engage)                      { b |= HOST_SAFETY_RC_ON; }
     if (RC_ENGAGE_ESTOP == RC_Engage)                   { b |= HOST_SAFETY_RC_ESTOP; }
 
@@ -519,7 +519,7 @@ static uint16 host_safety_bits (void)
 // 参数说明     void
 // 返回参数     uint16 低 8 位 = 状态位，bit8..11 = 当前槽号
 // 使用示例     内部调用（host_fill_channels）
-// 备注信息     定义见 Host_Crtl.h 的 HOST_RT_ST_*。bit7 恒 0。
+// 备注信息     定义见 Host_Ctrl.h 的 HOST_RT_ST_*。bit7 恒 0。
 //              队友把这个值当"位图 + 槽号"混合体用，上位机按整数显示即可。
 //--------------------------------------
 static uint16 host_route_status_bits (void)
@@ -546,7 +546,7 @@ static uint16 host_route_status_bits (void)
 // 使用示例     内部调用
 // 备注信息     直接从模块全局量取值，不需要 main 每圈来填 —— 少一处漏填的机会。
 //              ★ 下标/单位/位义与队友 motor_link.h **逐项对齐**，
-//                对照表写在 Host_Crtl.h 的"队友下标 → 我方来源"注释里（41 行）。
+//                对照表写在 Host_Ctrl.h 的"队友下标 → 我方来源"注释里（41 行）。
 //              ★ 单位口径：
 //                  · rps / deg / m 直接用物理量，不做缩放；
 //                  · **电机 out / u_ff 我方是归一化 ±1，队友是 %，所以这里必须 ×100** ——
@@ -556,21 +556,21 @@ static uint16 host_route_status_bits (void)
 static void host_fill_channels (void)
 {
     // ---- 后轮速度环（0~11）----
-    host_ch[HOST_CH_TARGET_L]   = Motor_LR_Crtl.target_app;     // 斜坡之后的实际目标，不是 target
-    host_ch[HOST_CH_V_L]        = Motor_LR_Crtl.actual;
-    host_ch[HOST_CH_U_L]        = Motor_LR_Crtl.out * 100.0f;   // ★ 归一化 → %
-    host_ch[HOST_CH_TARGET_R]   = Motor_RR_Crtl.target_app;
-    host_ch[HOST_CH_V_R]        = Motor_RR_Crtl.actual;
-    host_ch[HOST_CH_U_R]        = Motor_RR_Crtl.out * 100.0f;   // ★ 归一化 → %
-    host_ch[HOST_CH_UFF_L]      = Motor_LR_Crtl.u_ff * 100.0f;  // ★ 归一化 → %
-    host_ch[HOST_CH_UFF_R]      = Motor_RR_Crtl.u_ff * 100.0f;  // ★ 归一化 → %
-    host_ch[HOST_CH_Z_L]        = Motor_LR_Crtl.z;
-    host_ch[HOST_CH_Z_R]        = Motor_RR_Crtl.z;
+    host_ch[HOST_CH_TARGET_L]   = Motor_LR_Ctrl.target_app;     // 斜坡之后的实际目标，不是 target
+    host_ch[HOST_CH_V_L]        = Motor_LR_Ctrl.actual;
+    host_ch[HOST_CH_U_L]        = Motor_LR_Ctrl.out * 100.0f;   // ★ 归一化 → %
+    host_ch[HOST_CH_TARGET_R]   = Motor_RR_Ctrl.target_app;
+    host_ch[HOST_CH_V_R]        = Motor_RR_Ctrl.actual;
+    host_ch[HOST_CH_U_R]        = Motor_RR_Ctrl.out * 100.0f;   // ★ 归一化 → %
+    host_ch[HOST_CH_UFF_L]      = Motor_LR_Ctrl.u_ff * 100.0f;  // ★ 归一化 → %
+    host_ch[HOST_CH_UFF_R]      = Motor_RR_Ctrl.u_ff * 100.0f;  // ★ 归一化 → %
+    host_ch[HOST_CH_Z_L]        = Motor_LR_Ctrl.z;
+    host_ch[HOST_CH_Z_R]        = Motor_RR_Ctrl.z;
     host_ch[HOST_CH_POS_L]      = (float)ENC_LR_POS;
     host_ch[HOST_CH_POS_R]      = (float)ENC_RR_POS;
 
     // ---- 链路（12~15）----
-    host_ch[HOST_CH_ONLINE]     = (HOST_ST_ACTIVE == Host_Crtl_State()) ? 1.0f : 0.0f;
+    host_ch[HOST_CH_ONLINE]     = (HOST_ST_ACTIVE == Host_Ctrl_State()) ? 1.0f : 0.0f;
     host_ch[HOST_CH_RX_AGE_MS]  = (0 == host_ever_rx)
                                 ? -1.0f                                   // 从未收到过 = -1
                                 : (float)(uint32)(Sys_Tick_Ms - host_alive_ms);
@@ -583,7 +583,7 @@ static void host_fill_channels (void)
     host_ch[HOST_CH_STEER_TGT]  = Servo_Target_Applied_Deg;
     host_ch[HOST_CH_STEER_DEG]  = Servo_Angle_Deg;
     host_ch[HOST_CH_STEER_U]    = (float)Servo_Out;
-    host_ch[HOST_CH_STEER_EN]   = (float)Servo_Crtl_Enable;
+    host_ch[HOST_CH_STEER_EN]   = (float)Servo_Ctrl_Enable;
     // bit0 = 自检通过 / bit1 = 反馈失效 / bit2 = 顶死或反转（我方无顶死判据，恒 0 —— 非等价）
     host_ch[HOST_CH_STEER_ST]   = (0 != Servo_Enc_Fault)
                                 ? (float)0x0002
@@ -593,11 +593,11 @@ static void host_fill_channels (void)
     host_ch[HOST_CH_RC_ENG]     = (float)RC_Engage;
     host_ch[HOST_CH_RC_CH1]     = (float)RC_Raw_Ch1;
     host_ch[HOST_CH_RC_CH2]     = (float)RC_Raw_Ch2;
-    host_ch[HOST_CH_RC_FRAMES]  = (float)RC_Frames;                      // ★ 全局量，见 Remote_Crtl.h
+    host_ch[HOST_CH_RC_FRAMES]  = (float)RC_Frames;                      // ★ 全局量，见 Remote_Ctrl.h
 
     // ---- 增益回读（25~26）：两轮同源整定，取左轮 ----
-    host_ch[HOST_CH_K_V]        = Motor_LR_Crtl.k_v;
-    host_ch[HOST_CH_K_Z]        = Motor_LR_Crtl.k_z;
+    host_ch[HOST_CH_K_V]        = Motor_LR_Ctrl.k_v;
+    host_ch[HOST_CH_K_Z]        = Motor_LR_Ctrl.k_z;
 
     // ---- 惯导（27~32）----
     host_ch[HOST_CH_YAW]        = ins_imu_get_yaw();                     // 累积航向 deg（可超 ±360）
@@ -613,7 +613,7 @@ static void host_fill_channels (void)
     host_ch[HOST_CH_PB_ELAT]    = route_pb_elat();
 
     // ---- 航向测试（36~37）----
-    host_ch[HOST_CH_TAR_YAW]    = Head_Crtl_Get_Target();
+    host_ch[HOST_CH_TAR_YAW]    = Head_Ctrl_Get_Target();
     host_ch[HOST_CH_HT_SEG]     = 0.0f;      // ★ 非等价：我方无 head_test 模块（未迁移），固定 0
 
     // ---- 诊断三件套（38~40）----
@@ -776,7 +776,7 @@ static void host_dispatch (uint8 cmd, uint8 pid, uint32 raw, float val, uint16 t
             *(host_param_meta[pid].ptr) = v;
 
             // ★ 推到实际控制器。这是本工程既定的唯一同步点
-            //   （param_cache[] → Motor_LR/RR_Crtl 与 Servo_Crtl_Kp/U0）
+            //   （param_cache[] → Motor_LR/RR_Ctrl 与 Servo_Ctrl_Kp/U0）
             Flash_SyncTo_Param();
 
             host_send_param_value(pid, v);          // 回读，上位机据此确认
@@ -794,7 +794,7 @@ static void host_dispatch (uint8 cmd, uint8 pid, uint32 raw, float val, uint16 t
             //   后果是"使能怎么都传不下来"且完全不报错。
             //
             // ★★ 这里**只记录位图**，真正写驱动在 host_drive_tick() 里做。不要在这里补
-            //    `Servo_Crtl_Enable = ...` —— 页面级的仲裁（遥控优先 / UP 模式不动车 /
+            //    `Servo_Ctrl_Enable = ...` —— 页面级的仲裁（遥控优先 / UP 模式不动车 /
             //    心跳锁存刹停）全在那边，两处都写会让那三道门在"刚收到 SET_ENABLE"的那一圈失效，
             //    表现是 UP 模式或锁存态下电机仍被上位机使能。
             host_enable = (uint16)(val + 0.5f);
@@ -824,7 +824,7 @@ static void host_dispatch (uint8 cmd, uint8 pid, uint32 raw, float val, uint16 t
             }
             else if (HOST_TGT_WHEEL == pid)
             {
-                if (!((val >= -MOTOR_CRTL_TARGET_MAX) && (val <= MOTOR_CRTL_TARGET_MAX)))
+                if (!((val >= -MOTOR_CTRL_TARGET_MAX) && (val <= MOTOR_CTRL_TARGET_MAX)))
                 {
                     host_send_nak(cmd, token, 3);
                     break;
@@ -933,7 +933,7 @@ static void host_rx_feed (const uint8 *buf, uint16 len)
 // ★★ 这是**全工程唯一的 WiFi 选择连接界面**（2026-10-16 统一）：
 //   两个入口共用它 —— ① Host 页进门（未连时自动弹）② 调试页第 1 项 WIFI-SPI
 //   （`Debug.c` 里原来的第二份界面/候选表已删除，那个菜单项改为直接调本函数）。
-//   统一后**候选表与目标 IP/端口只剩 `Host_Crtl.h` 一份**
+//   统一后**候选表与目标 IP/端口只剩 `Host_Ctrl.h` 一份**
 //   （`HOST_WIFI_LIST` / `HOST_TARGET_*`），换热点或换上位机只改那个头文件。
 //   两边最终都置同一个 `wifi_spi_inited`，所以谁先连上，另一个都能直接复用（不再重复 init）。
 
@@ -968,7 +968,7 @@ static void host_wifi_ui (void)
 // 函数简介     用候选表第 idx 项发起 WiFi 初始化 + 建 UDP socket
 // 参数说明     idx 候选下标（0 起）
 // 返回参数     HOST_OK / HOST_ERR_WIFI / HOST_ERR_SOCKET
-// 使用示例     内部调用（Host_Crtl_WiFi_Select）
+// 使用示例     内部调用（Host_Ctrl_WiFi_Select）
 // 备注信息     ★ 会阻塞（WiFi 最长约 10s、Socket 更长）。**两步都成功才置 wifi_spi_inited**
 //--------------------------------------
 static uint8 host_wifi_open (uint8 idx)
@@ -1011,15 +1011,15 @@ static uint8 host_wifi_open (uint8 idx)
 // 函数简介     ★★ 全工程统一的 WiFi 选择连接界面（Host 页进门 / 调试页 WIFI-SPI 共用）
 // 参数说明     void
 // 返回参数     HOST_OK = 已连上；HOST_ERR_NOT_INIT = 用户按 BACK 取消，或选了 SKIP
-// 使用示例     Host_Crtl_Connect() 内部；Debug.c 的调试页第 1 项；Route 页的 HOST 项
+// 使用示例     Host_Ctrl_Connect() 内部；Debug.c 的调试页第 1 项；Route 页的 HOST 项
 // 备注信息     ★ 阻塞界面：WiFi 最长十几秒，只能在按键处调用。
 //              连上**直接返回**（本界面会把整屏清掉，调用者随后自己重画）；
 //              失败则留在本界面，换一个热点或再试；BACK 取消
 //              ★ 未连时弹本界面；已连时（只可能来自调试页）也允许进来看一眼并换网络
-//              ★ 最后一项 SKIP = 不连接；已连时选它会 `Host_Crtl_Set_Link(OFF)` 关掉上行，
+//              ★ 最后一项 SKIP = 不连接；已连时选它会 `Host_Ctrl_Set_Link(OFF)` 关掉上行，
 //                所以本界面兼作开/关入口（Route 页就靠这个关上行）
 //--------------------------------------
-uint8 Host_Crtl_WiFi_Select (void)
+uint8 Host_Ctrl_WiFi_Select (void)
 {
     uint8 sel         = 0;
     uint8 i;
@@ -1057,7 +1057,7 @@ uint8 Host_Crtl_WiFi_Select (void)
             // SKIP：不连接。已连过就顺手把上行关掉（本界面兼作开/关入口）
             if (sel >= HOST_WIFI_COUNT)
             {
-                Host_Crtl_Set_Link(HOST_LINK_OFF);
+                Host_Ctrl_Set_Link(HOST_LINK_OFF);
                 return HOST_ERR_NOT_INIT;
             }
 
@@ -1113,7 +1113,7 @@ uint8 Host_Crtl_WiFi_Select (void)
 //--------------------------------------
 // 函数简介     清链路运行状态（计数器、时间戳、接收缓冲）
 // 参数说明     void
-// 使用示例     内部调用 / Host_Crtl_Connect 开头
+// 使用示例     内部调用 / Host_Ctrl_Connect 开头
 // 备注信息     不碰 wifi_spi_inited（那是"WiFi 可用"的标志，归连接流程管）
 //--------------------------------------
 static void host_state_clear (void)
@@ -1140,9 +1140,9 @@ static void host_state_clear (void)
 // 参数说明     void
 // 使用示例     Peripheral_Init() 里调用一次
 // 备注信息     ★ 不阻塞、不连 WiFi（连 WiFi 最长十几秒，放这里会把上电流程卡住）。
-//              连接动作由页面上的确认键触发（Host_Crtl_Connect）
+//              连接动作由页面上的确认键触发（Host_Ctrl_Connect）
 //--------------------------------------
-void Host_Crtl_Init (void)
+void Host_Ctrl_Init (void)
 {
     host_state_clear();
     host_enable = 0;
@@ -1167,7 +1167,7 @@ void Host_Crtl_Init (void)
 //              ★ 已连（wifi_spi_inited != 0，例如在调试页连过）时**不再重复 init** ——
 //                重复 init 会打断已建的 socket，且白等十几秒
 //--------------------------------------
-uint8 Host_Crtl_Connect (void)
+uint8 Host_Ctrl_Connect (void)
 {
     uint8 ret;
 
@@ -1176,7 +1176,7 @@ uint8 Host_Crtl_Connect (void)
     if (0 == wifi_spi_inited)
     {
         // 未连 -> 弹统一的 WiFi 候选界面；连上返回 HOST_OK，失败/取消带回对应错误码
-        ret = Host_Crtl_WiFi_Select();
+        ret = Host_Ctrl_WiFi_Select();
         if (HOST_OK != ret)
         {
             // HOST_ERR_NOT_INIT 在这里的语义 = 用户取消了（原义"还没连过"，正好对上）
@@ -1190,7 +1190,7 @@ uint8 Host_Crtl_Connect (void)
         host_err = HOST_OK;
     }
 
-    // ★ 参数表与 EVENT 已挪到 Host_Crtl_Set_Link(ON)：进页面时 Link 还是 OFF，
+    // ★ 参数表与 EVENT 已挪到 Host_Ctrl_Set_Link(ON)：进页面时 Link 还是 OFF，
     //   这里发出去就违反了"链路关着一个字节都不发"。开 Link 时补发，上位机照样能长滑条。
 
     return HOST_OK;
@@ -1199,14 +1199,14 @@ uint8 Host_Crtl_Connect (void)
 //--------------------------------------
 // 函数简介     ★★ 链路层：收命令 + 发遥测
 // 参数说明     void
-// 使用示例     Host_Crtl_Task();   // 放在 Host_Crtl_Page() 的循环里
+// 使用示例     Host_Ctrl_Task();   // 放在 Host_Ctrl_Page() 的循环里
 // 备注信息     自带限频与"模块忙就跳过"，可安全放在任意 while(1) 里。
 //              ★ 两道门：① wifi_spi_inited 为 0（链路没建）② Host_Link = OFF（链路没开）
 //                任一不满足就是纯空操作，**上行下行一起停**。
-//              ★ 调用点只有 Host_Crtl_Page() 一处 —— 主菜单待机时整车"静默"，一个字节都不发。
+//              ★ 调用点只有 Host_Ctrl_Page() 一处 —— 主菜单待机时整车"静默"，一个字节都不发。
 //                这是有意为之：待机状态下不该有 RF 活动，也不该让链路状态机空转
 //--------------------------------------
-void Host_Crtl_Task (void)
+void Host_Ctrl_Task (void)
 {
     uint16 n;
 
@@ -1261,17 +1261,17 @@ void Host_Crtl_Task (void)
 // 函数简介     驱动侧清零（内部）
 // 参数说明     void
 // 使用示例     遥控收回、关链路、切模式时调用（都只在遥控未接管时才允许清）
-// 备注信息     只清"本模块可能写过的那些量"，不碰 Servo_Crtl_Kp / 参数缓存。
-//              ★ Motor_Crtl_Enable 由 1 变 0 的那一拍 Motor_Crtl 会补发一次 Motor_Set(...,0)，
+// 备注信息     只清"本模块可能写过的那些量"，不碰 Servo_Ctrl_Kp / 参数缓存。
+//              ★ Motor_Ctrl_Enable 由 1 变 0 的那一拍 Motor_Ctrl 会补发一次 Motor_Set(...,0)，
 //                之后不再写 —— 所以反复调用是安全的，不会每拍冲 PWM
 //--------------------------------------
 static void host_actuator_clear (void)
 {
-    Servo_Crtl_Enable    = 0;
+    Servo_Ctrl_Enable    = 0;
     Servo_Target_Deg     = 0.0f;
-    Motor_Crtl_Enable    = 0;
-    Motor_LR_Crtl.target = 0.0f;
-    Motor_RR_Crtl.target = 0.0f;
+    Motor_Ctrl_Enable    = 0;
+    Motor_LR_Ctrl.target = 0.0f;
+    Motor_RR_Ctrl.target = 0.0f;
 
     /* 台架直给的目标也一并作废：否则"遥控收回 → 再交回上位机"时，
        会拿上一位驾驶员留下的舵角/转速继续跑（目标本身不是驱动量，不写不会停）。
@@ -1284,7 +1284,7 @@ static void host_actuator_clear (void)
 //--------------------------------------
 // 函数简介     驱动侧清零 + 丢掉上位机的使能位图
 // 参数说明     void
-// 使用示例     Host_Crtl_Release()（退出整页）—— **唯一的调用点**
+// 使用示例     Host_Ctrl_Release()（退出整页）—— **唯一的调用点**
 // 备注信息     ★ 与 host_actuator_clear() 的区别就是最后那个 host_enable：
 //              出入页面要"全收"，位图也该一并作废；
 //              而"遥控收回 / 关链路 / 切模式"只该收驱动侧，**不能**顺手把上位机的位图清掉 ——
@@ -1301,16 +1301,16 @@ static void host_drive_clear (void)
 //--------------------------------------
 // 函数简介     ★★ 上位机链路开关（只管 WiFi）
 // 参数说明     on	HOST_LINK_ON / HOST_LINK_OFF
-// 使用示例     Host_Crtl_Set_Link(HOST_LINK_ON);
+// 使用示例     Host_Ctrl_Set_Link(HOST_LINK_ON);
 // 备注信息     关：停止收/发 + 丢弃上位机的使能位图 + 清心跳锁存。
 //                 ★★ **不收回遥控**（2026-10-17 语义收窄）：遥控走 UART 接收机，
 //                    与本开关没有任何关系。只有当"遥控没在接管"时才顺手把驱动侧收干净；
-//                    遥控正在跑的时候去清驱动，车会顿一下（Motor_Crtl_Enable 1→0→1）。
+//                    遥控正在跑的时候去清驱动，车会顿一下（Motor_Ctrl_Enable 1→0→1）。
 //             开：补发参数表与 EVENT（上位机的参数面板靠它长出来 —— 进页面时 Link 还是 OFF，
 //                 所以这件事不能放在 Connect 里），并给心跳门一个 HOST_ALIVE_MS 的宽限
-//             退出整个页面才"全收"（含遥控与驱动），见 Host_Crtl_Release()
+//             退出整个页面才"全收"（含遥控与驱动），见 Host_Ctrl_Release()
 //--------------------------------------
-void Host_Crtl_Set_Link (uint8 on)
+void Host_Ctrl_Set_Link (uint8 on)
 {
     if (0 == on)
     {
@@ -1346,7 +1346,7 @@ void Host_Crtl_Set_Link (uint8 on)
            理由：手机抓包 / 只读监听端**一个下行帧都不发**，而参数表是 44 帧 × 84 B，
            会白占约 65% 带宽，还会和遥测抢模块（实测一次抓包里 327 帧全是 param-meta）。
            上位机（KartHostLite）连上后会发 PING / GET_TABLE，`host_ever_rx` 一置位就照常自动推，
-           对真实上位机的行为完全不变。见 Host_Crtl_Task() 里那段武装逻辑。 */
+           对真实上位机的行为完全不变。见 Host_Ctrl_Task() 里那段武装逻辑。 */
         host_pt_arm = 1;
 
         host_send_event("host link on");
@@ -1356,7 +1356,7 @@ void Host_Crtl_Set_Link (uint8 on)
 //--------------------------------------
 // 函数简介     ★★ 工作模式切换
 // 参数说明     mode	HOST_MODE_UP / HOST_MODE_CMD
-// 使用示例     Host_Crtl_Set_Mode(HOST_MODE_CMD);
+// 使用示例     Host_Ctrl_Set_Mode(HOST_MODE_CMD);
 // 备注信息     ★★ Link = ON 时**直接返回、不报错**：改模式等于换安全责任归属，
 //                 必须是"先停车、再换模式"的动作，不能运行中切。
 //              ★ 切模式会把驱动侧清一次 —— CMD 的使能（host_enable 位图）不该跟着带进 UP，
@@ -1366,7 +1366,7 @@ void Host_Crtl_Set_Link (uint8 on)
 //                 NONE/HOST，车停下或交给上位机）。这是"切模式 = 换驾驶员"的必然结果，
 //                 不是 bug；要无缝接续就先拨 CH6 = 1 再切。
 //--------------------------------------
-void Host_Crtl_Set_Mode (uint8 mode)
+void Host_Ctrl_Set_Mode (uint8 mode)
 {
     if (HOST_LINK_ON == Host_Link) { return; }
 
@@ -1395,7 +1395,7 @@ void Host_Crtl_Set_Mode (uint8 mode)
 //                 上位机确实没在发的话，复位后下一圈会立刻重新锁存 —— 这是正确行为，不是 bug。
 //                 想真正解除，要么让上位机发帧，要么把 Mode 切回 UP / 关掉 Link。
 //--------------------------------------
-void Host_Crtl_Lost_Clear (void)
+void Host_Ctrl_Lost_Clear (void)
 {
     Host_Lost = 0;
 }
@@ -1407,12 +1407,12 @@ void Host_Crtl_Lost_Clear (void)
 // 备注信息     ★ 退出整个页面是**唯一**的"全收"动作（2026-10-17 语义收窄后）：
 //              Set_Link(OFF) 只管 WiFi，不再代劳收回遥控；遥控与驱动在这里显式收干净。
 //              "每次进页面都是仅上行 + 链路关 + 遥控关"就靠这一句保证。
-//              ⚠ 单按 BACK 退出时是 `Motor_Crtl_Enable = 0`（**滑行**，不是刹停），
-//                与 Remote_Crtl_Release 同口径。车在跑请先关 Link（刹停）再退出
+//              ⚠ 单按 BACK 退出时是 `Motor_Ctrl_Enable = 0`（**滑行**，不是刹停），
+//                与 Remote_Ctrl_Release 同口径。车在跑请先关 Link（刹停）再退出
 //--------------------------------------
-void Host_Crtl_Release (void)
+void Host_Ctrl_Release (void)
 {
-    Host_Crtl_Set_Link(HOST_LINK_OFF);      // 关 WiFi：停收发 + 丢位图 + 清锁存（不碰遥控）
+    Host_Ctrl_Set_Link(HOST_LINK_OFF);      // 关 WiFi：停收发 + 丢位图 + 清锁存（不碰遥控）
 
     // ★ Link 不再管遥控了，所以这里必须显式收回 —— 否则"遥控开着退出页面"会留下接管态
     RC_Engage = RC_ENGAGE_OFF;
@@ -1429,14 +1429,14 @@ void Host_Crtl_Release (void)
 //--------------------------------------
 // 函数简介     遥控侧安全监视（CH5 急停 / 接收机失联）
 // 参数说明     void
-// 使用示例     Host_Crtl_Page() 每圈在仲裁之前调一次
-// 备注信息     ★★ 这两条判据原先只写在 Remote_Crtl_Apply() 里，而 Apply 只在"遥控掌权"
+// 使用示例     Host_Ctrl_Page() 每圈在仲裁之前调一次
+// 备注信息     ★★ 这两条判据原先只写在 Remote_Ctrl_Apply() 里，而 Apply 只在"遥控掌权"
 //                 时才被调用 —— 后果是 CMD 模式（上位机开车）下拨 CH5 **完全无效**，
 //                 等于把唯一的物理急停通道废掉了。提到这里之后：
 //                    · 只要 Remote = ON，CH5 在任何 Mode / 任何 Link 状态下都能停车
 //                    · Remote = OFF 时仍然一概不采信（这是明确要保留的边界）
 //              ★ 锁存语义与遥控页一致：ESTOP / FAILSAFE 都不自动恢复，要人工按确认键。
-//              ⚠ 与 Remote_Crtl_Apply() 里的同名判据**有意重复**：那个函数是遥控页在用的，
+//              ⚠ 与 Remote_Ctrl_Apply() 里的同名判据**有意重复**：那个函数是遥控页在用的，
 //                 不能改成"只由本函数判定"，否则遥控页单独跑时就没有急停了。
 //--------------------------------------
 static void host_rc_watch (void)
@@ -1457,7 +1457,7 @@ static void host_rc_watch (void)
 // 函数简介     驾驶权解析（纯函数，不写任何驱动）
 // 参数说明     void
 // 返回参数     HOST_AUTH_NONE / HOST / REMOTE / STOP
-// 使用示例     Host_Crtl_Page() 每圈算一次，结果同时用于仲裁与屏幕
+// 使用示例     Host_Ctrl_Page() 每圈算一次，结果同时用于仲裁与屏幕
 // 备注信息     ★ 优先级：遥控锁存（STOP） > 遥控接管 > 上位机 > 没人
 //              ★ UP 模式下**不存在 HOST**：UP 的定义就是"上位机不开车"，
 //                所以 UP + Remote OFF = 没人开（驱动侧清空），不是"上位机在开"。
@@ -1486,9 +1486,9 @@ static uint8 host_auth_resolve (void)
 }
 
 //--------------------------------------
-// 函数简介     ★★ CMD 模式的驱动结算（内部，只由 Host_Crtl_Page 的仲裁调用）
+// 函数简介     ★★ CMD 模式的驱动结算（内部，只由 Host_Ctrl_Page 的仲裁调用）
 // 参数说明     void
-// 使用示例     Host_Crtl_Page() 里：auth = HOST / NONE 时才调它
+// 使用示例     Host_Ctrl_Page() 里：auth = HOST / NONE 时才调它
 // 备注信息     ★ 为什么不在 SET_ENABLE 的命令处理里直接写驱动：那只是"某一帧到达时"的一拍，
 //                 而遥控抢权、模式切换、心跳超时都发生在其它时刻。全部收到这里结算，
 //                 驱动侧就只有一个写入口，不会互相打架。
@@ -1521,36 +1521,36 @@ static void host_drive_tick (void)
         /* 闭环刹停：后轮保持使能、目标 0（速度环主动出力减速）；
            舵机保持使能 + 保持失联前的转向 —— 故意不写 Servo_Target_Deg，
            减速过程中方向盘突然自己回正更危险（与 RC_ENGAGE_ESTOP 同一取舍）。
-           目标 0 到实际停住由 Motor_Crtl 的斜坡（MOTOR_CRTL_SLEW）兜着，不会猛刹。 */
-        Servo_Crtl_Enable    = 1;
-        Motor_Crtl_Enable    = 1;
-        Motor_LR_Crtl.target = 0.0f;
-        Motor_RR_Crtl.target = 0.0f;
+           目标 0 到实际停住由 Motor_Ctrl 的斜坡（MOTOR_CTRL_SLEW）兜着，不会猛刹。 */
+        Servo_Ctrl_Enable    = 1;
+        Motor_Ctrl_Enable    = 1;
+        Motor_LR_Ctrl.target = 0.0f;
+        Motor_RR_Ctrl.target = 0.0f;
         return;
     }
 
     /* 正常：上位机的使能位图说了算（SET_ENABLE 只写 host_enable，写驱动在这里） */
-    Servo_Crtl_Enable = (0 != (host_enable & HOST_EN_STEER)) ? 1 : 0;
-    Motor_Crtl_Enable = (0 != (host_enable & HOST_EN_MOTOR)) ? 1 : 0;
+    Servo_Ctrl_Enable = (0 != (host_enable & HOST_EN_STEER)) ? 1 : 0;
+    Motor_Ctrl_Enable = (0 != (host_enable & HOST_EN_MOTOR)) ? 1 : 0;
 
     /* ★ 台架直给（SET_TARGET）：使能位为 1 才写目标 ——
        位为 0 时目标**不写**（保留上一个值不动），这与"失能=不出力"是两件事：
        重新使能时不会因为目标被清成 0 而"先回正再打角"。
 
-       舵机：直给时必须先把航向环让开 —— 否则 5 ms 中断里的 Head_Crtl_Tick()
+       舵机：直给时必须先把航向环让开 —— 否则 5 ms 中断里的 Head_Ctrl_Tick()
        每拍都会把 Servo_Target_Deg 覆盖成 -kp·err，上位机的滑条完全不起作用。 */
     if (0 != (host_enable & HOST_EN_STEER))
     {
-        Head_Crtl_Set_Enable(0);
-        Servo_Target_Deg = host_tgt_steer;      // 软限位在 Servo_Crtl_Tick() 里夹
+        Head_Ctrl_Set_Enable(0);
+        Servo_Target_Deg = host_tgt_steer;      // 软限位在 Servo_Ctrl_Tick() 里夹
     }
 
     /* 后轮：台架测试要"两轮同速"，刻意不走 Motor_Diff_Alloc（差速用实测舵角，
        台架上轮子悬空、实测角没意义，反而会让两轮转速不一样）。 */
     if (0 != (host_enable & HOST_EN_MOTOR))
     {
-        Motor_LR_Crtl.target = host_tgt_wheel;
-        Motor_RR_Crtl.target = host_tgt_wheel;
+        Motor_LR_Ctrl.target = host_tgt_wheel;
+        Motor_RR_Ctrl.target = host_tgt_wheel;
     }
 }
 
@@ -1558,10 +1558,10 @@ static void host_drive_tick (void)
 // 函数简介     查询连接状态
 // 参数说明     void
 // 返回参数     uint8 HOST_ST_IDLE / HOST_ST_ACTIVE / HOST_ST_OFFLINE
-// 使用示例     Host_Crtl_State();
-// 备注信息     判据只用"是否收到下行帧"——见 Host_Crtl.h 里 HOST_ST_* 的说明
+// 使用示例     Host_Ctrl_State();
+// 备注信息     判据只用"是否收到下行帧"——见 Host_Ctrl.h 里 HOST_ST_* 的说明
 //--------------------------------------
-uint8 Host_Crtl_State (void)
+uint8 Host_Ctrl_State (void)
 {
     if (0 == wifi_spi_inited) { return HOST_ST_IDLE; }
     if (0 == host_ever_rx)    { return HOST_ST_OFFLINE; }   // 链路建了，但对面一直没响（上位机没连上）
@@ -1571,22 +1571,22 @@ uint8 Host_Crtl_State (void)
     return HOST_ST_ACTIVE;
 }
 
-uint8 Host_Crtl_Err (void)
+uint8 Host_Ctrl_Err (void)
 {
     return host_err;
 }
 
-uint32 Host_Crtl_Tx_Count (void)
+uint32 Host_Ctrl_Tx_Count (void)
 {
     return host_tx_count;
 }
 
-uint32 Host_Crtl_Rx_Count (void)
+uint32 Host_Ctrl_Rx_Count (void)
 {
     return host_rx_count;
 }
 
-uint32 Host_Crtl_Crc_Err (void)
+uint32 Host_Ctrl_Crc_Err (void)
 {
     return host_crc_err;
 }
@@ -1607,7 +1607,7 @@ uint32 Host_Crtl_Crc_Err (void)
 //   ① 三个开关（上下键选行、确认键切换；光标是 x=2 的 ">"）
 //        Host Mode:  UP / CMD    —— 仅上行 / 上位机指令（★ Link = ON 时按不动，见文件头）
 //        Host Link:  OFF / ON    —— **只管 WiFi**：关 = 上位机收/发全停，遥控不受影响
-//        Remote Crtl: OFF / READY / DRIVE / ESTOP / RC LOST
+//        Remote Ctrl: OFF / READY / DRIVE / ESTOP / RC LOST
 //                                 —— 是否采信接收机（走 UART，与 Link 无关）
 //                                    ★ DRIVE = 驾驶权在遥控；READY = 通信正常但驾驶权
 //                                      在别处（CMD + CH6 = 0，上位机在开）。两者分开显示，
@@ -1634,7 +1634,7 @@ uint32 Host_Crtl_Crc_Err (void)
 //     BACK        退出本页
 //
 // ★ 屏幕内容只减不增（2026-10-17 用户要求）：TX/RX 收发帧数、ERR 错误码都已从屏幕撤掉 ——
-//   接口仍保留（Host_Crtl_Tx_Count / Rx_Count / Err），想用直接调，屏幕上不占行。
+//   接口仍保留（Host_Ctrl_Tx_Count / Rx_Count / Err），想用直接调，屏幕上不占行。
 //   唯一"新增"的是 y=128 那行锁存提示，且只在异常态出现。
 // ★ 刷新节拍 = HOST_UI_REFRESH_TICKS（默认 300ms）；按键时立刻整屏重画，不等节拍。
 // ★ 连接时机 = **进入页面**（"进门先连"，用户设计）：
@@ -1663,13 +1663,13 @@ uint32 Host_Crtl_Crc_Err (void)
 #define HOST_UI_STA_X       (66)        // 状态区（State/AGE/CRC）的值起始列
 #define HOST_UI_UNIT_X      (122)       // AGE 行的 "ms" 单位列（AGE 定宽 6 字符 -> 到 x=113）
 
-static void Host_Crtl_UI (void)
+static void Host_Ctrl_UI (void)
 {
     ips200_show_string(8  ,0  , "[HOST]");
     ips200_show_string(0  ,16 , "==============================");
     ips200_show_string(10 ,32 , "Host Mode:  ");       // 补到 12 字符 -> 值对齐到 x=114
     ips200_show_string(10 ,48 , "Host Link:  ");       // 补到 12 字符 -> 同上
-    ips200_show_string(10 ,64 , "Remote Crtl:");
+    ips200_show_string(10 ,64 , "Remote Ctrl:");
     ips200_show_string(10 ,80 , "State:");             // 原叫 "LINK:" —— 与开关 "Host Link" 撞名，
                                                        // 一个管"通不通"一个管"现在什么状态"，分开叫
     ips200_show_string(10 ,96 , "AGE:");
@@ -1699,7 +1699,7 @@ static const char *host_rc_text (void)
     return (HOST_AUTH_REMOTE == Host_Auth) ? "DRIVE  " : "READY  ";
 }
 
-// LINK 的四种文字。★ 与遥测通道 HOST_CH_ONLINE 不同源，理由见 Host_Crtl.h 的 HOST_ST_* 段
+// LINK 的四种文字。★ 与遥测通道 HOST_CH_ONLINE 不同源，理由见 Host_Ctrl.h 的 HOST_ST_* 段
 static const char *host_link_text (void)
 {
     if (HOST_LINK_OFF == Host_Link)  { return "IDLE   "; }
@@ -1709,7 +1709,7 @@ static const char *host_link_text (void)
     return "ACTIVE ";
 }
 
-// 画三行开关的值（只画值，不画标签 —— 标签在 Host_Crtl_UI 里一次画完）
+// 画三行开关的值（只画值，不画标签 —— 标签在 Host_Ctrl_UI 里一次画完）
 static void host_ui_switch (void)
 {
     ips200_show_string(HOST_UI_VAL_X, 32, host_mode_text(Host_Mode));
@@ -1758,7 +1758,7 @@ static void Host_ShowU (uint16 x, uint16 y, uint32 v, uint8 width)
 //--------------------------------------
 // 函数简介     画状态区：LINK / AGE / CRC + 锁存提示
 // 参数说明     void
-// 使用示例     Host_Crtl_Page() 的 300ms 节拍、以及每次按键之后
+// 使用示例     Host_Ctrl_Page() 的 300ms 节拍、以及每次按键之后
 // 备注信息     ★ UP 模式的 AGE 画 "---" 不画数字：本模式不判心跳，`host_alive_ms` 只在
 //              收到帧时刷新，画出来就是个一直在涨的数 —— 会被误读成"链路快断了"。
 //              ★ CMD 模式的 AGE 也**不是延迟曲线**：上位机 PING 每 100ms 一次，
@@ -1781,7 +1781,7 @@ static void host_ui_status (void)
         Host_ShowU(HOST_UI_STA_X, 96, age, 6);
     }
 
-    Host_ShowU(HOST_UI_STA_X, 112, Host_Crtl_Crc_Err(), 6);
+    Host_ShowU(HOST_UI_STA_X, 112, Host_Ctrl_Crc_Err(), 6);
 
     /* ★ 当前目标 IP：跟着"选中的热点"走。换网络（笔记本 <-> 手机）时不用重刷固件，
        这一行就是现场核对"我到底在往谁发"的地方。 */
@@ -1799,11 +1799,11 @@ static void host_ui_status (void)
 }
 
 //--------------------------------------
-// 函数简介     页面内的连接流程：走 Host_Crtl_Connect，然后整屏重画页面
+// 函数简介     页面内的连接流程：走 Host_Ctrl_Connect，然后整屏重画页面
 // 参数说明     void
 // 返回参数     0 = 链路已就绪，留在 Host 页继续
 //              1 = 用户在 WiFi 选择界面按了 BACK，**调用者应退出本页回主菜单**
-// 使用示例     Host_Crtl_Page() 进门时链路未建立 —— **唯一的调用点**（页内没有重连键）
+// 使用示例     Host_Ctrl_Page() 进门时链路未建立 —— **唯一的调用点**（页内没有重连键）
 // 备注信息     ★ 成功回来时必须整屏重画：WiFi 选择界面自己 ips200_clear 过，
 //              不重画的话屏幕上会留着那张热点列表（取消时不重画 —— 马上要退回主菜单，
 //              菜单那边会 ips200_clear）
@@ -1819,7 +1819,7 @@ static uint8 host_page_connect (void)
     // ⚠ 这里原先是 30 字符，x=10 起会画到 x=249，超 240 宽 → ips200 断言，进页面即崩
     ips200_show_string(10, 128, "connecting...               ");
 
-    ret = Host_Crtl_Connect();
+    ret = Host_Ctrl_Connect();
 
     if (HOST_ERR_NOT_INIT == ret)
     {
@@ -1828,7 +1828,7 @@ static uint8 host_page_connect (void)
     }
 
     ips200_clear();
-    Host_Crtl_UI();
+    Host_Ctrl_UI();
     host_ui_switch();
     host_ui_status();
     host_ui_cursor(0);
@@ -1838,7 +1838,7 @@ static uint8 host_page_connect (void)
     return 0;
 }
 
-int Host_Crtl_Page (void)
+int Host_Ctrl_Page (void)
 {
     uint8 row   = 0;            // 光标行 0..2（Mode / Link / Remote）
     uint8 dirty = 1;            // 置位 = 下一圈整屏重画（按键后立刻生效，不等 300ms）
@@ -1846,9 +1846,9 @@ int Host_Crtl_Page (void)
 
     // ★ 进门先复位：链路关、模式回 UP、遥控关、锁存清、驱动侧失能（Release 一次做全）。
     //   这样"每次进来都是仅上行 + 默认关闭"是必然结果，不依赖上一页留下什么
-    Host_Crtl_Release();
+    Host_Ctrl_Release();
 
-    Host_Crtl_UI();
+    Host_Ctrl_UI();
     host_ui_switch();
     host_ui_status();
     host_ui_cursor(row);
@@ -1874,13 +1874,13 @@ int Host_Crtl_Page (void)
         if (KEY_SHORT_PRESS == key_get_state(KEY_BACK))
         {
             key_clear_state(KEY_BACK);
-            Host_Crtl_Release();        // 退出即全关：链路归零、遥控收回、驱动侧失能
+            Host_Ctrl_Release();        // 退出即全关：链路归零、遥控收回、驱动侧失能
             return 0;
         }
 
         // 心跳：本页面在监督后轮闭环，必须每圈喂一次。
-        // 漏喂 -> Motor_Crtl 的心跳门会一直判定"监督循环已死"，电机输出恒为 0。
-        Motor_Crtl_HB_Feed();
+        // 漏喂 -> Motor_Ctrl 的心跳门会一直判定"监督循环已死"，电机输出恒为 0。
+        Motor_Ctrl_HB_Feed();
 
         /* ---------- 按键 ---------- */
         if (KEY_SHORT_PRESS == key_get_state(KEY_UP))
@@ -1904,18 +1904,18 @@ int Host_Crtl_Page (void)
             {
                 // ★ 锁存态下确认键 = 复位，**不去切开关**：
                 //   否则会出现"想复位、结果把模式改了"——锁存时人的第一反应是找复位
-                Host_Crtl_Lost_Clear();
+                Host_Ctrl_Lost_Clear();
             }
             else if (0 == row)          // Host Mode
             {
                 // Link = ON 时 Set_Mode 内部直接返回（切不动），屏幕值不变即是全部反馈
-                Host_Crtl_Set_Mode((HOST_MODE_CMD == Host_Mode) ? HOST_MODE_UP : HOST_MODE_CMD);
+                Host_Ctrl_Set_Mode((HOST_MODE_CMD == Host_Mode) ? HOST_MODE_UP : HOST_MODE_CMD);
             }
             else if (1 == row)          // Host Link
             {
-                Host_Crtl_Set_Link((HOST_LINK_ON == Host_Link) ? HOST_LINK_OFF : HOST_LINK_ON);
+                Host_Ctrl_Set_Link((HOST_LINK_ON == Host_Link) ? HOST_LINK_OFF : HOST_LINK_ON);
             }
-            else                        // Remote Crtl
+            else                        // Remote Ctrl
             {
                 // ★★ 不再要求 Link = ON（2026-10-17 语义收窄）：遥控走 UART 接收机，
                 //    与 WiFi 链路无关 —— "UP + Link OFF + 遥控开车"是合法组合（纯本地跑车，不上发）。
@@ -1932,7 +1932,7 @@ int Host_Crtl_Page (void)
                     RC_Engage = was_on ? RC_ENGAGE_OFF : RC_ENGAGE_ON;
 
                     // ★ 遥控收回的这一刻必须把驱动侧收干净：RC_ENGAGE_OFF 之后本页就不再调
-                    //   Remote_Crtl_Apply()（它只在 OFF 分支才清目标），而 UP 模式下
+                    //   Remote_Ctrl_Apply()（它只在 OFF 分支才清目标），而 UP 模式下
                     //   host_drive_tick() 又直接返回 —— 不收就会出现
                     //   "遥控关了、车还按最后那个遥控目标在跑"
                     // ★ 只在"它真的在开车"时才清：CMD + CH6 = 0 时驾驶权在上位机，
@@ -1948,7 +1948,7 @@ int Host_Crtl_Page (void)
         }
 
         /* ---------- 驱动侧仲裁：STOP > 遥控 > 上位机（见文件头"驾驶权仲裁"） ---------- */
-        Remote_Crtl_Update();       // 遥测通道要用这些量，必须每圈跑（纯算术，开销可忽略）
+        Remote_Ctrl_Update();       // 遥测通道要用这些量，必须每圈跑（纯算术，开销可忽略）
         host_rc_watch();            // CH5 急停 / 接收机失联：任何 Mode、任何 Link 都生效
 
         auth = host_auth_resolve();
@@ -1967,7 +1967,7 @@ int Host_Crtl_Page (void)
 
         if ((HOST_AUTH_REMOTE == auth) || (HOST_AUTH_STOP == auth))
         {
-            Remote_Crtl_Apply();    // 遥控掌权 / 锁存停车：驱动侧全由遥控侧写
+            Remote_Ctrl_Apply();    // 遥控掌权 / 锁存停车：驱动侧全由遥控侧写
         }
         else
         {
@@ -1975,7 +1975,7 @@ int Host_Crtl_Page (void)
         }
 
         /* ---------- 链路层（Link 门控在内部） ---------- */
-        Host_Crtl_Task();
+        Host_Ctrl_Task();
 
         /* ---------- 屏幕 ---------- */
         if (0 != dirty)
