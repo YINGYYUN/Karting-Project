@@ -1,39 +1,39 @@
 /*********************************************************************************************************************
-* CYT4BB Opensource Library ¼´£¨ CYT4BB ¿ªÔ´¿â£©ÊÇÒ»¸ö»ùÓÚ¹Ù·½ SDK ½Ó¿ÚµÄµÚÈı·½¿ªÔ´¿â
-* Copyright (c) 2022 SEEKFREE Öğ·É¿Æ¼¼
+* CYT4BB Opensource Library å³ï¼ˆ CYT4BB å¼€æºåº“ï¼‰æ˜¯ä¸€ä¸ªåŸºäºå®˜æ–¹ SDK æ¥å£çš„ç¬¬ä¸‰æ–¹å¼€æºåº“
+* Copyright (c) 2022 SEEKFREE é€é£ç§‘æŠ€
 *
-* ±¾ÎÄ¼şÊÇ CYT4BB ¿ªÔ´¿âµÄÒ»²¿·Ö
+* æœ¬æ–‡ä»¶æ˜¯ CYT4BB å¼€æºåº“çš„ä¸€éƒ¨åˆ†
 *
-* CYT4BB ¿ªÔ´¿â ÊÇÃâ·ÑÈí¼ş
-* Äú¿ÉÒÔ¸ù¾İ×ÔÓÉÈí¼ş»ù½ğ»á·¢²¼µÄ GPL£¨GNU General Public License£¬¼´ GNUÍ¨ÓÃ¹«¹²Ğí¿ÉÖ¤£©µÄÌõ¿î
-* ¼´ GPL µÄµÚ3°æ£¨¼´ GPL3.0£©»ò£¨ÄúÑ¡ÔñµÄ£©ÈÎºÎºóÀ´µÄ°æ±¾£¬ÖØĞÂ·¢²¼ºÍ/»òĞŞ¸ÄËü
+* CYT4BB å¼€æºåº“ æ˜¯å…è´¹è½¯ä»¶
+* æ‚¨å¯ä»¥æ ¹æ®è‡ªç”±è½¯ä»¶åŸºé‡‘ä¼šå‘å¸ƒçš„ GPLï¼ˆGNU General Public Licenseï¼Œå³ GNUé€šç”¨å…¬å…±è®¸å¯è¯ï¼‰çš„æ¡æ¬¾
+* å³ GPL çš„ç¬¬3ç‰ˆï¼ˆå³ GPL3.0ï¼‰æˆ–ï¼ˆæ‚¨é€‰æ‹©çš„ï¼‰ä»»ä½•åæ¥çš„ç‰ˆæœ¬ï¼Œé‡æ–°å‘å¸ƒå’Œ/æˆ–ä¿®æ”¹å®ƒ
 *
-* ±¾¿ªÔ´¿âµÄ·¢²¼ÊÇÏ£ÍûËüÄÜ·¢»Ó×÷ÓÃ£¬µ«²¢Î´¶ÔÆä×÷ÈÎºÎµÄ±£Ö¤
-* ÉõÖÁÃ»ÓĞÒşº¬µÄÊÊÏúĞÔ»òÊÊºÏÌØ¶¨ÓÃÍ¾µÄ±£Ö¤
-* ¸ü¶àÏ¸½ÚÇë²Î¼û GPL
+* æœ¬å¼€æºåº“çš„å‘å¸ƒæ˜¯å¸Œæœ›å®ƒèƒ½å‘æŒ¥ä½œç”¨ï¼Œä½†å¹¶æœªå¯¹å…¶ä½œä»»ä½•çš„ä¿è¯
+* ç”šè‡³æ²¡æœ‰éšå«çš„é€‚é”€æ€§æˆ–é€‚åˆç‰¹å®šç”¨é€”çš„ä¿è¯
+* æ›´å¤šç»†èŠ‚è¯·å‚è§ GPL
 *
-* ÄúÓ¦¸ÃÔÚÊÕµ½±¾¿ªÔ´¿âµÄÍ¬Ê±ÊÕµ½Ò»·İ GPL µÄ¸±±¾
-* Èç¹ûÃ»ÓĞ£¬Çë²ÎÔÄ<https://www.gnu.org/licenses/>
+* æ‚¨åº”è¯¥åœ¨æ”¶åˆ°æœ¬å¼€æºåº“çš„åŒæ—¶æ”¶åˆ°ä¸€ä»½ GPL çš„å‰¯æœ¬
+* å¦‚æœæ²¡æœ‰ï¼Œè¯·å‚é˜…<https://www.gnu.org/licenses/>
 *
-* ±¾¹¤³Ì: ¿¨¶¡³µÕû³µ¹Ì¼ş(×ªÏòÎ»ÖÃ»· + Ë«ºóÂÖËÙ¶È»· + SBUS Ò£¿Ø + WiFi ÉÏÎ»»ú + Â·±í»Ø·Å)
+* æœ¬å·¥ç¨‹: å¡ä¸è½¦æ•´è½¦å›ºä»¶(è½¬å‘ä½ç½®ç¯ + åŒåè½®é€Ÿåº¦ç¯ + SBUS é¥æ§ + WiFi ä¸Šä½æœº + è·¯è¡¨å›æ”¾)
 *
-* ---- Ó²¼şÁ¬½Ó ----
-*   ×óºóÂÖ:  PWM -> P09_0 (TCPWM_CH24)    DIR -> P09_1
-*   ÓÒºóÂÖ:  PWM -> P10_2 (TCPWM_CH30)    DIR -> P10_3
-*   ×ªÏò  :  PWM -> P05_0 (TCPWM_CH09)    DIR -> P05_1
-*   ×óºóÂÖ±àÂëÆ÷: PULSE -> P17_3 (TC_CH58 CH1)   DIR -> P17_4 (TC_CH58 CH2)  [Âö³å+·½Ïò]
-*   ÓÒºóÂÖ±àÂëÆ÷: PULSE -> P19_2 (TC_CH27 CH1)   DIR -> P19_3 (TC_CH27 CH2)  [Âö³å+·½Ïò]
-*   ×ªÏò¾ø¶Ô½Ç±àÂëÆ÷: SPI_4(SCB5)  CLK P07_2 / MOSI P07_1 / MISO P07_0 / CS P07_3
-*   WiFi-SPI Ä£¿é : ¼û motor_link.h (SPI_0 + INT P02_4 + RST P23_0)
-*   Ò£¿Ø½ÓÊÕ»ú    : UART_4 = SCB2, RX = P14_0 (½Ó½ÓÊÕ»ú TX), TX = P14_1 (Õ¼Î», Ğü¿Õ)
-*                   SBUS 100 kbps, 6 Í¨µÀ; Ö¡¼ä¸ô¼ÆÊ±Õ¼ TC_TIME2_CH2, ¼û zf_device_uart_receiver.h
-*   ÆÁÄ»          : IPS200 SPI_1, SCL P12_2 / SDA P12_1 / CS P12_3 / RST P22_4 / DC P22_3 / BLK P11_0
-*   °´¼ü          : °åÔØ 4 ¼ü P20_3 / P20_2 / P20_0 / P20_1
+* ---- ç¡¬ä»¶è¿æ¥ ----
+*   å·¦åè½®:  PWM -> P09_0 (TCPWM_CH24)    DIR -> P09_1
+*   å³åè½®:  PWM -> P10_2 (TCPWM_CH30)    DIR -> P10_3
+*   è½¬å‘  :  PWM -> P05_0 (TCPWM_CH09)    DIR -> P05_1
+*   å·¦åè½®ç¼–ç å™¨: PULSE -> P17_3 (TC_CH58 CH1)   DIR -> P17_4 (TC_CH58 CH2)  [è„‰å†²+æ–¹å‘]
+*   å³åè½®ç¼–ç å™¨: PULSE -> P19_2 (TC_CH27 CH1)   DIR -> P19_3 (TC_CH27 CH2)  [è„‰å†²+æ–¹å‘]
+*   è½¬å‘ç»å¯¹è§’ç¼–ç å™¨: SPI_4(SCB5)  CLK P07_2 / MOSI P07_1 / MISO P07_0 / CS P07_3
+*   WiFi-SPI æ¨¡å— : è§ motor_link.h (SPI_0 + INT P02_4 + RST P23_0)
+*   é¥æ§æ¥æ”¶æœº    : UART_4 = SCB2, RX = P14_0 (æ¥æ¥æ”¶æœº TX), TX = P14_1 (å ä½, æ‚¬ç©º)
+*                   SBUS 100 kbps, 6 é€šé“; å¸§é—´éš”è®¡æ—¶å  TC_TIME2_CH2, è§ zf_device_uart_receiver.h
+*   å±å¹•          : IPS200 SPI_1, SCL P12_2 / SDA P12_1 / CS P12_3 / RST P22_4 / DC P22_3 / BLK P11_0
+*   æŒ‰é”®          : æ¿è½½ 4 é”® P20_3 / P20_2 / P20_0 / P20_1
 *
-* ---- Ì¨¼Ü±ê¶¨(°´Ë³Ğò×ö) ----
-*   1 Ó²¼ş¼«ĞÔ: ³µ¼Ü¿Õ, ¸ø steer_u0 ¿´·½ÏòÅÌÄÜ·ñÍÆ¶¯, ÔÙ¸ø +3 ¶È¿´ÊÇ·ñ³¯Ä¿±ê×ª, ·´Ïò¸Ä minv_s, ºóÂÖÍ¬Àí¸Ä minv_l/minv_r¡£
-*   2 ²âËÙÕı¸º: ÕıÃüÁîĞëµÃ¸Ã²à v ÎªÕı, ·´Ïò¸Ä inv_l / inv_r¡£
-*   3 Ã¿×ª¼ÆÊı: ÇåÁã pos, ÊÖ×ªµç»úÖá 10 È¦, cpr = pos ÔöÁ¿ / 10 (±¾³µ 1024 Ïß x 49/27 = 1858)¡£
+* ---- å°æ¶æ ‡å®š(æŒ‰é¡ºåºåš) ----
+*   1 ç¡¬ä»¶ææ€§: è½¦æ¶ç©º, ç»™ steer_u0 çœ‹æ–¹å‘ç›˜èƒ½å¦æ¨åŠ¨, å†ç»™ +3 åº¦çœ‹æ˜¯å¦æœç›®æ ‡è½¬, åå‘æ”¹ minv_s, åè½®åŒç†æ”¹ minv_l/minv_rã€‚
+*   2 æµ‹é€Ÿæ­£è´Ÿ: æ­£å‘½ä»¤é¡»å¾—è¯¥ä¾§ v ä¸ºæ­£, åå‘æ”¹ inv_l / inv_rã€‚
+*   3 æ¯è½¬è®¡æ•°: æ¸…é›¶ pos, æ‰‹è½¬ç”µæœºè½´ 10 åœˆ, cpr = pos å¢é‡ / 10 (æœ¬è½¦ 1024 çº¿ x 49/27 = 1858)ã€‚
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
@@ -47,28 +47,28 @@
 #include "ins_imu.h"
 #include "ins_odom.h"
 
-/* ---- ÆÁÄ»²Ëµ¥ + 12 ¶ÎÅÜ°à ---- */
+/* ---- å±å¹•èœå• + 12 æ®µè·‘ç­ ---- */
 #include "flash_map.h"
 #include "app_params.h"
 #include "bench_log.h"
 #include "spd_bench.h"
 #include "ui_core.h"
 #include "ui_menu.h"
-#include "route_app.h"          /* Â·±í(P1): Ó¦ÓÃ²ã */
+#include "route_app.h"          /* è·¯è¡¨(P1): åº”ç”¨å±‚ */
 #include "route_pb.h"
-#include "proto.h"              /* Ğ­Òé²ã/È¨ÏŞ²ã, Î¨Ò»Ğ´Èë¿Ú */
-#include "head_test.h"            /* º½Ïò²âÊÔ */
+#include "proto.h"              /* åè®®å±‚/æƒé™å±‚, å”¯ä¸€å†™å…¥å£ */
+#include "head_test.h"            /* èˆªå‘æµ‹è¯• */
 
-static uint32   g_print_ms = 0;        /* ÉÏ´Î´òÓ¡×´Ì¬µÄÊ±¿Ì */
-static uint8    g_zero_last    = 0;   /* Î»×Ë¹éÁãÃüÁîµÄ±ßÑØ¼ÇÒä, 0->1 Ö»´¥·¢Ò»´Î */
-static uint32   g_imu_retry_ms  = 0;   /* IMU µôÏßºóµÄÖØÊÔ½ÚÅÄ, 1 Hz */
+static uint32   g_print_ms = 0;        /* ä¸Šæ¬¡æ‰“å°çŠ¶æ€çš„æ—¶åˆ» */
+static uint8    g_zero_last    = 0;   /* ä½å§¿å½’é›¶å‘½ä»¤çš„è¾¹æ²¿è®°å¿†, 0->1 åªè§¦å‘ä¸€æ¬¡ */
+static uint32   g_imu_retry_ms  = 0;   /* IMU æ‰çº¿åçš„é‡è¯•èŠ‚æ‹, 1 Hz */
 
-/* ---- Ò£²âÍ¨µÀÌî³ä ---- */
+/* ---- é¥æµ‹é€šé“å¡«å…… ---- */
 static void motor_fill_telemetry (void)
 {
     uint32 age;
 
-    /* Ñ²Ïßµµ route: 22 Í¨µÀ, tel_sel = 0, Ä¬ÈÏµµ; Ğë×ßÔ­×Ó¿ìÕÕ, ÈıµµÍ¨µÀºÅ»¥²»Îª×Ó¼¯, ÌîÍêÖ±½Ó return */
+    /* å·¡çº¿æ¡£ route: 22 é€šé“, tel_sel = 0, é»˜è®¤æ¡£; é¡»èµ°åŸå­å¿«ç…§, ä¸‰æ¡£é€šé“å·äº’ä¸ä¸ºå­é›†, å¡«å®Œç›´æ¥ return */
     if (spd_tel_sel < 0.5f)
     {
         ins_imu_snap_t  imu;
@@ -77,7 +77,7 @@ static void motor_fill_telemetry (void)
         ins_imu_snapshot(&imu);
         ins_odom_snapshot(&odom);
 
-        /* --- Á½ÌõËÙ¶È»·: Ä¿±ê / Êµ²â / Êä³ö --- */
+        /* --- ä¸¤æ¡é€Ÿåº¦ç¯: ç›®æ ‡ / å®æµ‹ / è¾“å‡º --- */
         motor_link_ch_set(RCH_U_L,            ctl_l.u * 100.0f);
         motor_link_ch_set(RCH_V_L,            enc_l.rps);
         motor_link_ch_set(RCH_TARGET_L,       spd_target_l);
@@ -85,7 +85,7 @@ static void motor_fill_telemetry (void)
         motor_link_ch_set(RCH_V_R,            enc_r.rps);
         motor_link_ch_set(RCH_TARGET_R,       spd_target_r);
 
-        /* --- ×ªÏò: Êµ¼ÊÊ©¼Ó / Êµ²â / Êä³ö --- */
+        /* --- è½¬å‘: å®é™…æ–½åŠ  / å®æµ‹ / è¾“å‡º --- */
         motor_link_ch_set(RCH_STEER_TARGET,   steer.applied_delta);
         motor_link_ch_set(RCH_STEER_DELTA,    steer.meas_delta);
         motor_link_ch_set(RCH_STEER_U,        (float)steer.output_duty);
@@ -93,7 +93,7 @@ static void motor_fill_telemetry (void)
         motor_link_ch_set(RCH_K_V,            spd_g.k_v);
         motor_link_ch_set(RCH_K_Z,            spd_g.k_z);
 
-        /* --- ¹ßµ¼: º½Ïò / ½ÇËÙ¶È / Â·±íºáÏòÎó²î --- */
+        /* --- æƒ¯å¯¼: èˆªå‘ / è§’é€Ÿåº¦ / è·¯è¡¨æ¨ªå‘è¯¯å·® --- */
         motor_link_ch_set(RCH_INS_YAW,        odom.yaw);
         motor_link_ch_set(RCH_TAR_YAW,        (0u != head_test_active()) ? head_test_tar_yaw()
                                             : ((0u != steer.head_enable) ? steer_ctrl_get_target_yaw()
@@ -113,7 +113,7 @@ static void motor_fill_telemetry (void)
         return;
     }
 
-    /* ±ê¶¨µµ calib: 18 Í¨µÀ, tel_sel = 1, Ò»Ö¡ 93 ×Ö½Ú, ÊÊºÏ³¤Ê±¼ä¸ßÃÜ¶È²ÉÑù; CT_* ¶ÀÁ¢±àºÅ */
+    /* æ ‡å®šæ¡£ calib: 18 é€šé“, tel_sel = 1, ä¸€å¸§ 93 å­—èŠ‚, é€‚åˆé•¿æ—¶é—´é«˜å¯†åº¦é‡‡æ ·; CT_* ç‹¬ç«‹ç¼–å· */
     if (spd_tel_sel < 1.5f)
     {
         age = motor_link_rx_age_ms();
@@ -128,7 +128,7 @@ static void motor_fill_telemetry (void)
         motor_link_ch_set(CT_TARGET_R,    spd_target_r);
         motor_link_ch_set(CT_V_R,         enc_r.rps);
         motor_link_ch_set(CT_U_R,         ctl_r.u * 100.0f);
-        /* ·¢Êµ¼ÊÊ©¼ÓµÄÄ¿±ê(ÈíÏŞÎ»¼Ğ½ôÓëĞ±ÆÂÖ®ºó), ²»ÊÇÉÏÎ»»úĞ´µÄÃüÁî */
+        /* å‘å®é™…æ–½åŠ çš„ç›®æ ‡(è½¯é™ä½å¤¹ç´§ä¸æ–œå¡ä¹‹å), ä¸æ˜¯ä¸Šä½æœºå†™çš„å‘½ä»¤ */
         motor_link_ch_set(CT_STEER_TGT,   steer.applied_delta);
         motor_link_ch_set(CT_STEER_DELTA, steer.meas_delta);
         motor_link_ch_set(CT_STEER_U,     (float)steer.output_duty);
@@ -140,19 +140,19 @@ static void motor_fill_telemetry (void)
                           (float)(steer_abs_self_check_ok() | ((uint16)steer_ctrl_fault() << 1)));
         motor_link_ch_set(CT_OL_EN,       (spd_ol_en > 0.5f) ? 1.0f : 0.0f);
         motor_link_ch_set(CT_RESV0,       0.0f);
-        /* ÔöÒæ»Ø¶Á: ¿ØÖÆÆ÷±¾ÅÄÕæÕı³ËÉÏÈ¥µÄ k_v / k_z */
+        /* å¢ç›Šå›è¯»: æ§åˆ¶å™¨æœ¬æ‹çœŸæ­£ä¹˜ä¸Šå»çš„ k_v / k_z */
         motor_link_ch_set(CT_K_V,         spd_g.k_v);
         motor_link_ch_set(CT_K_Z,         spd_g.k_z);
         return;
     }
 
-    /* È«Á¿µµ full: 45 Í¨µÀ, tel_sel = 2, Ò»Ö¡ 201 B, 200 Hz ÏÂÔ¼ 40 kB/s; CH_* ¶ÀÁ¢±àºÅ, ÌîÍêÖ±½Ó return */
+    /* å…¨é‡æ¡£ full: 45 é€šé“, tel_sel = 2, ä¸€å¸§ 201 B, 200 Hz ä¸‹çº¦ 40 kB/s; CH_* ç‹¬ç«‹ç¼–å·, å¡«å®Œç›´æ¥ return */
     if (spd_tel_sel < 2.5f)
     {
         age = motor_link_rx_age_ms();
         if (age > 60000u)
         {
-            age = 60000u;                  /* rx_age ÓÃ 0xFFFFFFFF ±íÊ¾´ÓÃ»ÊÕµ½¹ı, ½Øµ½ 60 s */
+            age = 60000u;                  /* rx_age ç”¨ 0xFFFFFFFF è¡¨ç¤ºä»æ²¡æ”¶åˆ°è¿‡, æˆªåˆ° 60 s */
         }
 
         motor_link_ch_set(CH_TARGET_L,    spd_target_l);
@@ -172,27 +172,27 @@ static void motor_fill_telemetry (void)
         motor_link_ch_set(CH_ENABLE_BITS, (float)motor_link_enable_bits());
         motor_link_ch_set(CH_SAFETY,      (float)spd_safety_flags());
 
-        /* --- ×ªÏò(16~20) --- */
-        motor_link_ch_set(CH_STEER_TARGET, steer.applied_delta);   /* Êµ¼ÊÊ©¼ÓµÄÄ¿±ê */
+        /* --- è½¬å‘(16~20) --- */
+        motor_link_ch_set(CH_STEER_TARGET, steer.applied_delta);   /* å®é™…æ–½åŠ çš„ç›®æ ‡ */
         motor_link_ch_set(CH_STEER_DELTA,  steer.meas_delta);
         motor_link_ch_set(CH_STEER_U,      (float)steer.output_duty);
         motor_link_ch_set(CH_STEER_EN,     (float)steer.angle_enable);
-        /* bit0 = ¾ø¶Ô±àÂëÆ÷×Ô¼ìÍ¨¹ı   bit1 = 0x02 ·´À¡Ê§Ğ§(Ëø´æ, Êä³ö¶¤ 0, ×Ô¶¯¸´Î»ÏŞ´ÎÊı)
-           bit2 = 0x04 ¶¥ËÀ/ÎŞ½øÕ¹¸æ¾¯(²»¶¤Êä³ö, Õ³ÖÍ 2 s)   bit3 = 0x08 ±¾ÅÄ¶ÁÊı±»·À¶¶¾Üµô(Ë²Ì¬) */
+        /* bit0 = ç»å¯¹ç¼–ç å™¨è‡ªæ£€é€šè¿‡   bit1 = 0x02 åé¦ˆå¤±æ•ˆ(é”å­˜, è¾“å‡ºé’‰ 0, è‡ªåŠ¨å¤ä½é™æ¬¡æ•°)
+           bit2 = 0x04 é¡¶æ­»/æ— è¿›å±•å‘Šè­¦(ä¸é’‰è¾“å‡º, ç²˜æ» 2 s)   bit3 = 0x08 æœ¬æ‹è¯»æ•°è¢«é˜²æŠ–æ‹’æ‰(ç¬æ€) */
         motor_link_ch_set(CH_STEER_STATUS,
                           (float)(steer_abs_self_check_ok() | ((uint16)steer_ctrl_fault() << 1)));
 
-        /* --- Ò£¿Ø(21~24): ½Ó¹Ü×´Ì¬ / Ò¡¸ËÔ­Ê¼Öµ / ½ÓÊÕ»úÖ¡Êı --- */
+        /* --- é¥æ§(21~24): æ¥ç®¡çŠ¶æ€ / æ‘‡æ†åŸå§‹å€¼ / æ¥æ”¶æœºå¸§æ•° --- */
         motor_link_ch_set(CH_RC_ENGAGE,    (float)RC_Engage);
         motor_link_ch_set(CH_RC_CH1,       (float)RC_Raw_Ch1);
         motor_link_ch_set(CH_RC_CH2,       (float)RC_Raw_Ch2);
         motor_link_ch_set(CH_RC_FRAMES,    (float)RC_Frames);
 
-        /* --- ÔöÒæ»Ø¶Á(25~26) --- */
+        /* --- å¢ç›Šå›è¯»(25~26) --- */
         motor_link_ch_set(CH_K_V,          spd_g.k_v);
         motor_link_ch_set(CH_K_Z,          spd_g.k_z);
 
-        /* --- ¹ßµ¼(39~44): ±ØĞë×ßÔ­×Ó¿ìÕÕ, Ö±½Ó¶ÁÈ«¾ÖÁ¿»áÄÃµ½ËºÁÑÖµ --- */
+        /* --- æƒ¯å¯¼(39~44): å¿…é¡»èµ°åŸå­å¿«ç…§, ç›´æ¥è¯»å…¨å±€é‡ä¼šæ‹¿åˆ°æ’•è£‚å€¼ --- */
         {
             ins_imu_snap_t  imu;
             ins_odom_snap_t odom;
@@ -207,33 +207,33 @@ static void motor_fill_telemetry (void)
             motor_link_ch_set(CH_INS_Y,    odom.y);
             motor_link_ch_set(CH_INS_DIST, odom.dist_abs);
 
-            /* ×´Ì¬Î»Í¼ 8 Î», Ë³Ğò¹Ì¶¨, ÉÏÎ»»ú²à²»¿É¸Ä */
-            if (ins_imu_ready())                 { f |= 0x01u; }   /* IMU ¾ÍĞ÷(ÁãÆ«±ê¶¨Íê)  */
-            if (imu.flags & INS_ST_MAG_CAL_DONE) { f |= 0x02u; }   /* ´ÅÁ¦¼ÆÒÑ±ê¶¨          */
-            if (odom.flags & ODOM_ST_STILL)      { f |= 0x04u; }   /* ÅĞ¶¨¾²Ö¹(ZUPT ´°¿Ú)   */
-            if (odom.flags & ODOM_ST_SLIP)       { f |= 0x08u; }   /* ±¾ÅÄÅĞ´ò»¬(Ö»±¨¾¯)    */
-            if (imu.flags & INS_ST_IMU_LINK_BAD) { f |= 0x40u; }   /* IMU Í¨ĞÅ»µ            */
-            if (imu.flags & INS_ST_WARN)         { f |= 0x80u; }   /* ÆäËü¸æ¾¯              */
+            /* çŠ¶æ€ä½å›¾ 8 ä½, é¡ºåºå›ºå®š, ä¸Šä½æœºä¾§ä¸å¯æ”¹ */
+            if (ins_imu_ready())                 { f |= 0x01u; }   /* IMU å°±ç»ª(é›¶åæ ‡å®šå®Œ)  */
+            if (imu.flags & INS_ST_MAG_CAL_DONE) { f |= 0x02u; }   /* ç£åŠ›è®¡å·²æ ‡å®š          */
+            if (odom.flags & ODOM_ST_STILL)      { f |= 0x04u; }   /* åˆ¤å®šé™æ­¢(ZUPT çª—å£)   */
+            if (odom.flags & ODOM_ST_SLIP)       { f |= 0x08u; }   /* æœ¬æ‹åˆ¤æ‰“æ»‘(åªæŠ¥è­¦)    */
+            if (imu.flags & INS_ST_IMU_LINK_BAD) { f |= 0x40u; }   /* IMU é€šä¿¡å            */
+            if (imu.flags & INS_ST_WARN)         { f |= 0x80u; }   /* å…¶å®ƒå‘Šè­¦              */
             motor_link_ch_set(CH_INS_FLAGS, (float)f);
         }
 
-        /* --- Â·±í/»Ø·Å(45~47) --- */
+        /* --- è·¯è¡¨/å›æ”¾(45~47) --- */
         motor_link_ch_set(CH_RT_CNT,   (float)route_app_count());
         motor_link_ch_set(CH_RT_ST,    (float)route_app_status());
         motor_link_ch_set(CH_PB_ELAT,  route_pb_elat());
-        /* CH36 = º½ÏòÍâ»·µÄÊµ¼ÊÊäÈë, ÓÅÏÈ¼¶: º½Ïò²âÊÔ > º½Ïò»·(PP/Ò£¿Ø) > µ±Ç°º½Ïò */
+        /* CH36 = èˆªå‘å¤–ç¯çš„å®é™…è¾“å…¥, ä¼˜å…ˆçº§: èˆªå‘æµ‹è¯• > èˆªå‘ç¯(PP/é¥æ§) > å½“å‰èˆªå‘ */
         motor_link_ch_set(CH_TAR_YAW, (0u != head_test_active()) ? head_test_tar_yaw()
                                     : ((0u != steer.head_enable) ? steer_ctrl_get_target_yaw()
                                                                  : ins_odom_get_yaw()));
-        motor_link_ch_set(CH_HT_SEG,      head_test_seg());              /* 0¹Ø/1..n¶Î/254Íê */
+        motor_link_ch_set(CH_HT_SEG,      head_test_seg());              /* 0å…³/1..næ®µ/254å®Œ */
 
-        /* --- Õï¶ÏÈı¼şÌ×(38~40): tick_ms Ê±»ù(60 s Ó¦ÕÇÔ¼ 60000, Æ«Ğ¡ = ÖĞ¶Ï±»¶öËÀ) /
-           ins_frz ZUPT ¶³½áÆÚ¶ªÆúµÄ×ª½Ç(¶È, ÀÛ¼ÆÖ»¶Á) / ins_static IMU ÅĞ¾²Ö¹±êÖ¾ --- */
+        /* --- è¯Šæ–­ä¸‰ä»¶å¥—(38~40): tick_ms æ—¶åŸº(60 s åº”æ¶¨çº¦ 60000, åå° = ä¸­æ–­è¢«é¥¿æ­») /
+           ins_frz ZUPT å†»ç»“æœŸä¸¢å¼ƒçš„è½¬è§’(åº¦, ç´¯è®¡åªè¯») / ins_static IMU åˆ¤é™æ­¢æ ‡å¿— --- */
         motor_link_ch_set(CH_TICK_MS,    (float)motor_link_now_ms());
         motor_link_ch_set(CH_INS_FRZ,    ins_imu_zupt_frz_deg());
         motor_link_ch_set(CH_INS_STATIC, (float)((0u != (ins_imu_flags() & INS_ST_STATIC)) ? 1u : 0u));
 
-        /* --- »Ø·ÅÕï¶Ï(41~43): kref ¹é 0 ¶ø best Õı³£ = ±íÄÚÆ½¶Î, best Ìø±ä = Í¶Ó°´°¿ÚÇĞ»» --- */
+        /* --- å›æ”¾è¯Šæ–­(41~43): kref å½’ 0 è€Œ best æ­£å¸¸ = è¡¨å†…å¹³æ®µ, best è·³å˜ = æŠ•å½±çª—å£åˆ‡æ¢ --- */
         motor_link_ch_set(CH_PB_BEST, route_pb_get_best());
         motor_link_ch_set(CH_PB_FI,   route_pb_get_fi());
         motor_link_ch_set(CH_PB_KREF, route_pb_get_kref());
@@ -241,8 +241,8 @@ static void motor_fill_telemetry (void)
         return;
     }
 
-    /* ²É¼¯µµ train: 16 Í¨µÀ, tel_sel = 3¡£¶æ½Ç/¶æ½ÇËÙÂÊ/ÖĞĞÄËÙ¶È/×óÓÒÂÖËÙ/yaw_rate/Ä¿±êÇúÂÊ/Õ¼¿Õ±È,
-       ²»º¬ x/y/dist/yaw; Ò»Ö¡ 85 B, TRCH_* ¶ÀÁ¢±àºÅ, ÌîÍêÖ±½Ó return¡£ */
+    /* é‡‡é›†æ¡£ train: 16 é€šé“, tel_sel = 3ã€‚èˆµè§’/èˆµè§’é€Ÿç‡/ä¸­å¿ƒé€Ÿåº¦/å·¦å³è½®é€Ÿ/yaw_rate/ç›®æ ‡æ›²ç‡/å ç©ºæ¯”,
+       ä¸å« x/y/dist/yaw; ä¸€å¸§ 85 B, TRCH_* ç‹¬ç«‹ç¼–å·, å¡«å®Œç›´æ¥ returnã€‚ */
     if (spd_tel_sel >= 2.5f)
     {
         ins_imu_snap_t imu;
@@ -275,7 +275,7 @@ static void motor_fill_telemetry (void)
 
 }
 
-/* ---- ¶¨µã´òÓ¡: ²»ÓÃ %f, IAR Ä¬ÈÏ¿â²»±£Ö¤¸¡µã¸ñÊ½»¯; pf2 ·µ»ØÕûÊı²¿·Ö, Ğ¡ÊıĞ´½ø *fp ---- */
+/* ---- å®šç‚¹æ‰“å°: ä¸ç”¨ %f, IAR é»˜è®¤åº“ä¸ä¿è¯æµ®ç‚¹æ ¼å¼åŒ–; pf2 è¿”å›æ•´æ•°éƒ¨åˆ†, å°æ•°å†™è¿› *fp ---- */
 static int pf2 (float v, int *fp)
 {
     int32 t = (int32)(v * 100.0f);
@@ -298,7 +298,7 @@ static int pf2 (float v, int *fp)
     return i;
 }
 
-/* ---- Ã¿ 1 Ãë´òÓ¡Ò»´Î×´Ì¬: ÕâĞĞÔÚÌø¼´ËµÃ÷Ö÷Ñ­»·¡¢Ê±ÖÓ¡¢´®¿Ú¶¼»î×Å ---- */
+/* ---- æ¯ 1 ç§’æ‰“å°ä¸€æ¬¡çŠ¶æ€: è¿™è¡Œåœ¨è·³å³è¯´æ˜ä¸»å¾ªç¯ã€æ—¶é’Ÿã€ä¸²å£éƒ½æ´»ç€ ---- */
 static void motor_print_status (void)
 {
     uint32 now;
@@ -325,10 +325,10 @@ static void motor_print_status (void)
     i3 = pf2(spd_target_r, &f3);
     i4 = pf2(enc_r.rps,    &f4);
 
-    /* int = INT(P02_4) µçÆ½, 1=¿ÕÏĞ 0=Ã¦(ÕûÖ¡¶ªÆú); tx = ½»¸øÄ£¿éµÄÖ¡Êı(Ó¦ 50/s)¡£
-       int=0 ºã²»±ä = ²é INT Ïß»ò¹©µç; int=1 ¶ø tx ²»ÕÇ = Çı¶¯ mutex ¿¨ BUSY; tx ÕÇ¶øÎŞÊı¾İ = WiFi/Socket¡£
-       dL = ±¾ÅÄ¼ÆÊıÔöÁ¿, Ó¦Ô¼ cpr*v*0.005 (1.4 rps -> 11~12); fL/gL = ÀÛ¼Æ»»Ïò/Ã«´Ì¶ªÆú,
-       fL Ã¿ÃëÕÇ¼¸Ê®ÒÔÉÏ = DIR Ïß¶¶¶¯; gL ÔÚÕÇ = ¿âÄÚ¶Á DIR Óë±¾Ä£¿é²»Ò»ÖÂ¡£ */
+    /* int = INT(P02_4) ç”µå¹³, 1=ç©ºé—² 0=å¿™(æ•´å¸§ä¸¢å¼ƒ); tx = äº¤ç»™æ¨¡å—çš„å¸§æ•°(åº” 50/s)ã€‚
+       int=0 æ’ä¸å˜ = æŸ¥ INT çº¿æˆ–ä¾›ç”µ; int=1 è€Œ tx ä¸æ¶¨ = é©±åŠ¨ mutex å¡ BUSY; tx æ¶¨è€Œæ— æ•°æ® = WiFi/Socketã€‚
+       dL = æœ¬æ‹è®¡æ•°å¢é‡, åº”çº¦ cpr*v*0.005 (1.4 rps -> 11~12); fL/gL = ç´¯è®¡æ¢å‘/æ¯›åˆºä¸¢å¼ƒ,
+       fL æ¯ç§’æ¶¨å‡ åä»¥ä¸Š = DIR çº¿æŠ–åŠ¨; gL åœ¨æ¶¨ = åº“å†…è¯» DIR ä¸æœ¬æ¨¡å—ä¸ä¸€è‡´ã€‚ */
     printf("[%6lu s] err=%u online=%u en=0x%04X rx_age=%lums safe=0x%04X int=%u tx=%lu | "
            "L tgt=%d.%02d v=%d.%02d | R tgt=%d.%02d v=%d.%02d | cpr=%lu/%lu "
            "| dL=%d fL=%lu gL=%lu\r\n",
@@ -348,11 +348,11 @@ static void motor_print_status (void)
            (unsigned long)enc_l.flip,
            (unsigned long)enc_l.glitch);
 
-    /* º½Ïò×Ô¼ì: yaw ÎªÀÛ»ıÖµ, ×ªÒ»È¦Ó¦ +360; rej = ±»µ¥ÅÄ×ª½ÇÕ¢ÃÅ¶ªµôµÄÅÄÊı, ·Ç 0 ÏÈ²é SPI_2 Óë¹©µç */
+    /* èˆªå‘è‡ªæ£€: yaw ä¸ºç´¯ç§¯å€¼, è½¬ä¸€åœˆåº” +360; rej = è¢«å•æ‹è½¬è§’é—¸é—¨ä¸¢æ‰çš„æ‹æ•°, é 0 å…ˆæŸ¥ SPI_2 ä¸ä¾›ç”µ */
     printf("[##] IMU yaw=%ld deg  rej=%u\r\n",
            (long)ins_imu_get_yaw(), (unsigned)ins_imu_yaw_rej());
 
-    /* ×ªÏòÒ»ĞĞ: ×ª½Çµ¥Î»·½ÏòÅÌ¶È; ²»¶¯·½ÏòÅÌÊ± raw Ó¦ÎÈ¶¨, delta Ó¦½ü 0 */
+    /* è½¬å‘ä¸€è¡Œ: è½¬è§’å•ä½æ–¹å‘ç›˜åº¦; ä¸åŠ¨æ–¹å‘ç›˜æ—¶ raw åº”ç¨³å®š, delta åº”è¿‘ 0 */
     {
         int st_t, st_tf, st_d, st_df, st_e, st_ef;
 
@@ -360,8 +360,8 @@ static void motor_print_status (void)
         st_d  = pf2(steer.meas_delta,   &st_df);
         st_e  = pf2(steer.err,          &st_ef);
 
-        /* raw = »·ÀïÕæÕıÓÃµÄÖµ(·À¶¶ºó)   rl = ±¾ÅÄ SPI Êµ¶ÁÖµ   bad = ÀÛ¼Æ¾ÜÑù   ar = ÀÛ¼Æ×Ô¶¯¸´Î»
-           flt = 0x01 ·´À¡Ê§Ğ§(Ëø´æ, ¶¤Êä³ö) / 0x02 ¶¥ËÀ¸æ¾¯ / 0x04 ±¾ÅÄ¶ªÑù(Ë²Ì¬) */
+        /* raw = ç¯é‡ŒçœŸæ­£ç”¨çš„å€¼(é˜²æŠ–å)   rl = æœ¬æ‹ SPI å®è¯»å€¼   bad = ç´¯è®¡æ‹’æ ·   ar = ç´¯è®¡è‡ªåŠ¨å¤ä½
+           flt = 0x01 åé¦ˆå¤±æ•ˆ(é”å­˜, é’‰è¾“å‡º) / 0x02 é¡¶æ­»å‘Šè­¦ / 0x04 æœ¬æ‹ä¸¢æ ·(ç¬æ€) */
         printf("        STEER tgt=%d.%02d delta=%d.%02d err=%d.%02d duty=%d raw=%u rl=%u en=%u "
                "flt=0x%02X sc=%u bad=%u ar=%lu\r\n",
                st_t, st_tf,
@@ -377,9 +377,9 @@ static void motor_print_status (void)
                (unsigned long)steer.recover_cnt);
     }
 
-    /* Ò£¿ØÒ»ĞĞ, ²»½Ó¹ÜÊ±°´Ğò²é: FRM ²»ÕÇ = ½ÓÊÕ»úÃ»·¢/Ïß´í/²¨ÌØÂÊ·Ç SBUS 100k;
-       CH1/CH2 ²»ÔÚ 992 ¸½½ü = Ò¡¸ËÎ´»ØÖĞ»òÁ¿³Ì²»Í¬; CH5/CH6 ²»ÔÚ 192/1792 = Í¨µÀ½Ó´í»ò¼«ĞÔºê·´;
-       ENG ºã 0 = CH6 Î´ºÏÕ¢»ò rc_arm_en=0; ENG=3 = Ê§¿Ø, ENG=4 = ¼±Í£, ENG=2 ³µ²»¶¯ = ²é SAFE */
+    /* é¥æ§ä¸€è¡Œ, ä¸æ¥ç®¡æ—¶æŒ‰åºæŸ¥: FRM ä¸æ¶¨ = æ¥æ”¶æœºæ²¡å‘/çº¿é”™/æ³¢ç‰¹ç‡é SBUS 100k;
+       CH1/CH2 ä¸åœ¨ 992 é™„è¿‘ = æ‘‡æ†æœªå›ä¸­æˆ–é‡ç¨‹ä¸åŒ; CH5/CH6 ä¸åœ¨ 192/1792 = é€šé“æ¥é”™æˆ–ææ€§å®å;
+       ENG æ’ 0 = CH6 æœªåˆé—¸æˆ– rc_arm_en=0; ENG=3 = å¤±æ§, ENG=4 = æ€¥åœ, ENG=2 è½¦ä¸åŠ¨ = æŸ¥ SAFE */
     {
         int rt, rf, ra, rd, rs, rsf;
 
@@ -402,19 +402,19 @@ static void motor_print_status (void)
                (unsigned)motor_link_ch_count(),
                (unsigned)motor_link_tx_period_ms());
 
-        /* CH3 Ô­Ê¼Öµ: c3 ²»¶¯ = Í¨µÀÎ´½Ó»òÎ´Ó³Éä; bad Î»Í¼ bit0 CH1 / bit1 CH2 µôÏß */
+        /* CH3 åŸå§‹å€¼: c3 ä¸åŠ¨ = é€šé“æœªæ¥æˆ–æœªæ˜ å°„; bad ä½å›¾ bit0 CH1 / bit1 CH2 æ‰çº¿ */
         printf("        RC3 c3=%u bad=%u yw=%d\r\n",
                (unsigned)RC_Raw_Ch3, (unsigned)RC_Stick_Bad,
                (int)steer_yaw_deg);
     }
 
-    /* ¹ßµ¼Ò»ĞĞ: imu_init ·Ç 0 = IMU Î´Ê¶±ğ, ²é P15 ½ÓÏßÓëĞÍºÅ; yaw ¾²Ö¹ÈÔ×ß = ¿´ bz; gz ¾²Ö¹³¬
-       0.2 dps = ÁãÆ«Î´ÊÕÁ²»ò ZUPT Î´ÉúĞ§; x/y ·´Ïò = INS_YAW_SIGN Óë inv_*; dist ²î k ±¶ = ins_mpm ´í */
+    /* æƒ¯å¯¼ä¸€è¡Œ: imu_init é 0 = IMU æœªè¯†åˆ«, æŸ¥ P15 æ¥çº¿ä¸å‹å·; yaw é™æ­¢ä»èµ° = çœ‹ bz; gz é™æ­¢è¶…
+       0.2 dps = é›¶åæœªæ”¶æ•›æˆ– ZUPT æœªç”Ÿæ•ˆ; x/y åå‘ = INS_YAW_SIGN ä¸ inv_*; dist å·® k å€ = ins_mpm é”™ */
     {
         int   yr, yf, gr, gf, xr, xf, dr, df, sr, sf, br, bf;
         float bx, by, bz;
 
-        ins_diag_get_bias(&bx, &by, &bz);   /* ÔÚÏßÁãÆ«, raw LSB Óò(1 LSB = 0.0699 dps) */
+        ins_diag_get_bias(&bx, &by, &bz);   /* åœ¨çº¿é›¶å, raw LSB åŸŸ(1 LSB = 0.0699 dps) */
 
         yr = pf2(ins_imu_get_yaw(),        &yf);
         gr = pf2(ins_imu_get_gyro_z_dps(), &gf);
@@ -439,50 +439,50 @@ int main (void)
 {
     uint8   ret;
 
-    clock_init(SYSTEM_CLOCK_250M);      /* Ê±ÖÓÅäÖÃ¼°ÏµÍ³³õÊ¼»¯, Îñ±Ø±£Áô */
-    debug_init();                       /* µ÷ÊÔ´®¿ÚĞÅÏ¢³õÊ¼»¯ */
+    clock_init(SYSTEM_CLOCK_250M);      /* æ—¶é’Ÿé…ç½®åŠç³»ç»Ÿåˆå§‹åŒ–, åŠ¡å¿…ä¿ç•™ */
+    debug_init();                       /* è°ƒè¯•ä¸²å£ä¿¡æ¯åˆå§‹åŒ– */
 
     printf("[##] UART OK  steer + dual motor speed loop (WiFi)\r\n");
 
-    motor_drv_init();                   /* Ö´ĞĞÆ÷: ÈıÂ· PWM/DIR(×óºó/ÓÒºó/×ªÏò)ÉÏµç¾ùÊä³ö 0 */
+    motor_drv_init();                   /* æ‰§è¡Œå™¨: ä¸‰è·¯ PWM/DIR(å·¦å/å³å/è½¬å‘)ä¸Šç”µå‡è¾“å‡º 0 */
 
-    spd_enc_init();                     /* ±àÂëÆ÷: ×óÓÒºóÂÖÂö³å + ·½Ïò */
+    spd_enc_init();                     /* ç¼–ç å™¨: å·¦å³åè½®è„‰å†² + æ–¹å‘ */
 
-    /* ---- ×ªÏò¾ø¶Ô±àÂëÆ÷ + ×ªÏòÎ»ÖÃ»·: Ö±Á÷µç»ú + ¾ø¶Ô±àÂëÆ÷, ¿¿Î»ÖÃ»·±£³Ö½Ç¶È ----
-       steer_abs_init() ÄÚº¬ SPI ×Ô¼ì(×î³¤Ô¼ 100 ms), Ê§°Ü²»×èÈûÖ»ÊÇ½Ç¶È²»¿ÉĞÅ;
-       Ä¬ÈÏÈ«²»Ê¹ÄÜ, ĞèÏÈ±ê¶¨ÔÙ°Ñ×ªÏòÄÚ»·Ê¹ÄÜÖÃ 1¡£ */
+    /* ---- è½¬å‘ç»å¯¹ç¼–ç å™¨ + è½¬å‘ä½ç½®ç¯: ç›´æµç”µæœº + ç»å¯¹ç¼–ç å™¨, é ä½ç½®ç¯ä¿æŒè§’åº¦ ----
+       steer_abs_init() å†…å« SPI è‡ªæ£€(æœ€é•¿çº¦ 100 ms), å¤±è´¥ä¸é˜»å¡åªæ˜¯è§’åº¦ä¸å¯ä¿¡;
+       é»˜è®¤å…¨ä¸ä½¿èƒ½, éœ€å…ˆæ ‡å®šå†æŠŠè½¬å‘å†…ç¯ä½¿èƒ½ç½® 1ã€‚ */
     steer_abs_init();
     steer_ctrl_init();
 
-    spd_safety_init();                  /* ±£»¤²ã: ÄÚ²¿ÅÜÒ»±éÅäÖÃ×Ô¼ì */
-    spd_ctrl_init();                    /* ËÙ¶È»· */
+    spd_safety_init();                  /* ä¿æŠ¤å±‚: å†…éƒ¨è·‘ä¸€éé…ç½®è‡ªæ£€ */
+    spd_ctrl_init();                    /* é€Ÿåº¦ç¯ */
 
-    /* ---- Ğ­Òé²ã: WiFi / ²Ëµ¥ / Ò£¿Ø ÈıÌõĞ´ÈëÂ·¾¶Í³Ò»µ½ proto_exec(); Ã¿È¦µ÷ proto_tick() Ğø×â ----
-       ĞëÔÚ remote_ctrl_init() Ö®Ç°, ºóÕß»áµ÷ proto_estop()¡£ */
+    /* ---- åè®®å±‚: WiFi / èœå• / é¥æ§ ä¸‰æ¡å†™å…¥è·¯å¾„ç»Ÿä¸€åˆ° proto_exec(); æ¯åœˆè°ƒ proto_tick() ç»­ç§Ÿ ----
+       é¡»åœ¨ remote_ctrl_init() ä¹‹å‰, åè€…ä¼šè°ƒ proto_estop()ã€‚ */
     proto_init();
 
-    /* ---- ¹ßµ¼: IMU + º½Î»ÍÆËã; ins_imu_init() ×èÈûÔ¼ 5 s(1000 µã x 5 ms ÁãÆ«±ê¶¨) ----
-       ÆÚ¼ä³µĞë¾²Ö¹, ¼«²î³¬ÏŞÖØÀ´, ×î¶à 5 ´Î; ĞëÔÚ pit_ms_init() Ö®Ç°µ÷ÓÃ, ·ñÔòÖĞ¶ÏÀïµÄ
-       ins_imu_update() »áÓÃÎ´±ê¶¨ÁãÆ«»ı·Ö¡£963RA Óë IMU660RA/RC Òı½ÅÏàÍ¬, Æä 0x0F Ó¦Îª 0x6A¡£ */
+    /* ---- æƒ¯å¯¼: IMU + èˆªä½æ¨ç®—; ins_imu_init() é˜»å¡çº¦ 5 s(1000 ç‚¹ x 5 ms é›¶åæ ‡å®š) ----
+       æœŸé—´è½¦é¡»é™æ­¢, æå·®è¶…é™é‡æ¥, æœ€å¤š 5 æ¬¡; é¡»åœ¨ pit_ms_init() ä¹‹å‰è°ƒç”¨, å¦åˆ™ä¸­æ–­é‡Œçš„
+       ins_imu_update() ä¼šç”¨æœªæ ‡å®šé›¶åç§¯åˆ†ã€‚963RA ä¸ IMU660RA/RC å¼•è„šç›¸åŒ, å…¶ 0x0F åº”ä¸º 0x6Aã€‚ */
     ins_odom_init();
     ret = ins_imu_init();
     {
         uint8 id0f = 0u, id00 = 0u, idv = 0u;
         ins_imu_dev_id_get(&id0f, &id00, &idv);
-        printf("[##] INS    imu_init=%u id(0F)=0x%02X id(00)=0x%02X (963RA ÆÚÍû 0x6A; 0x00/0xFF=Ã»½ÓÉÏ)\r\n",
+        printf("[##] INS    imu_init=%u id(0F)=0x%02X id(00)=0x%02X (963RA æœŸæœ› 0x6A; 0x00/0xFF=æ²¡æ¥ä¸Š)\r\n",
                (unsigned)ret, (unsigned)id0f, (unsigned)id00);
     }
     {
         float m  = ins_m_per_rev;
         int   mi = (int)m;
         int   mf = (int)((m - (float)mi) * 10000.0f);
-        printf("[##] INS    mpm=%d.%04d m/rev (¿¨¶¡ cpr=1858 -> Õâ¾ÍÊÇºóÂÖÖÜ³¤; Õ¼Î»Öµ, ÍÆ 2m ±ØÖØ±ê)\r\n",
+        printf("[##] INS    mpm=%d.%04d m/rev (å¡ä¸ cpr=1858 -> è¿™å°±æ˜¯åè½®å‘¨é•¿; å ä½å€¼, æ¨ 2m å¿…é‡æ ‡)\r\n",
                mi, mf);
     }
 
-    /* ---- Ò£¿Ø½ÓÊÕ»ú UART_4 / P14_0: SBUS 100 kbps, 6 Í¨µÀ ----
-       ĞëÔÚ pit_ms_init(PIT_CH2, 5) Ö®Ç°(ÄÚ²¿ÓÃ TC_TIME2_CH2 ¼ÆÊ±Ö¡¼ä¸ô); ½Ó¹ÜÊ±ÓÉ
-       remote_ctrl_apply() µ÷ spd_safety_set_local(1), Ò£¿Ø²»ÒÀÀµ WiFi¡£ */
+    /* ---- é¥æ§æ¥æ”¶æœº UART_4 / P14_0: SBUS 100 kbps, 6 é€šé“ ----
+       é¡»åœ¨ pit_ms_init(PIT_CH2, 5) ä¹‹å‰(å†…éƒ¨ç”¨ TC_TIME2_CH2 è®¡æ—¶å¸§é—´éš”); æ¥ç®¡æ—¶ç”±
+       remote_ctrl_apply() è°ƒ spd_safety_set_local(1), é¥æ§ä¸ä¾èµ– WiFiã€‚ */
     remote_ctrl_init();
 
     if (0 != spd_safety_cfg_bad())
@@ -490,24 +490,24 @@ int main (void)
         printf("[##] CONFIG BAD 0x%02X - motor stays off\r\n", (unsigned)spd_safety_cfg_bad());
     }
 
-    /* ²ÎÊı³Ö¾Ã»¯: ´Ó Work Flash Ò³ 0 ¶Á»ØÉÏ´Î SAVE µÄ²ÎÊı; ĞëÔÚÄ£¿é init Ö®ºó¡¢¿ª 5 ms ÖĞ¶ÏÖ®Ç°¡£
-       ÃüÁîÓëÎ£ÏÕÁ¿(target / ol_en / ol_duty / steer_en / ins_zero)²»»Ö¸´, ÉÏµçÎª°²È«Öµ¡£ */
+    /* å‚æ•°æŒä¹…åŒ–: ä» Work Flash é¡µ 0 è¯»å›ä¸Šæ¬¡ SAVE çš„å‚æ•°; é¡»åœ¨æ¨¡å— init ä¹‹åã€å¼€ 5 ms ä¸­æ–­ä¹‹å‰ã€‚
+       å‘½ä»¤ä¸å±é™©é‡(target / ol_en / ol_duty / steer_en / ins_zero)ä¸æ¢å¤, ä¸Šç”µä¸ºå®‰å…¨å€¼ã€‚ */
     app_param_init();
 
-    /* Â·±í: ¶Á²ÛË÷Òı -> ²¹¿Õ²ÛÄÚ½¨±í -> ÔØÈë active ²Û; ĞëÔÚ¿ª 5 ms ÖĞ¶ÏÖ®Ç°(×èÈû¶Á Flash),
-       ÄÚ½¨±íÖ»²¹¿Õ²ÛÇÒĞëÔÚ flash_load Ö®Ç°¡£ */
+    /* è·¯è¡¨: è¯»æ§½ç´¢å¼• -> è¡¥ç©ºæ§½å†…å»ºè¡¨ -> è½½å…¥ active æ§½; é¡»åœ¨å¼€ 5 ms ä¸­æ–­ä¹‹å‰(é˜»å¡è¯» Flash),
+       å†…å»ºè¡¨åªè¡¥ç©ºæ§½ä¸”é¡»åœ¨ flash_load ä¹‹å‰ã€‚ */
     route_app_init();
     route_pb_init();
 
-    spd_bench_init();                   /* 12 ¶ÎÅÜ°à: ³õÊ¼»¯, ¿ª»·Ä¬ÈÏ¹Ø±Õ */
+    spd_bench_init();                   /* 12 æ®µè·‘ç­: åˆå§‹åŒ–, å¼€ç¯é»˜è®¤å…³é—­ */
 
-    pit_ms_init(PIT_CH2, 5);            /* 5 ms Ê±»ù: ËÙ¶È»· + Á´Â· */
-    interrupt_global_enable(0);         /* pit0_ch2_isr ÀïÅÜ spd_ctrl_tick() */
+    pit_ms_init(PIT_CH2, 5);            /* 5 ms æ—¶åŸº: é€Ÿåº¦ç¯ + é“¾è·¯ */
+    interrupt_global_enable(0);         /* pit0_ch2_isr é‡Œè·‘ spd_ctrl_tick() */
 
-    system_delay_ms(500);               /* µÈ WiFi Ä£¿éÉÏµçÎÈ¶¨, ·ñÔò½ô½Ó×ÅµÄ init ÈİÒ×Ê§°Ü */
+    system_delay_ms(500);               /* ç­‰ WiFi æ¨¡å—ä¸Šç”µç¨³å®š, å¦åˆ™ç´§æ¥ç€çš„ init å®¹æ˜“å¤±è´¥ */
 
-    /* ---- WiFi-SPI Á´Â·: ×èÈû, WiFi ×î³¤Ô¼ 10 s, Socket ×î³¤ÊıÊ®Ãë ----
-       Ê§°Ü·µ»Ø·Ç 0, Ö÷Ñ­»·ÕÕÅÜ, Ö»ÊÇ±£»¤²ãÓÀÔ¶²»ÔÊĞí³öÁ¦¡£ */
+    /* ---- WiFi-SPI é“¾è·¯: é˜»å¡, WiFi æœ€é•¿çº¦ 10 s, Socket æœ€é•¿æ•°åç§’ ----
+       å¤±è´¥è¿”å›é 0, ä¸»å¾ªç¯ç…§è·‘, åªæ˜¯ä¿æŠ¤å±‚æ°¸è¿œä¸å…è®¸å‡ºåŠ›ã€‚ */
     ret = motor_link_init();
     if (0 != ret)
     {
@@ -520,12 +520,12 @@ int main (void)
 
     g_print_ms = motor_link_now_ms();
 
-    /* ---- ÆÁÄ» + °´¼ü(²Ëµ¥); Öğ·É IPS200 SPI °æ(Ó²¼ş SPI_1), 6 ½ÅÓÉ zf_device_ips200.h ¶¨ËÀ ----
+    /* ---- å±å¹• + æŒ‰é”®(èœå•); é€é£ IPS200 SPI ç‰ˆ(ç¡¬ä»¶ SPI_1), 6 è„šç”± zf_device_ips200.h å®šæ­» ----
        SCL P12_2 / SDA(MOSI) P12_1 / CS P12_3 / RST P22_4 / DC P22_3 / BLK P11_0
-       ÆäËüÄ£¿é²»Õ¼Õâ 6 ½Å: ×ªÏò±àÂëÆ÷ SPI_4(P07_x)¡¢WiFi SPI_0(P02_x)¡¢IMU SPI_2(P15_x)¡£
-       °´¼ü P20_3 / P20_2 / P20_0 / P20_1; ĞëÔÚ motor_link_init() Ö®ºó, key_init(10) Óë
-       motor_link_now_ms() µÄ 10 ms ·ÖÆµÒ»ÖÂ; Ë¢ĞÂºÁÃë¼¶(ÇåÆÁÔ¼ 40 ms), Ö»ÄÜÔÚÖ÷Ñ­»·»­,
-       ui_init() Óë ui_menu_init() È±Ò»¼´ºÚÆÁ¡£ */
+       å…¶å®ƒæ¨¡å—ä¸å è¿™ 6 è„š: è½¬å‘ç¼–ç å™¨ SPI_4(P07_x)ã€WiFi SPI_0(P02_x)ã€IMU SPI_2(P15_x)ã€‚
+       æŒ‰é”® P20_3 / P20_2 / P20_0 / P20_1; é¡»åœ¨ motor_link_init() ä¹‹å, key_init(10) ä¸
+       motor_link_now_ms() çš„ 10 ms åˆ†é¢‘ä¸€è‡´; åˆ·æ–°æ¯«ç§’çº§(æ¸…å±çº¦ 40 ms), åªèƒ½åœ¨ä¸»å¾ªç¯ç”»,
+       ui_init() ä¸ ui_menu_init() ç¼ºä¸€å³é»‘å±ã€‚ */
     ui_init();
     ui_puts_row(0, 0, "Kart10 INS+Route");
     printf("[##] UI init done: IPS200 SPI_1 (SCL P12_2 / SDA P12_1 / CS P12_3 / DC P22_3 / RST P22_4 / BLK P11_0)\r\n");
@@ -533,38 +533,38 @@ int main (void)
 
     while (true)
     {
-        /* 0) Ò£²âµµ°¸: tel_sel 0=Ñ²Ïß 22 / 1=±ê¶¨ 18 / 2=È«Á¿ 45 / 3=²É¼¯ 16; ÉÏÎ»»úµµ°¸ĞëÍ¬²½ÇĞ */
+        /* 0) é¥æµ‹æ¡£æ¡ˆ: tel_sel 0=å·¡çº¿ 22 / 1=æ ‡å®š 18 / 2=å…¨é‡ 45 / 3=é‡‡é›† 16; ä¸Šä½æœºæ¡£æ¡ˆé¡»åŒæ­¥åˆ‡ */
         motor_link_set_ch_count((spd_tel_sel < 0.5f) ? MOTOR_CH_COUNT_ROUTE :
                                 ((spd_tel_sel < 1.5f) ? MOTOR_CH_COUNT_CALIB :
                                  ((spd_tel_sel < 2.5f) ? MOTOR_CH_COUNT_FULL : MOTOR_CH_COUNT_TRAIN)));
         motor_link_set_tx_period_ms((uint16)spd_tel_period);
 
-        /* 1) Á´Â·ÈÎÎñ: ÊÕÉÏÎ»»úÃüÁî + ·¢Ò£²â¡£Ã¿È¦±Øµ÷, ÇÒ²»¿É·ÅÔÚ¿ÉÄÜÊ§°ÜµÄ·ÖÖ§Àï */
+        /* 1) é“¾è·¯ä»»åŠ¡: æ”¶ä¸Šä½æœºå‘½ä»¤ + å‘é¥æµ‹ã€‚æ¯åœˆå¿…è°ƒ, ä¸”ä¸å¯æ”¾åœ¨å¯èƒ½å¤±è´¥çš„åˆ†æ”¯é‡Œ */
         motor_link_task();
 
-        /* 2) Ö÷Ñ­»·ĞÄÌø: ³¬¹ı 200 ms ÎŞĞÄÌø, ±£»¤²ã°ÑÁ½Â·Êä³ö¶¤ 0 */
+        /* 2) ä¸»å¾ªç¯å¿ƒè·³: è¶…è¿‡ 200 ms æ— å¿ƒè·³, ä¿æŠ¤å±‚æŠŠä¸¤è·¯è¾“å‡ºé’‰ 0 */
         spd_safety_heartbeat();
 
-        /* 2b) Ò£¿Ø: ÊÕ¿ìÕÕ -> »»Ëã -> ½Ó¹Ü×´Ì¬»ú -> Ğ´Ä¿±êÓë±¾µØµµÎ»; ÊôÂıËÙ¾ö²ß²ã,
-               5 ms ¿ØÖÆÈÔÔÚ pit0_ch2_isr¡£²»¿É×ö³É×èÈûÒ³Ãæ, ·ñÔòĞÄÌø¶Ï¡¢Êä³ö±»¶¤ 0¡£ */
+        /* 2b) é¥æ§: æ”¶å¿«ç…§ -> æ¢ç®— -> æ¥ç®¡çŠ¶æ€æœº -> å†™ç›®æ ‡ä¸æœ¬åœ°æ¡£ä½; å±æ…¢é€Ÿå†³ç­–å±‚,
+               5 ms æ§åˆ¶ä»åœ¨ pit0_ch2_isrã€‚ä¸å¯åšæˆé˜»å¡é¡µé¢, å¦åˆ™å¿ƒè·³æ–­ã€è¾“å‡ºè¢«é’‰ 0ã€‚ */
         remote_ctrl_update();
         remote_ctrl_apply();
 
-        /* 2c) Ğ­Òé²ãĞÄÌø: ¼ì²éÇı¶¯ÁîÅÆ×âÆÚ, µ½ÆÚÊÍ·Å; ĞëÔÚ route_pb_poll() Ö®Ç°ÅÜ */
+        /* 2c) åè®®å±‚å¿ƒè·³: æ£€æŸ¥é©±åŠ¨ä»¤ç‰Œç§ŸæœŸ, åˆ°æœŸé‡Šæ”¾; é¡»åœ¨ route_pb_poll() ä¹‹å‰è·‘ */
         proto_tick();
 
-        /* º½Ïò²âÊÔÅÜÔÚ 5 ms ÖĞ¶ÏÀï, ²»¿É´ÓÄÇÀïÅöĞ­Òé²ã; ´Ë´¦ÌæËüĞø SPI Çı¶¯È¨ */
+        /* èˆªå‘æµ‹è¯•è·‘åœ¨ 5 ms ä¸­æ–­é‡Œ, ä¸å¯ä»é‚£é‡Œç¢°åè®®å±‚; æ­¤å¤„æ›¿å®ƒç»­ SPI é©±åŠ¨æƒ */
         if (0u != head_test_active()) { (void)proto_drv_acquire(PROTO_SRC_SPI); }
 
-        /* 2d) ÅÜ°àÊÕÎ² + ÈÕÖ¾ÂäÅÌ + ²Ëµ¥; ·ÅÔÚĞÄÌøÖ®ºó(Ë¢ÆÁ×î²îÔ¼ 40 ms), ÈÕÖ¾Ã¿È¦×î¶àÒ»Ò³ Flash */
+        /* 2d) è·‘ç­æ”¶å°¾ + æ—¥å¿—è½ç›˜ + èœå•; æ”¾åœ¨å¿ƒè·³ä¹‹å(åˆ·å±æœ€å·®çº¦ 40 ms), æ—¥å¿—æ¯åœˆæœ€å¤šä¸€é¡µ Flash */
         spd_bench_poll();
         bench_log_poll();
-        route_app_poll();       /* Â·±í: Â¼ÖÆ²ÉÑù + ´®¿Ú¹à±í + Ã¿È¦Ò»Ò³ÂäÅÌ */
-        route_pb_poll();        /* Â·±í: »Ø·Å×´Ì¬»ú, ²»¸øËÙ¶ÈÊ±Ö»ËãÄ¿±êº½Ïò */
+        route_app_poll();       /* è·¯è¡¨: å½•åˆ¶é‡‡æ · + ä¸²å£çŒè¡¨ + æ¯åœˆä¸€é¡µè½ç›˜ */
+        route_pb_poll();        /* è·¯è¡¨: å›æ”¾çŠ¶æ€æœº, ä¸ç»™é€Ÿåº¦æ—¶åªç®—ç›®æ ‡èˆªå‘ */
         ui_menu_task();
 
-        /* 2e) ¹ßµ¼Âı¶¯×÷: Î»×Ë¹éÁã + IMU µôÏßÖØÊÔ(1 Hz)¡£¹éÁãĞëÎ»×ËÓëº½ÏòÒ»Æğ¹é,
-               ·ñÔòÂ·±íÓë»Ø·ÅµÄÏà¶ÔÁ¿ÕûÌå´íÎ»; ÖØÊÔÖ»ÔÚÁ´Â·»µÊ±×ö, ÄÇÊ±ÖĞ¶Ï²»Åö SPI_2¡£ */
+        /* 2e) æƒ¯å¯¼æ…¢åŠ¨ä½œ: ä½å§¿å½’é›¶ + IMU æ‰çº¿é‡è¯•(1 Hz)ã€‚å½’é›¶é¡»ä½å§¿ä¸èˆªå‘ä¸€èµ·å½’,
+               å¦åˆ™è·¯è¡¨ä¸å›æ”¾çš„ç›¸å¯¹é‡æ•´ä½“é”™ä½; é‡è¯•åªåœ¨é“¾è·¯åæ—¶åš, é‚£æ—¶ä¸­æ–­ä¸ç¢° SPI_2ã€‚ */
         {
             uint8 nz = (ins_zero_cmd > 0.5f) ? 1u : 0u;
 
@@ -587,9 +587,9 @@ int main (void)
             }
         }
 
-        /* 3) ×ªÏò»·ÔÚ pit0_ch2_isr(5 ms ÖĞ¶Ï)ÀïÅÜ, ´Ë´¦²»ÔÙµ÷ÓÃ; Á½´¦¶¼µ÷»áÊ¹Ä¿±êĞ±ÆÂ×ßÁ½±¶ËÙ */
+        /* 3) è½¬å‘ç¯åœ¨ pit0_ch2_isr(5 ms ä¸­æ–­)é‡Œè·‘, æ­¤å¤„ä¸å†è°ƒç”¨; ä¸¤å¤„éƒ½è°ƒä¼šä½¿ç›®æ ‡æ–œå¡èµ°ä¸¤å€é€Ÿ */
 
-        /* 4) ÌîÒ£²â + ´òÓ¡×´Ì¬ */
+        /* 4) å¡«é¥æµ‹ + æ‰“å°çŠ¶æ€ */
         motor_fill_telemetry();
         motor_print_status();
 
