@@ -92,13 +92,37 @@ volatile float   spd_tel_period = (float)MOTOR_TX_PERIOD_MS;/* 遥测周期 ms  
 static   uint16  s_ch_count     = MOTOR_CH_COUNT_ROUTE;     /* 本拍真正发几个通道(默认巡线档) */
 static   uint16  s_tx_period_ms = MOTOR_TX_PERIOD_MS;       /* 本拍真正用的发送周期 */
 
-/* 库函数签名要 char*, 不能直接传字符串字面量(IAR 会报 const 转换) */
-static char motor_ssid[]       = MOTOR_WIFI_SSID;
-static char motor_pwd[]        = MOTOR_WIFI_PASSWORD;
-static char motor_sock_type[]  = MOTOR_SOCK_TYPE;   /* 同上, 库函数签名要 char* */
-static char motor_host_ip[]    = MOTOR_HOST_IP;
-static char motor_host_port[]  = MOTOR_HOST_PORT;
-static char motor_local_port[] = MOTOR_LOCAL_PORT;
+/* 库函数签名要 char*, 不能直接传字符串字面量(IAR 会报 const 转换)。
+   ★ 必须用**固定长度**数组：原来写成 `char motor_ssid[] = MOTOR_WIFI_SSID` 时长度由宏初值
+     决定（"XIOQ-3695" 只有 10 B）；换成运行时选网络后写入 "ASC_Circuit_IoT"(16 B) 会越界
+     踩坏相邻的 motor_pwd。长度按 802.11 规范取上限。 */
+#define MOTOR_SSID_MAX      (33)        /* SSID 最长 32 + NUL */
+#define MOTOR_PWD_MAX       (65)        /* WPA 口令最长 64 + NUL */
+#define MOTOR_IP_MAX        (16)        /* "255.255.255.255" + NUL */
+#define MOTOR_PORT_MAX      (6)         /* "65535" + NUL */
+#define MOTOR_SOCK_MAX      (8)
+
+static char motor_ssid[MOTOR_SSID_MAX]      = MOTOR_WIFI_SSID;
+static char motor_pwd[MOTOR_PWD_MAX]        = MOTOR_WIFI_PASSWORD;
+static char motor_sock_type[MOTOR_SOCK_MAX] = MOTOR_SOCK_TYPE;
+static char motor_host_ip[MOTOR_IP_MAX]     = MOTOR_HOST_IP;
+static char motor_host_port[MOTOR_PORT_MAX] = MOTOR_HOST_PORT;
+static char motor_local_port[MOTOR_PORT_MAX]= MOTOR_LOCAL_PORT;
+
+/* 当前选中的候选号；0xFF = 还没选 / 没连上 */
+static uint8 motor_ap_cur = 0xFFu;
+
+/* ---- WiFi 候选表：运行时选网络，换热点/换上位机都不必重编译 ----
+   一行的语义：连 ssid → 往 ip:8086 发。label 只给人看。
+   PC-Y 与 PC-J 是**同一个网络的两台电脑**（所以 ssid 相同、ip 不同），
+   在菜单里靠 label 区分，屏幕上同时显示 ssid 与 ip。 */
+static const motor_ap_t MOTOR_AP_TABLE[MOTOR_AP_COUNT] =
+{
+    { "XIOQ-3695", "XIOQ-3695",       "123456890",     "192.168.244.69" }, /* 队友 Android 手机热点 */
+    { "YUNYYING",  "YUNYYING",        "12345678",      "172.20.10.1"    }, /* 我的 iOS 个人热点      */
+    { "PC-Y",      "ASC_Circuit_IoT", "1145141919810", "192.168.50.247" }, /* 我的电脑               */
+    { "PC-J",      "ASC_Circuit_IoT", "1145141919810", "192.168.50.176" }, /* 队友的电脑             */
+};
 
 /* ---- 四、小工具: CRC16 与小端读写 ---- */
 static uint16 motor_crc16 (const uint8 *buf, uint16 len)
@@ -771,47 +795,96 @@ static void motor_parse_rx (uint8 *buf, uint16 len)
 }
 
 /* ---- 八、对外接口 ---- */
-uint8 motor_link_init (void)
+/* 只复位链路状态，**不连接**。上电调用它，网络由人显式选（菜单 Debug→WIFI）。
+   未连接时 motor_init_err != 0，motor_link_task() 会整条静默。 */
+void motor_link_reset (void)
 {
-    uint8 ret;
-
     motor_tick_ms    = 0;
     motor_tx_ms      = 0;
     motor_rx_ms      = 0;
     motor_rx_last_ms = 0;
     motor_ever_rx    = 0;
     motor_tx_seq     = 0;
-    motor_enable     = 0;
+    motor_enable     = 0;               /* 上位机使能位图清零：换目标后必须重新下发 */
     motor_tx_count   = 0;
+    motor_init_err   = 3;               /* 3 = 还没连（沿用原"未初始化完"的语义） */
+    motor_ap_cur     = 0xFFu;
+}
 
-    /* 1) 连 WiFi 热点: 手动建连接, WIFI_SPI_AUTO_CONNECT 必须保持 0(库内函数名有误) */
-    ret = wifi_spi_init(motor_ssid, motor_pwd);
-    if (0 != ret)
+/* 逐飞库头文件里声明的是 wifi_spi_socket_close，但 .c 里的实现叫
+   wifi_spi_socket_disconnect（声明/实现不一致）。这里补一条本地声明，
+   不改 SDK 头文件，也不产生"隐式声明"警告。 */
+extern uint8 wifi_spi_socket_disconnect(void);
+
+/* 连指定候选：0 = 成功 / 1 = WiFi 失败 / 2 = Socket 失败 / 4 = 候选号越界 */
+uint8 motor_link_connect (uint8 ap)
+{
+    const motor_ap_t *a;
+
+    if (ap >= (uint8)MOTOR_AP_COUNT)        { motor_init_err = 4; return 4u; }
+    a = &MOTOR_AP_TABLE[ap];
+
+    /* 先把候选拷进固定长度缓冲（strncpy 限长，换长 SSID 也不会越界） */
+    strncpy(motor_ssid, a->ssid, (size_t)(MOTOR_SSID_MAX - 1));
+    motor_ssid[MOTOR_SSID_MAX - 1] = '\0';
+    if (NULL != a->pwd)
+    {
+        strncpy(motor_pwd, a->pwd, (size_t)(MOTOR_PWD_MAX - 1));
+        motor_pwd[MOTOR_PWD_MAX - 1] = '\0';
+    }
+    else
+    {
+        motor_pwd[0] = '\0';            /* 无密码热点 */
+    }
+    strncpy(motor_host_ip, a->ip, (size_t)(MOTOR_IP_MAX - 1));
+    motor_host_ip[MOTOR_IP_MAX - 1] = '\0';
+
+    motor_enable     = 0;               /* 新目标必须重新下发使能，防上一台生效 */
+    motor_tx_seq     = 0;
+    motor_ever_rx    = 0;               /* 换目标后重新判"本次是否收到过" */
+    motor_rx_last_ms = 0;
+
+    /* 换目标前先断旧 socket，避免旧连接残留。
+       ★ 注意：逐飞库头文件里声明的是 wifi_spi_socket_close，但 .c 里的实现叫
+         wifi_spi_socket_disconnect（声明与实现不一致，用前者会链接失败）。 */
+    (void)wifi_spi_socket_disconnect();
+
+    if (0u != wifi_spi_init(motor_ssid, motor_pwd))
     {
         motor_init_err = 1;
-        return 1;                                   /* WiFi 连接失败 */
+        return 1u;                      /* WiFi 连接失败 */
     }
 
-    /* 2) 建 TCP 连接 */
-    ret = wifi_spi_socket_connect(motor_sock_type, motor_host_ip, motor_host_port, motor_local_port);
-    if (0 != ret)
+    if (0u != wifi_spi_socket_connect(motor_sock_type, motor_host_ip,
+                                      motor_host_port, motor_local_port))
     {
         motor_init_err = 2;
-        return 2;                                   /* Socket 连接失败 */
+        return 2u;                      /* Socket 连接失败 */
     }
 
     motor_init_err = 0;
+    motor_ap_cur   = ap;
 
-    /* 驱动权/急停事件 -> 上行 EVENT 帧, 遥控抢占时上位机靠它得知 */
+    /* 连接成功后才能做的三件事（原来都写在 init 尾部） */
     proto_set_event_sink(motor_send_event);
     proto_drv_release(PROTO_SRC_SPI);
-
-    /* 3) 上报参数表（上位机据此自动生成滑条） */
-    motor_send_param_table();
+    motor_send_param_table();           /* ★ 不发这个，上位机滑条是空的 */
     motor_send_event("motor link ready");
 
-    return 0;
+    return 0u;
 }
+
+/* 保留原语义：复位 + 连默认候选 0。上电不再调用它（见 main），留作兼容/台架用。 */
+uint8 motor_link_init (void)
+{
+    motor_link_reset();
+    return motor_link_connect(0u);
+}
+
+const motor_ap_t *motor_link_ap_list (void) { return MOTOR_AP_TABLE; }
+uint8 motor_link_ap_active (void)           { return motor_ap_cur; }
+const char *motor_link_ssid (void)          { return motor_ssid; }
+const char *motor_link_host_ip (void)       { return motor_host_ip; }
 
 void motor_link_tick_5ms (void)
 {
@@ -821,6 +894,11 @@ void motor_link_tick_5ms (void)
 void motor_link_task (void)
 {
     uint16 n;
+
+    /* 未连接（上电默认就是 3）时整条静默：不许碰 SPI。
+       以前上电自动连，失败后 init_err 也非 0，但那时 task 并没有门控，
+       靠 INT 引脚电平侥幸跳过；现在"没连"变成常态，必须有这道门。 */
+    if (0u != motor_init_err) { return; }
 
     if (0 != motor_tick_ms)
     {

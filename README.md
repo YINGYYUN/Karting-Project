@@ -1,9 +1,9 @@
 # 卡丁快跑 · Karting-Project
 
-CYT4BB7（Infineon TRAVEO™ T2G，CM7 双核）卡丁车固件，以及配套的轻量上位机。
+CYT4BB7（Infineon TRAVEO™ T2G，CM7 双核）卡丁车固件。
 
 - **固件** —— IAR EW 9.2，双核工程 `cyt4bb7_cm_7_0.ewp`（控制）与 `cyt4bb7_cm_7_1.ewp`（惯导）
-- **上位机** —— .NET 9 WinForms，UDP 收遥测、在线整定参数、录 CSV
+- **上位机** —— 使用队友的 KartHost（.NET 9 WinForms，UDP 收遥测、在线整定参数、录 CSV），本仓库不再附带上位机
 - **实物** —— 后轮双电机速度闭环 + 舵机位置闭环；遥控接收机与上位机两条并列的控制通路
 
 ## 目录
@@ -14,7 +14,6 @@ CYT4BB7（Infineon TRAVEO™ T2G，CM7 双核）卡丁车固件，以及配套�
 | `project/code/` | 业务代码（见下表） |
 | `project/iar/` | IAR 工程与调试配置 |
 | `libraries/` | 逐飞 CYT4BB7 开源库 + Infineon SDK |
-| `tools/KartHostLite/` | 轻量上位机，见其 [README](tools/KartHostLite/README.md) |
 
 `project/code/` 里几个主要文件：
 
@@ -31,15 +30,10 @@ CYT4BB7（Infineon TRAVEO™ T2G，CM7 双核）卡丁车固件，以及配套�
 
 ## 上位机怎么跑
 
-`tools/KartHostLite/` 下有 `build.bat` / `run.bat` / `publish.bat`（需要 .NET 9 SDK）。
-`publish.bat` 产出 `dist/KartHostLite.exe` —— 自包含单文件，双击即用，不用装运行时。
+本仓库**不再自带上位机**（原 `tools/KartHostLite/` 已删除）。上位机使用队友的 **KartHost**
+（`net9.0-windows` WinForms），本机已装 .NET 9，直接运行其发布包即可。
 
-没有硬件也能验证协议层：
-
-```bat
-KartHostLite.exe --selftest          :: 30 项断言，退出码 = 失败项数
-KartHostLite.exe --shot-demo out.png 4   :: 灌假数据离屏截图，检查界面
-```
+`tools/` 下现在只剩 `iphone/`（iOS 热点下抓 UDP 包的小脚本，用于脱机验证遥测格式）。
 
 ## 与队友的合作
 

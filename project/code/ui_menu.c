@@ -14,6 +14,7 @@
 #include "zf_common_headfile.h"
 #include "ui_menu.h"
 #include "ui_core.h"
+#include "ui_debug.h"
 #include "zf_device_key.h"
 
 #include "motor_link.h"
@@ -36,15 +37,15 @@
 /* ---- 一、页面模式 ---- */
 #define UM_LIST         (0u)
 #define UM_EDIT         (1u)
-#define UM_DASH         (2u)
+#define UM_DEBUG        (3u)    /* 调试页（ui_debug.c），K3/K4 切视图 */
 
 #define UM_ROW_TITLE    (0u)
 #define UM_ROW_ITEM0    (1u)
 #define UM_ROW_HINT     (17u)       /* 固定最后一行 */
-#define UM_HINT         "K1=OK K2=Bk K3/K4=Move"
+#define UM_HINT         "K1/K2=Mov K3=OK K4=Bk"
 
-/* 列表光标方向符号：屏转 180° 后按下移键光标向上走；方向反了只改这里 ±1 */
-#define UM_DIR_SIGN     (+1)
+/* 列表光标方向：已统一为 "dir>0 = 上移"（K1），见 um_move_cursor()。
+   屏幕转 180° 只影响**物理**上下，不影响这里的逻辑方向。 */
 
 /* ---- 二、菜单项 ----
  *      ACT 执行动作 / PF 编辑参数表某项（量程与步长取自参数表）/ MODE 跟随模式 1=PUSH 2=PWR
@@ -67,17 +68,18 @@ typedef struct
     uint8       pid;                /* PF：参数表 ID */
 } um_item_t;
 
-static void act_dash  (void);
 static void act_mode  (void);
 static void act_rtrec (void);
 static void act_sts   (void);
 static void act_psave (void);
 static void act_reset (void);
+static void act_debug (void);
 
 static const um_item_t UM_ITEMS[] =
 {
     /* name            kind      action       pid */
-    { "1.Dashboard",   UM_ACT,   act_dash,    0u  },
+    /* 名称沿用本项目习惯（原来是 Dashboard）；内容已换成 ui_debug.c 的多视图诊断页 */
+    { "1.Debug",       UM_ACT,   act_debug,   0u  },
     { "2.CtrlMode",    UM_ACT,   act_mode,    0u  },   /* 预留 */
     { "3.Rec/Save",    UM_ACT,   act_rtrec,   0u  },
     { "4.Rt ds",       UM_PF,    0,           39u },   /* 路表|采样点距（0.05~0.15，步长 0.01）*/
@@ -402,16 +404,12 @@ static uint32 s_last   = 0u;
 static uint32 s_stlast = 0u;
 static uint8  s_savlast= 0u;
 
-static void dash_fmt(char *buf, uint8 size, void *ctx);
-static const uint8 s_dix[10] = { 0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u };
-static ui_field_t  s_df[10];
-static ui_page_t   s_dpage;
 
-/* ---- 五、动作 ---- */
-static void act_dash(void)
+/* 只读诊断页：进页只画、不改任何运行状态（唯一例外是 IMU 视图里的 yaw 归零，需按 K1）*/
+static void act_debug(void)
 {
-    s_mode = UM_DASH;
-    ui_page_mark_dirty(&s_dpage);
+    s_mode = UM_DEBUG;
+    ui_debug_enter();
 }
 
 /* 控制律选择器：每按一次往下走 0->1->2->0，写 ID78（P_RW_LIVE，可存 Flash），排障用 */
@@ -609,6 +607,36 @@ static void um_value_text(uint8 idx, char *out, uint8 size)
     }
 }
 
+/* ---- 增量绘制原语 ----
+   整屏 ui_clear() 要刷 240x320，实测约 40 ms；而光标移动 / 动作回显只改几行。
+   下面三个原语让"只改一行"变成"只写一行"，不再整屏刷新。 */
+static void um_draw_item(uint8 k, uint8 row)
+{
+    char line[48];
+    char val[16];
+
+    um_value_text(k, val, sizeof(val));
+    snprintf(line, sizeof(line), "%-14s %s", UM_ITEMS[k].name, val);
+    um_puts(row, 2u, line);
+}
+
+/* 光标标记只占第 0 列；写两个字符能把上一次的 ">" 一起擦掉 */
+static void um_draw_cursor(uint8 row, uint8 on)
+{
+    um_puts(row, 0u, (0u != on) ? "> " : "  ");
+}
+
+/* 标题行（有消息时显示消息）；整行定长写，避免旧字符残留 */
+static void um_draw_msg(void)
+{
+    char t[28];
+
+    if (s_msg[0] != '\0') { snprintf(t, sizeof(t), "KART  %-20s", s_msg); }
+    else                  { snprintf(t, sizeof(t), "%-26s", "KART MENU"); }
+
+    um_puts(UM_ROW_TITLE, 0u, t);
+}
+
 static void um_draw_list(void)
 {
     uint8 span = (uint8)(UM_ROW_HINT - UM_ROW_ITEM0);
@@ -620,27 +648,57 @@ static void um_draw_list(void)
     if ((uint8)(s_cur - s_top) >= span) { s_top = (uint8)(s_cur - span + 1u); }
     if (s_top > (uint8)(UM_NITEMS - 1u)) { s_top = (uint8)(UM_NITEMS - 1u); }
 
-    um_puts(UM_ROW_TITLE, 0u, "KART MENU");
+    um_draw_msg();
 
     for (i = 0u; i < span; i++)
     {
-        uint8    k = (uint8)(s_top + i);
-        char     line[48];
-        char     val[16];
-        uint8    row = (uint8)(UM_ROW_ITEM0 + i);
+        uint8 k = (uint8)(s_top + i);
 
         if (k >= UM_NITEMS) { break; }
 
-        um_value_text(k, val, sizeof(val));
-        snprintf(line, sizeof(line), "%-14s %s", UM_ITEMS[k].name, val);
-        um_puts(row, 2u, line);
+        um_draw_item(k, (uint8)(UM_ROW_ITEM0 + i));
     }
 
     um_puts(UM_ROW_HINT, 0u, UM_HINT);
 
-    if (s_msg[0] != '\0') { um_puts(UM_ROW_TITLE, 0u, "KART  "); um_puts(UM_ROW_TITLE, 6u, s_msg); }
+    um_draw_cursor((uint8)(UM_ROW_ITEM0 + (uint8)(s_cur - s_top)), 1u);
+}
 
-    um_puts((uint8)(UM_ROW_ITEM0 + (uint8)(s_cur - s_top)), 0u, ">");
+/* 光标移动：只有"滚动"（窗口起点变了）才整屏重画，否则只挪那个 ">" */
+static void um_move_cursor(int8 dir)
+{
+    uint8 span    = (uint8)(UM_ROW_HINT - UM_ROW_ITEM0);
+    uint8 old_cur = s_cur;
+    uint8 old_top = s_top;
+    uint8 row;
+
+    /* dir > 0 = 上移键：光标往**上一个**条目走（屏幕上方）。
+       原来这里用 UM_DIR_SIGN=+1，是队友按他们"K3=上移"配的；换成 K1=上移之后
+       那个符号正好把上下搞反。方向语义统一为"dir>0 = 上"，不要再回绕。 */
+    s_cur = (uint8)((s_cur + UM_NITEMS + ((dir > 0) ? -1 : 1)) % UM_NITEMS);
+
+    if (s_cur < s_top) { s_top = s_cur; }
+    if ((uint8)(s_cur - s_top) >= span) { s_top = (uint8)(s_cur - span + 1u); }
+    if (s_top > (uint8)(UM_NITEMS - 1u)) { s_top = (uint8)(UM_NITEMS - 1u); }
+
+    if (s_top != old_top) { um_draw_list(); return; }
+
+    if ((uint8)(old_cur - s_top) < span)
+    {
+        um_draw_cursor((uint8)(UM_ROW_ITEM0 + (uint8)(old_cur - s_top)), 0u);
+    }
+
+    row = (uint8)(UM_ROW_ITEM0 + (uint8)(s_cur - s_top));
+    um_draw_cursor(row, 1u);
+}
+
+/* 动作之后的回显：动作只可能改"本项的值"和"消息行"，不必整屏重画 */
+static void um_refresh_after_action(void)
+{
+    uint8 row = (uint8)(UM_ROW_ITEM0 + (uint8)(s_cur - s_top));
+
+    if (s_cur < UM_NITEMS) { um_draw_item(s_cur, row); }
+    um_draw_msg();
 }
 
 static void um_draw_edit(void)
@@ -807,120 +865,11 @@ static void um_draw_edit(void)
     }
 }
 
-/* ---- 七、仪表盘字段 ---- */
-static void dash_fmt(char *buf, uint8 size, void *ctx)
-{
-    uint8 i = *(const uint8 *)ctx;
-    char  a[16];
-    char  b[16];
-
-    switch (i)
-    {
-        case 0u:
-            ui_ftoa(a, sizeof(a), enc_l.rps, 2u);
-            ui_ftoa(b, sizeof(b), enc_r.rps, 2u);
-            snprintf(buf, size, "rps L%s R%s", a, b);
-            break;
-
-        case 1u:
-            ui_ftoa(a, sizeof(a), enc_l.rps * ins_m_per_rev, 2u);
-            ui_ftoa(b, sizeof(b), ins_odom_get_dist(), 2u);
-            snprintf(buf, size, "v~%s m/s  d=%s m", a, b);
-            break;
-
-        case 2u:
-            ui_ftoa(a, sizeof(a), ins_imu_get_yaw(), 1u);
-            ui_ftoa(b, sizeof(b), ins_odom_get_x(), 2u);
-            snprintf(buf, size, "yaw %s  x %s", a, b);
-            break;
-
-        case 3u:
-            ui_ftoa(a, sizeof(a), ins_odom_get_y(), 2u);
-            ui_ftoa(b, sizeof(b), steer.meas_delta, 2u);
-            snprintf(buf, size, "y %s  steer %s", a, b);
-            break;
-
-        case 4u:
-            /* 跟随状态：使能、回放状态、段索引 */
-            snprintf(buf, size, "pb en%u %s s%u",
-                     (unsigned)(pb_en > 0.5f),
-                     (1u == route_pb_state()) ? "RUN" :
-                     ((2u == route_pb_state()) ? "DONE" :
-                      ((3u == route_pb_state()) ? "ABRT" : "idle")),
-                     (unsigned)route_pb_index());
-            break;
-
-        case 5u:
-            /* drv = 驱动令牌持有者：0 无 / 1 遥控 / 2 上位机 / 3 菜单 */
-            snprintf(buf, size, "safe %u loc%u est%u drv%u",
-                     (unsigned)spd_safety_allow(0u),
-                     (unsigned)spd_safety_local(),
-                     (unsigned)spd_safety_estop(),
-                     (unsigned)proto_drv_owner());
-            break;
-
-        case 6u:
-            snprintf(buf, size, "rc c5=%u c6=%u e%u on%u",
-                     (unsigned)RC_Raw_Ch5, (unsigned)RC_Raw_Ch6,
-                     (unsigned)RC_Engage, (unsigned)RC_Online);
-            break;
-
-        case 7u:
-            snprintf(buf, size, "bench %s s%u n%u",
-                     um_bench_state_str(), (unsigned)spd_bench_seg(),
-                     (unsigned)bench_log_count());
-            break;
-
-        case 8u:
-            snprintf(buf, size, "store%u ld%u e%u",
-                     (unsigned)bench_log_stored(),
-                     (unsigned)app_param_loaded(),
-                     (unsigned)app_param_last_err());
-            break;
-
-        default:
-            /* 通道核对行：CH1 / CH2 / CH3 原始值，末尾 ! = 关键通道 raw 低于有效下限（掉线）；
-               CH1 为 0 表示该通道无信号，不能归一成 -1 当满舵；CH3 已空置 */
-            if (0u != RC_Online)
-            {
-                snprintf(buf, size, "RC %u/%u/%u%s",
-                         (unsigned)RC_Raw_Ch1, (unsigned)RC_Raw_Ch2,
-                         (unsigned)RC_Raw_Ch3,
-                         (0u != RC_Stick_Bad) ? "!" : "");
-            }
-            else
-            {
-                snprintf(buf, size, "imu %u fl%u", (unsigned)ins_imu_link_ok(),
-                         (unsigned)ins_odom_flags());
-            }
-            break;
-    }
-}
 
 /* ---- 八、初始化 ---- */
 void ui_menu_init(void)
 {
-    uint8 i;
-
     key_init(10u);
-
-    for (i = 0u; i < 10u; i++)
-    {
-        s_df[i].row    = (uint8)(1u + i);
-        s_df[i].x      = 0u;
-        s_df[i].policy = (i < 9u) ? UI_REALTIME : UI_STATIC;
-        s_df[i].format = dash_fmt;
-        s_df[i].ctx    = (void *)&s_dix[i];
-        s_df[i].cache[0] = '\0';
-    }
-
-    s_dpage.fields            = s_df;
-    s_dpage.count             = 10u;
-    s_dpage.cursor_row        = -1;
-    s_dpage.cursor_row_last   = -1;
-    s_dpage.cursor_glyph      = 0u;
-    s_dpage.cursor_glyph_last = 0u;
-    s_dpage.dirty             = 1u;
 
     s_mode = UM_LIST;
     s_cur  = 0u;
@@ -958,29 +907,37 @@ void ui_menu_task(void)
 
     key_scanner();
 
-    k1s = (KEY_SHORT_PRESS == key_get_state(KEY_1)) ? 1u : 0u;
-    k2s = (KEY_SHORT_PRESS == key_get_state(KEY_2)) ? 1u : 0u;
-    k3s = (KEY_SHORT_PRESS == key_get_state(KEY_3)) ? 1u : 0u;
-    k4s = (KEY_SHORT_PRESS == key_get_state(KEY_4)) ? 1u : 0u;
-    h3  = (KEY_LONG_PRESS  == key_get_state(KEY_3)) ? 1u : 0u;
-    h4  = (KEY_LONG_PRESS  == key_get_state(KEY_4)) ? 1u : 0u;
+    k1s = (KEY_SHORT_PRESS == key_get_state(KEY_3)) ? 1u : 0u;   /* 确认 */
+    k2s = (KEY_SHORT_PRESS == key_get_state(KEY_4)) ? 1u : 0u;   /* 返回 */
+    k3s = (KEY_SHORT_PRESS == key_get_state(KEY_1)) ? 1u : 0u;   /* 上移 */
+    k4s = (KEY_SHORT_PRESS == key_get_state(KEY_2)) ? 1u : 0u;   /* 下移 */
+    h3  = (KEY_LONG_PRESS  == key_get_state(KEY_1)) ? 1u : 0u;   /* 上移连发 */
+    h4  = (KEY_LONG_PRESS  == key_get_state(KEY_2)) ? 1u : 0u;   /* 下移连发 */
 
-    if (0u != k1s) { key_clear_state(KEY_1); }
-    if (0u != k2s) { key_clear_state(KEY_2); }
+    /* 清状态必须按**物理**键清，与上面的映射对齐 */
+    if (0u != k1s) { key_clear_state(KEY_3); }
+    if (0u != k2s) { key_clear_state(KEY_4); }
 
-    if (0u != k3s)      { key_clear_state(KEY_3); s_rep3 = 0u; dir = 1; }
+    if (0u != k3s)      { key_clear_state(KEY_1); s_rep3 = 0u; dir = 1; }
     else if (0u != h3)  { s_rep3++; if (s_rep3 >= 10u) { s_rep3 = 0u; dir = 1; } }
     else                { s_rep3 = 0u; }
 
-    if (0u != k4s)      { key_clear_state(KEY_4); s_rep4 = 0u; dir = -1; }
+    if (0u != k4s)      { key_clear_state(KEY_2); s_rep4 = 0u; dir = -1; }
     else if (0u != h4)  { s_rep4++; if (s_rep4 >= 10u) { s_rep4 = 0u; dir = -1; } }
     else                { s_rep4 = 0u; }
 
-    /* ---------- DASH ---------- */
-    if (UM_DASH == s_mode)
+    /* ---------- DEBUG ---------- */
+    if (UM_DEBUG == s_mode)
     {
-        if ((0u != k1s) || (0u != k2s)) { s_mode = UM_LIST; um_draw_list(); return; }
-        ui_page_render(&s_dpage, 0u);
+        /* 两级：列表里 K3=进入选中视图、K4=回主菜单；详情页 K4=退回列表 */
+        if (0u != k2s)
+        {
+            if (0u == ui_debug_back()) { s_mode = UM_LIST; um_draw_list(); }
+            return;
+        }
+        if (0u != k1s) { ui_debug_action(); }
+        if (0 != dir)  { ui_debug_move(dir); }
+        ui_debug_tick();
         return;
     }
 
@@ -1052,12 +1009,7 @@ void ui_menu_task(void)
     }
 
     /* ---------- LIST ---------- */
-    if (0 != dir)
-    {
-        s_cur = (uint8)((s_cur + UM_NITEMS + ((dir > 0) ? UM_DIR_SIGN : -UM_DIR_SIGN)) % UM_NITEMS);
-        um_draw_list();
-        return;
-    }
+    if (0 != dir) { um_move_cursor(dir); return; }
 
     if (0u != k1s)
     {
@@ -1075,11 +1027,11 @@ void ui_menu_task(void)
             return;
         }
         if (0 != it->act)       { it->act(); }
-        um_draw_list();
+        if (UM_LIST != s_mode)  { return; }  /* 动作把页面切走了（如 1.Debug），别覆盖它 */
+        um_refresh_after_action();
         return;
     }
 
-    if (0u != k2s) { s_mode = UM_DASH; ui_page_mark_dirty(&s_dpage); return; }
 
     /* 跑班进行中：每 200 ms 只刷标题行（SPI 开销极小）*/
     if ((SB_RUN == spd_bench_state()) || (SB_WAITLOG == spd_bench_state()))

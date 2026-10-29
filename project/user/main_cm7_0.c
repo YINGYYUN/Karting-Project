@@ -461,11 +461,26 @@ int main (void)
        须在 remote_ctrl_init() 之前, 后者会调 proto_estop()。 */
     proto_init();
 
+    /* ---- 屏幕必须提到 IMU 零偏标定**之前** ----
+       ins_imu_init() 是 1000 点 x 5 ms = 5 s 的零偏采样，失败最多重试 5 次（最长 25 s）。
+       原来 ui_init() 排在它后面，这 5~25 秒屏是全黑的，现场看到黑屏会以为板子没起来。
+       IPS200 走 SPI_1，与 IMU(SPI_2) / 转向编码器(SPI_4) / WiFi(SPI_0) 各走各的总线，提前初始化不冲突。 */
+    ui_init();
+
     /* ---- 惯导: IMU + 航位推算; ins_imu_init() 阻塞约 5 s(1000 点 x 5 ms 零偏标定) ----
        期间车须静止, 极差超限重来, 最多 5 次; 须在 pit_ms_init() 之前调用, 否则中断里的
        ins_imu_update() 会用未标定零偏积分。963RA 与 IMU660RA/RC 引脚相同, 其 0x0F 应为 0x6A。 */
     ins_odom_init();
+
+    ips200_show_string(8, 120, "IMU GYRO CALIB...");
+    ips200_show_string(8, 136, "PLEASE KEEP STILL");
+
     ret = ins_imu_init();
+
+    /* 标定结束：**不清屏**，只把提示行改写成结果。
+       清屏会在下面 WiFi 连接那十几秒里留一块黑屏，现场看不出板子还在跑。 */
+    ips200_show_string(8, 120, (0u == ret) ? "IMU OK           " : "IMU FAIL         ");
+    ips200_show_string(8, 136, "                 ");
     {
         uint8 id0f = 0u, id00 = 0u, idv = 0u;
         ins_imu_dev_id_get(&id0f, &id00, &idv);
@@ -504,29 +519,22 @@ int main (void)
     pit_ms_init(PIT_CH2, 5);            /* 5 ms 时基: 速度环 + 链路 */
     interrupt_global_enable(0);         /* pit0_ch2_isr 里跑 spd_ctrl_tick() */
 
-    system_delay_ms(500);               /* 等 WiFi 模块上电稳定, 否则紧接着的 init 容易失败 */
+    /* ---- WiFi-SPI 链路: **上电不自动连接** ----
+       网络由人显式选择（菜单 1.Debug → WIFI 视图），因为热点与目标上位机有好几套
+       （队友 Android 热点 / 我的 iOS 热点 / 实验室网的两台电脑），写死宏就必须重编译。
+       这里只复位链路状态；未连接时 motor_init_err != 0，motor_link_task() 整条静默。
+       好处还有一个：原来 init 里最长 10 s + Socket 数十秒的阻塞（且关中断）也一并消失。 */
+    motor_link_reset();
 
-    /* ---- WiFi-SPI 链路: 阻塞, WiFi 最长约 10 s, Socket 最长数十秒 ----
-       失败返回非 0, 主循环照跑, 只是保护层永远不允许出力。 */
-    ret = motor_link_init();
-    if (0 != ret)
-    {
-        printf("[##] LINK INIT FAIL ret=%u (1=wifi 2=socket)\r\n", (unsigned)ret);
-    }
-    else
-    {
-        printf("[##] LINK OK  ssid:%s  ->%s:%s\r\n", MOTOR_WIFI_SSID, MOTOR_HOST_IP, MOTOR_HOST_PORT);
-    }
+    /* 屏上告诉人去哪儿选，顺便证明板子已经跑到主循环前一步 */
+    ips200_show_string(8, 160, "WIFI: 1.Debug>WIFI  ");
+    ips200_show_string(8, 176, "                ");
 
     g_print_ms = motor_link_now_ms();
 
-    /* ---- 屏幕 + 按键(菜单); 逐飞 IPS200 SPI 版(硬件 SPI_1), 6 脚由 zf_device_ips200.h 定死 ----
-       SCL P12_2 / SDA(MOSI) P12_1 / CS P12_3 / RST P22_4 / DC P22_3 / BLK P11_0
-       其它模块不占这 6 脚: 转向编码器 SPI_4(P07_x)、WiFi SPI_0(P02_x)、IMU SPI_2(P15_x)。
-       按键 P20_3 / P20_2 / P20_0 / P20_1; 须在 motor_link_init() 之后, key_init(10) 与
-       motor_link_now_ms() 的 10 ms 分频一致; 刷新毫秒级(清屏约 40 ms), 只能在主循环画,
-       ui_init() 与 ui_menu_init() 缺一即黑屏。 */
-    ui_init();
+    /* ---- 屏幕已在 IMU 标定前初始化（见上面 ui_init 提前的原因）; 这里只补菜单 ----
+       按键 P20_3 / P20_2 / P20_0 / P20_1; key_init(10) 与 motor_link_now_ms() 的
+       10 ms 分频一致; 刷新毫秒级(清屏约 40 ms), 只能在主循环画。 */
     ui_puts_row(0, 0, "Kart10 INS+Route");
     printf("[##] UI init done: IPS200 SPI_1 (SCL P12_2 / SDA P12_1 / CS P12_3 / DC P22_3 / RST P22_4 / BLK P11_0)\r\n");
     ui_menu_init();

@@ -261,6 +261,7 @@ static void spd_step_openloop (uint8 ch, spd_ctrl_st_t *st, float duty_pct, uint
 volatile uint8 spd_coast_req = 0u;
 
 void  spd_ctrl_set_coast (uint8 on) { spd_coast_req = on ? 1u : 0u; }
+uint8 spd_ctrl_get_coast (void)     { return spd_coast_req; }
 uint8 spd_ctrl_coast     (void)     { return spd_coast_req; }
 
 void spd_ctrl_tick (void)

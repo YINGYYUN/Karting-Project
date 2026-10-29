@@ -194,8 +194,33 @@ extern volatile float   spd_tel_period;     /* 遥测周期 ms(5~200)           
 
 /* ---- 五、对外接口 ---- */
 
-/* 初始化: 连 WiFi + 建 TCP/UDP + 上报参数表; 阻塞, 只能在初始化阶段调用
-   返回 0=成功 1=WiFi 连接失败 2=Socket 连接失败 */
+/* ---- 运行时选网络（上电**不再**自动连接）----
+   候选表每行 = 连哪个 ssid + 往哪个 ip 发；label 只给人看。
+   PC-Y / PC-J 是同一个网络的两台电脑（ssid 相同、ip 不同）。 */
+typedef struct
+{
+    const char *label;      /* 选项显示名（只给人看）              */
+    const char *ssid;       /* 真正连接的 SSID，必须逐字节一致      */
+    const char *pwd;        /* NULL = 无密码热点                   */
+    const char *ip;         /* 目标上位机 IP                       */
+} motor_ap_t;
+
+#define MOTOR_AP_COUNT          (4u)
+
+/* 只复位链路状态，**不连接**：上电调用它，网络由人显式选（菜单 Debug→WIFI）。
+   复位后 motor_init_err = 3（未连接），motor_link_task() 会整条静默。 */
+void    motor_link_reset        (void);
+
+/* 连指定候选。返回 0=成功 / 1=WiFi 失败 / 2=Socket 失败 / 4=候选号越界。
+   ★ 阻塞：WiFi 最长约 10 s，Socket 更久；调用方（菜单）须先让车停住。 */
+uint8   motor_link_connect      (uint8 ap);
+
+const motor_ap_t *motor_link_ap_list  (void);   /* 候选表 */
+uint8   motor_link_ap_active    (void);         /* 当前候选号，0xFF = 未连 */
+const char *motor_link_ssid     (void);         /* 当前 SSID（未连时是默认宏） */
+const char *motor_link_host_ip  (void);         /* 当前目标 IP                 */
+
+/* 兼容旧语义: 复位 + 连默认候选 0。上电不再调用，留作台架/回归用 */
 uint8   motor_link_init          (void);
 
 /* 时基: 必须在 5ms 的 PIT 中断里调用, 且在速度环之前(保护层要用它的时间戳) */

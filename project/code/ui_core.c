@@ -80,7 +80,10 @@ void ui_init (void)
 #endif
     ips200_init(IPS200_TYPE_SPI);
     ips200_set_font(IPS200_8X16_FONT);
-    ips200_set_color(RGB565_BLACK, RGB565_WHITE);
+    /* 配色：黑底黄字（队友是白底黑字）。
+       既是本项目一贯的视觉风格，也让人一眼看出"现在烧的是谁的分支"。
+       全工程 UI 只有这一处设置画笔/背景色，改这里等于改所有页面。 */
+    ips200_set_color(RGB565_YELLOW, RGB565_BLACK);
     ips200_clear();
 }
 

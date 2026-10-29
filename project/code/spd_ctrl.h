@@ -114,6 +114,8 @@ void    spd_ctrl_reset_int  (void);             /* 清两路积分(标定/换参
 /* 自由轮: 两后轮输出钉 0, 测速与里程照常更新(推车时航向/位姿仍有效)。
    on=1 时不跑 PI 且积分清零; 只影响两后轮, 不动转向; 退出时由调用方清 0。 */
 void    spd_ctrl_set_coast  (uint8 on);
+/* 回读自由轮标志：调试页进页时保存、退页时恢复，避免把回放设的状态清掉 */
+uint8   spd_ctrl_get_coast  (void);
 uint8   spd_ctrl_coast      (void);
 
 #endif

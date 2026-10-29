@@ -1251,6 +1251,12 @@
             <name>$PROJ_DIR$\..\..\code\ui_core.h</name>
         </file>
         <file>
+            <name>$PROJ_DIR$\..\..\code\ui_debug.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ui_debug.h</name>
+        </file>
+        <file>
             <name>$PROJ_DIR$\..\..\code\ui_menu.c</name>
         </file>
         <file>
