@@ -1,515 +1,411 @@
 /*********************************************************************************************************************
-* CYT4BB Opensource Library 即（ CYT4BB 开源库）是一个基于官方 SDK 接口的第三方开源库
-* Copyright (c) 2022 SEEKFREE 逐飞科技
+* CYT4BB Opensource Library ���� CYT4BB ��Դ�⣩��һ�����ڹٷ� SDK �ӿڵĵ�������Դ��
+* Copyright (c) 2022 SEEKFREE ��ɿƼ�
 *
-* 本文件是 CYT4BB 开源库的一部分
+* ���ļ��� CYT4BB ��Դ���һ����
 *
-* CYT4BB 开源库 是免费软件
-* 您可以根据自由软件基金会发布的 GPL（GNU General Public License，即 GNU通用公共许可证）的条款
-* 即 GPL 的第3版（即 GPL3.0）或（您选择的）任何后来的版本，重新发布和/或修改它
+* CYT4BB ��Դ�� ���������
+* �����Ը���������������ᷢ���� GPL��GNU General Public License���� GNUͨ�ù�������֤��������
+* �� GPL �ĵ�3�棨�� GPL3.0������ѡ��ģ��κκ����İ汾�����·�����/���޸���
 *
-* 本开源库的发布是希望它能发挥作用，但并未对其作任何的保证
-* 甚至没有隐含的适销性或适合特定用途的保证
-* 更多细节请参见 GPL
+* ����Դ��ķ�����ϣ�����ܷ������ã�����δ�������κεı�֤
+* ����û�������������Ի��ʺ��ض���;�ı�֤
+* ����ϸ����μ� GPL
 *
-* 您应该在收到本开源库的同时收到一份 GPL 的副本
-* 如果没有，请参阅<https://www.gnu.org/licenses/>
+* ��Ӧ�����յ�����Դ���ͬʱ�յ�һ�� GPL �ĸ���
+* ���û�У������<https://www.gnu.org/licenses/>
 *
-* 额外注明：
-* 本开源库使用 GPL3.0 开源许可证协议 以上许可申明为译文版本
-* 许可申明英文版在 libraries/doc 文件夹下的 GPL3_permission_statement.txt 文件中
-* 许可证副本在 libraries 文件夹下 即该文件夹下的 LICENSE 文件
-* 欢迎各位使用并传播本程序 但修改内容时必须保留逐飞科技的版权声明（即本声明）
+* ����ע����
+* ����Դ��ʹ�� GPL3.0 ��Դ����֤Э�� ������������Ϊ���İ汾
+* ��������Ӣ�İ��� libraries/doc �ļ����µ� GPL3_permission_statement.txt �ļ���
+* ����֤������ libraries �ļ����� �����ļ����µ� LICENSE �ļ�
+* ��ӭ��λʹ�ò����������� ���޸�����ʱ���뱣����ɿƼ��İ�Ȩ����������������
 *
-* 文件名称          cm7_0_isr
-* 公司名称          成都逐飞科技有限公司
-* 版本信息          查看 libraries/doc 文件夹内 version 文件 版本说明
-* 开发环境          IAR 9.40.1
-* 适用平台          CYT4BB
-* 店铺链接          https://seekfree.taobao.com/
+* �ļ�����          cm7_0_isr
+* ��˾����          �ɶ���ɿƼ����޹�˾
+* �汾��Ϣ          �鿴 libraries/doc �ļ����� version �ļ� �汾˵��
+* ��������          IAR 9.40.1
+* ����ƽ̨          CYT4BB
+* ��������          https://seekfree.taobao.com/
 *
-* 修改记录
-* 日期              作者                备注
+* �޸ļ�¼
+* ����              ����                ��ע
 * 2024-1-9      pudding            first version
-* 2024-5-14     pudding            新增12个pit周期中断 增加部分注释说明
-* 2025-2-4      pudding            优化串口中断逻辑，防止意外干扰导致的卡死问题，优化串口波特率计算逻辑
-* 2025-2-4      pudding            新增两个串口接口
+* 2024-5-14     pudding            ����12��pit�����ж� ���Ӳ���ע��˵��
+* 2025-2-4      pudding            �Ż������ж��߼�����ֹ������ŵ��µĿ������⣬�Ż����ڲ����ʼ����߼�
+* 2025-2-4      pudding            �����������ڽӿ�
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
-#include "ins_imu.h"            // 姿态解算（在本核 pit0_ch11_isr 的 5ms 里跑）
+#include "motor_link.h"
+#include "steer_abs.h"
+#include "steer_ctrl.h"
+#include "ins_imu.h"
+#include "ins_odom.h"
+#include "spd_bench.h"
+#include "head_test.h"
+#include "route_link.h"      /* route_link_uart_irq() */
 
-
-// 计时参考值，将被开发给其他文件
-uint16 Time_Count1 = 0;
-uint16 Time_Count2 = 0;
-
-// 全局毫秒计时（由 1ms 中断 pit0_ch10_isr 自增，永不复位，用于测量真实时间间隔）
-volatile uint32 Sys_Tick_Ms = 0;
-
-// **************************** PIT中断函数 ****************************
-void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
+/* ---- PIT �ж� ---- */
+void pit0_ch0_isr()                     // ��ʱ��ͨ�� 0 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH0);
-  
-    // 10ms
-    key_scanner();
 
-    // 参考计时值，自增,3000清零
-    Time_Count1 = (Time_Count1 >= 3000) ? 0 : Time_Count1 + 1;
-    Time_Count2 = (Time_Count2 >= 3000) ? 0 : Time_Count2 + 1;
 }
 
-void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
+void pit0_ch1_isr()                     // ��ʱ��ͨ�� 1 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH1);
-    
-    // 5ms：转向（角度编码器的采集 + 舵机位置环）
 
-    // ---- 角度编码器（360° 绝对式，转向柱侧）：5ms 采集 ----
-    ENC_ABS_ANG = absolute_encoder_get_location();
-    ENC_ABS_OFF = absolute_encoder_get_offset();
-
-    #if ENC_MAG_ENABLE == 1
-
-        // ---- 磁编码器（MENC15A，转向减速箱高速侧）：读角度 / 增量 / 转速 / 圈数 ----
-        // 本项目所有编码器的采集都收在这里，其它地方（调试页等）一律只读快照
-        // （这两个传感器"掉线 / 悬空"时的数据特征，见 Motor.c 编码器段的说明）
-        menc15a_get_absolute_data  (menc15a_1_module);
-        menc15a_get_speed_data     (menc15a_1_module);
-        // SPI 偶发错读会读出固定的异常字（换算后约 ±20000 量级），远超物理上限 -> 原位重读一次
-        if ((menc15a_speed_data[0] > 15000) || (menc15a_speed_data[0] < -15000))
-        {
-            menc15a_get_speed_data(menc15a_1_module);
-        }
-        menc15a_get_revolution_data(menc15a_1_module);
-
-        ENC_MAG_ANG = menc15a_absolute_data[0];
-        ENC_MAG_OFF = menc15a_absolute_offset_data[0];
-        ENC_MAG_SPD = menc15a_speed_data[0];
-        ENC_MAG_REV = menc15a_revolution_data[0];
-
-    #endif
-
-    // ---- 航向外环：必须排在 Servo_Ctrl_Tick() 之前 ----
-    // 外环算出的目标角写进 Servo_Target_Deg，内环紧接着读它
-    // 放在 5 ms 里是为了周期确定
-    Head_Ctrl_Tick();
-
-    // ---- 转向角换算（原始读数 -> 方向盘角度）+ 舵机位置环 ----
-    Servo_Ctrl_Tick();
 }
 
-void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      
+void pit0_ch2_isr()                     // ��ʱ��ͨ�� 2 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH2);
-    
+
+    motor_link_tick_5ms();                 // WiFi-SPI ��·�� 5ms ʱ��
+
+    /* ����ģʽÿ�İ��û���ͼ����, �������ط�״̬��(�䰲ȫ�Ż����ٶȻ�ѹס target=0, ���Ʋ���)��
+       ���� spd_ctrl_tick() ֮ǰ����, ������Ч�� */
+    route_pb_sync_coast();
+
+    spd_ctrl_tick();                       // �ٶȻ� 5ms ����: ���� + ���� + ���� + ���
+
+    // ת��: ��ˢ�¾��Խ�(SPI_4/SCB5, �� WiFi �� SPI_0 ����), ����λ�û�(�� P + ��Ħ��ǰ��)��
+    // ˳�򲻿ɷ�, �����ڻ��Ե���һ�ĽǶ�; ���жϲ��ܱ�֤�����ϸ� 5 ms��
+    steer_abs_update();
+
+    /* ���򻷷��� steer_yaw_deg(�� = -kp*(target_yaw - steer_yaw_deg)): ȡ��һ�ĺ�λ���㺽��,
+       ���� yaw Ҫ������ ins_odom_update() �Ÿ���, 5 ms �ͺ�ɺ��ԡ�
+       ����·��/�ط�ͬԴ, ���� odom.yaw ���� imu yaw�� */
+    steer_yaw_deg = ins_odom_get_yaw();
+
+    steer_ctrl_update();
+
+    // ---- �ߵ�����, ˳����ӲԼ�� ----
+    //  (1) �� IMU(SPI_2 / P15_0~3) -> Mahony -> �ۻ� yaw;  (2) �ñ��� delta ���� yaw ���ֳ� (x,y)
+    //  ���� spd_ctrl_tick() ֮��(����Ÿ��±��� delta), ���� ins_imu_update() ֮��(ͬ�� yaw)��
+    //  IMU δ��ʱ ins_imu_update() ֱ�� return, ���� SPI_2, ������ס 5 ms �жϡ�
+    ins_imu_update();
+    ins_odom_update();
+
+    // ---- �������: ���������ʱ; ������ yaw �����, ֻд target_yaw / spd_target_*, ������������������ ----
+    //  ���� ins_odom_update() ֮��; Ŀ�깩��һ����, 5 ms �ͺ������ʱ��ɺ��ԡ�
+    head_test_tick();
+
+    // ---- 12 ���ܰ�: ���� spd_ctrl_tick() ֮��(����ռ�ձ��ڴ�д��, ������� PWM) ----
+    //  �ڲ�ÿ 5 ms �����ĵ���ȫ��(ң������ / STANDBY / CH5 ��ͣ / ������), ��һ������ 0 duty��
+    spd_bench_tick();
+
+
 }
 
-void pit0_ch10_isr()                    // 定时器通道 10 周期中断服务函数      
+void pit0_ch10_isr()                    // ��ʱ��ͨ�� 10 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH10);
-    
-    // 1ms 全局毫秒计时（供编码器速度积分等需要真实时间间隔的地方使用）
-    Sys_Tick_Ms ++;
+
 }
 
-void pit0_ch11_isr()                    // 定时器通道 11 周期中断服务函数（后轮速度环  + 姿态解算） 5ms
+void pit0_ch11_isr()                    // ��ʱ��ͨ�� 11 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH11);
 
-    // 中断体耗时/间隔统计（DWT 实测，主循环每秒取一次，见 ins_diag_*）
-    ins_diag_isr_enter();
-
-    // 后轮速度环节拍 5ms。测速必须与控制同拍，否则读到上一拍的旧值。
-    // ⚠ 本通道同时跑 IMU 解算，二者必须同拍，不要挪到别的通道。
-    ENC_LR_Update();
-    ENC_RR_Update();
-
-    // 后轮电机速度闭环：门控 -> 取反馈 -> 控制 -> 输出
-    Motor_Ctrl_Tick();
-
-    /* ---- IMU 姿态解算（5ms）---- */
-    // 必须排在 Motor_Ctrl_Tick() 之后：电机控制律不能因 IMU 的 SPI 事务被推后。
-    // 现在ZUPT的静止判据需要查看轮子是否移动
-    ins_imu_update();                                   /* 轮速门控的输入改由模块内部取（见 ins_imu.c） */
-
-    /* ---- 航位推算（5ms）---- */
-    // 必须在编码器和姿态解算后
-    ins_odom_update();
-
-
-    ins_diag_isr_leave();       // 必须最后一句：统计的是"整条 5ms 槽"的耗时
 }
 
-void pit0_ch12_isr()                    // 定时器通道 12 周期中断服务函数      
+void pit0_ch12_isr()                    // ��ʱ��ͨ�� 12 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH12);
-    
+
 }
 
-void pit0_ch13_isr()                    // 定时器通道 13 周期中断服务函数      
+void pit0_ch13_isr()                    // ��ʱ��ͨ�� 13 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH13);
-    
+
 }
 
-void pit0_ch14_isr()                    // 定时器通道 14 周期中断服务函数      
+void pit0_ch14_isr()                    // ��ʱ��ͨ�� 14 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH14);
-    
+
 }
 
-void pit0_ch15_isr()                    // 定时器通道 15 周期中断服务函数      
+void pit0_ch15_isr()                    // ��ʱ��ͨ�� 15 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH15);
-    
+
 }
 
-void pit0_ch16_isr()                    // 定时器通道 16 周期中断服务函数      
+void pit0_ch16_isr()                    // ��ʱ��ͨ�� 16 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH16);
-    
+
 }
 
-void pit0_ch17_isr()                    // 定时器通道 17 周期中断服务函数      
+void pit0_ch17_isr()                    // ��ʱ��ͨ�� 17 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH17);
-    
+
 }
 
-void pit0_ch18_isr()                    // 定时器通道 18 周期中断服务函数      
+void pit0_ch18_isr()                    // ��ʱ��ͨ�� 18 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH18);
-    
+
 }
 
-void pit0_ch19_isr()                    // 定时器通道 19 周期中断服务函数      
+void pit0_ch19_isr()                    // ��ʱ��ͨ�� 19 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH19);
-    
+
 }
 
-void pit0_ch20_isr()                    // 定时器通道 20 周期中断服务函数      
+void pit0_ch20_isr()                    // ��ʱ��ͨ�� 20 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH20);
-    
+
 }
 
-void pit0_ch21_isr()                    // 定时器通道 21 周期中断服务函数      
+void pit0_ch21_isr()                    // ��ʱ��ͨ�� 21 �����жϷ�����
 {
     pit_isr_flag_clear(PIT_CH21);
     tsl1401_collect_pit_handler();
 }
-// **************************** PIT中断函数 ****************************
 
-
-// **************************** 串口中断函数 ****************************
-// 串口0默认作为调试串口
+/* ---- �����ж� ---- */
+// ����0Ĭ����Ϊ���Դ���
 void uart0_isr (void)
 {
-    if(uart_isr_mask(UART_0))            // 串口0接收中断
+    if(uart_isr_mask(UART_0))            // ����0�����ж�
     {
-        /* UART_0 的接收字节归 route_link（串口灌表）独家消费。
-         * 这里原来调的是 debug_interrupr_handler()；两个消费者抢 uart_query_byte()，
-         * 结果必然是"谁先取谁得"，灌表随机丢字节。本工程没有任何代码读 debug 环形缓冲，
-         * 所以让出去是零代价；printf 那条发送通路不受影响。
-         * ⚠ 以后若要用 scanf，得改成"取一次、分发给两边"，不能再加第二个 uart_query_byte() 循环。 */
-        route_link_uart_irq();
+
+#if DEBUG_UART_USE_INTERRUPT             // ������� debug �����ж�
+        route_link_uart_irq();           /* ���ڹ��(route_link)�Ľ��տ� */
+#endif                                   // ����޸��� DEBUG_UART_INDEX ����δ�����Ҫ�ŵ���Ӧ�Ĵ����ж�ȥ
+
     }
-    else                                 // 串口0发送中断
-    {           
-        
-        
-        
+    else                                 // ����0�����ж�
+    {
+
     }
 }
 
 void uart1_isr (void)
 {
-    if(uart_isr_mask(UART_1))            // 串口1接收中断
+    if(uart_isr_mask(UART_1))            // ����1�����ж�
     {
-        
-        wireless_module_uart_handler();  // 无线模块统一回调函数
-      
+
+        wireless_module_uart_handler();  // ����ģ��ͳһ�ص�����
+
     }
-    else                                // 串口1发送中断
+    else                                // ����1�����ж�
     {
-      
-        
-        
+
     }
 }
 
 void uart2_isr (void)
 {
-    if(uart_isr_mask(UART_2))            // 串口2接收中断
+    if(uart_isr_mask(UART_2))            // ����2�����ж�
     {
-        
-        gnss_uart_callback();            // GPS模块回调函数      
-        
+
+        gnss_uart_callback();            // GPSģ��ص�����
+
     }
-    else                                // 串口2发送中断
+    else                                // ����2�����ж�
     {
-        
-        
-       
+
     }
 }
 
 void uart3_isr (void)
 {
-    if(uart_isr_mask(UART_3))            // 串口3接收中断
+    if(uart_isr_mask(UART_3))            // ����3�����ж�
     {
-        
-        
-        
+
     }
-    else                                // 串口3发送中断
+    else                                // ����3�����ж�
     {
-      
-        
-        
+
     }
 }
 
-// ---- UART_4 已被【串口接收机（SBUS）】占用，不要再作其它串口用途 ----
-//   串口/引脚：UART_4 = SCB2；P14.0 = RX（接接收机的 UART/TXD 输出）；P14.1 = TX（占位，接收机无此脚，硬件悬空）
-//   定时器    ：TC_TIME2_CH2 也被该驱动占用（做帧间隔计时），别处不要再 timer_init 同一个通道
 void uart4_isr (void)
 {
-    if(uart_isr_mask(UART_4))            // 串口4接收中断
+    if(uart_isr_mask(UART_4))            // ����4�����ж�
     {
 
-        uart_receiver_handler();                                                                // 串口接收机回调函数
-       
+        uart_receiver_handler();                                                                // ���ڽ��ջ��ص�����
+
     }
-    else                                // 串口4发送中断
+    else                                // ����4�����ж�
     {
-      
-        
-        
+
     }
 }
 
 void uart5_isr (void)
 {
-    if(uart_isr_mask(UART_5))            // 串口5接收中断
+    if(uart_isr_mask(UART_5))            // ����5�����ж�
     {
-        
-        
-       
+
     }
-    else                                // 串口5发送中断
+    else                                // ����5�����ж�
     {
-      
-        
-        
+
     }
 }
 
 void uart6_isr (void)
 {
-    if(uart_isr_mask(UART_6))            // 串口6接收中断
+    if(uart_isr_mask(UART_6))            // ����6�����ж�
     {
 
-        
-       
     }
-    else                                // 串口6发送中断
+    else                                // ����6�����ж�
     {
-      
-        
-        
+
     }
 }
-// **************************** 串口中断函数 ****************************
 
-// **************************** 外部中断函数 ****************************
-void gpio_0_exti_isr()                  // 外部 GPIO_0 中断服务函数     
+/* ---- �ⲿ�ж� ---- */
+void gpio_0_exti_isr()                  // �ⲿ GPIO_0 �жϷ�����
 {
-    
-  
-  
+
 }
 
-void gpio_1_exti_isr()                  // 外部 GPIO_1 中断服务函数     
+void gpio_1_exti_isr()                  // �ⲿ GPIO_1 �жϷ�����
 {
-    if(exti_flag_get(P01_0))		// 示例P1_0端口外部中断判断
+    if(exti_flag_get(P01_0))		// ʾ��P1_0�˿��ⲿ�ж��ж�
     {
 
-      
-      
-            
     }
     if(exti_flag_get(P01_1))
     {
 
-            
-            
     }
 }
 
-void gpio_2_exti_isr()                  // 外部 GPIO_2 中断服务函数     
+void gpio_2_exti_isr()                  // �ⲿ GPIO_2 �жϷ�����
 {
     if(exti_flag_get(P02_0))
     {
-            
-            
+
+
     }
     if(exti_flag_get(P02_4))
     {
-            
-            
+
+
     }
 
 }
 
-void gpio_3_exti_isr()                  // 外部 GPIO_3 中断服务函数     
+void gpio_3_exti_isr()                  // �ⲿ GPIO_3 �жϷ�����
 {
-
-
 
 }
 
-void gpio_4_exti_isr()                  // 外部 GPIO_4 中断服务函数     
+void gpio_4_exti_isr()                  // �ⲿ GPIO_4 �жϷ�����
 {
-
-
 
 }
 
-void gpio_5_exti_isr()                  // 外部 GPIO_5 中断服务函数     
+void gpio_5_exti_isr()                  // �ⲿ GPIO_5 �жϷ�����
 {
-
-
 
 }
 
 
-void gpio_6_exti_isr()                  // 外部 GPIO_6 中断服务函数     
+void gpio_6_exti_isr()                  // �ⲿ GPIO_6 �жϷ�����
 {
+    if(exti_flag_get(IMU660RC_INT2_PIN))
+    {
+        imu660rc_callback();
+    }
+}
 
-
+void gpio_7_exti_isr()                  // �ⲿ GPIO_7 �жϷ�����
+{
 
 }
 
-void gpio_7_exti_isr()                  // 外部 GPIO_7 中断服务函数     
+void gpio_8_exti_isr()                  // �ⲿ GPIO_8 �жϷ�����
 {
-
-
 
 }
 
-void gpio_8_exti_isr()                  // 外部 GPIO_8 中断服务函数     
+void gpio_9_exti_isr()                  // �ⲿ GPIO_9 �жϷ�����
 {
-
-
 
 }
 
-void gpio_9_exti_isr()                  // 外部 GPIO_9 中断服务函数     
+void gpio_10_exti_isr()                  // �ⲿ GPIO_10 �жϷ�����
 {
-
-
 
 }
 
-void gpio_10_exti_isr()                  // 外部 GPIO_10 中断服务函数     
+void gpio_11_exti_isr()                  // �ⲿ GPIO_11 �жϷ�����
 {
-
-
 
 }
 
-void gpio_11_exti_isr()                  // 外部 GPIO_11 中断服务函数     
+void gpio_12_exti_isr()                  // �ⲿ GPIO_12 �жϷ�����
 {
-
-
 
 }
 
-void gpio_12_exti_isr()                  // 外部 GPIO_12 中断服务函数     
+void gpio_13_exti_isr()                  // �ⲿ GPIO_13 �жϷ�����
 {
-
-
 
 }
 
-void gpio_13_exti_isr()                  // 外部 GPIO_13 中断服务函数     
+void gpio_14_exti_isr()                  // �ⲿ GPIO_14 �жϷ�����
 {
-
-
 
 }
 
-void gpio_14_exti_isr()                  // 外部 GPIO_14 中断服务函数     
+void gpio_15_exti_isr()                  // �ⲿ GPIO_15 �жϷ�����
 {
-
-
 
 }
 
-void gpio_15_exti_isr()                  // 外部 GPIO_15 中断服务函数     
+void gpio_16_exti_isr()                  // �ⲿ GPIO_16 �жϷ�����
 {
-
-
 
 }
 
-void gpio_16_exti_isr()                  // 外部 GPIO_16 中断服务函数     
+void gpio_17_exti_isr()                  // �ⲿ GPIO_17 �жϷ�����
 {
-
-
 
 }
 
-void gpio_17_exti_isr()                  // 外部 GPIO_17 中断服务函数     
+void gpio_18_exti_isr()                  // �ⲿ GPIO_18 �жϷ�����
 {
-
-
 
 }
 
-void gpio_18_exti_isr()                  // 外部 GPIO_18 中断服务函数     
+void gpio_19_exti_isr()                  // �ⲿ GPIO_19 �жϷ�����
 {
-
-
 
 }
 
-void gpio_19_exti_isr()                  // 外部 GPIO_19 中断服务函数     
+void gpio_20_exti_isr()                  // �ⲿ GPIO_20 �жϷ�����
 {
-
-
 
 }
 
-void gpio_20_exti_isr()                  // 外部 GPIO_20 中断服务函数     
+void gpio_21_exti_isr()                  // �ⲿ GPIO_21 �жϷ�����
 {
-
-
 
 }
 
-void gpio_21_exti_isr()                  // 外部 GPIO_21 中断服务函数     
+void gpio_22_exti_isr()                  // �ⲿ GPIO_22 �жϷ�����
 {
-
-
 
 }
 
-void gpio_22_exti_isr()                  // 外部 GPIO_22 中断服务函数     
+void gpio_23_exti_isr()                  // �ⲿ GPIO_23 �жϷ�����
 {
 
-
-
 }
-
-void gpio_23_exti_isr()                  // 外部 GPIO_23 中断服务函数     
-{
-
-
-
-}
-// **************************** 外部中断函数 ****************************

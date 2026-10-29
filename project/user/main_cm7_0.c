@@ -1,74 +1,598 @@
 /*********************************************************************************************************************
-* CYT4BB Opensource Library å³ï¼ˆ CYT4BB å¼€æºåº“ï¼‰æ˜¯ä¸€ä¸ªåŸºäºå®˜æ–¹ SDK æ¥å£çš„ç¬¬ä¸‰æ–¹å¼€æºåº“
-* Copyright (c) 2022 SEEKFREE é€é£ç§‘æŠ€
+* CYT4BB Opensource Library ¼´£¨ CYT4BB ¿ªÔ´¿â£©ÊÇÒ»¸ö»ùÓÚ¹Ù·½ SDK ½Ó¿ÚµÄµÚÈı·½¿ªÔ´¿â
+* Copyright (c) 2022 SEEKFREE Öğ·É¿Æ¼¼
 *
-* æœ¬æ–‡ä»¶æ˜¯ CYT4BB å¼€æºåº“çš„ä¸€éƒ¨åˆ†
+* ±¾ÎÄ¼şÊÇ CYT4BB ¿ªÔ´¿âµÄÒ»²¿·Ö
 *
-* CYT4BB å¼€æºåº“ æ˜¯å…è´¹è½¯ä»¶
-* æ‚¨å¯ä»¥æ ¹æ®è‡ªç”±è½¯ä»¶åŸºé‡‘ä¼šå‘å¸ƒçš„ GPLï¼ˆGNU General Public Licenseï¼Œå³ GNUé€šç”¨å…¬å…±è®¸å¯è¯ï¼‰çš„æ¡æ¬¾
-* å³ GPL çš„ç¬¬3ç‰ˆï¼ˆå³ GPL3.0ï¼‰æˆ–ï¼ˆæ‚¨é€‰æ‹©çš„ï¼‰ä»»ä½•åæ¥çš„ç‰ˆæœ¬ï¼Œé‡æ–°å‘å¸ƒå’Œ/æˆ–ä¿®æ”¹å®ƒ
+* CYT4BB ¿ªÔ´¿â ÊÇÃâ·ÑÈí¼ş
+* Äú¿ÉÒÔ¸ù¾İ×ÔÓÉÈí¼ş»ù½ğ»á·¢²¼µÄ GPL£¨GNU General Public License£¬¼´ GNUÍ¨ÓÃ¹«¹²Ğí¿ÉÖ¤£©µÄÌõ¿î
+* ¼´ GPL µÄµÚ3°æ£¨¼´ GPL3.0£©»ò£¨ÄúÑ¡ÔñµÄ£©ÈÎºÎºóÀ´µÄ°æ±¾£¬ÖØĞÂ·¢²¼ºÍ/»òĞŞ¸ÄËü
 *
-* æœ¬å¼€æºåº“çš„å‘å¸ƒæ˜¯å¸Œæœ›å®ƒèƒ½å‘æŒ¥ä½œç”¨ï¼Œä½†å¹¶æœªå¯¹å…¶ä½œä»»ä½•çš„ä¿è¯
-* ç”šè‡³æ²¡æœ‰éšå«çš„é€‚é”€æ€§æˆ–é€‚åˆç‰¹å®šç”¨é€”çš„ä¿è¯
-* æ›´å¤šç»†èŠ‚è¯·å‚è§ GPL
+* ±¾¿ªÔ´¿âµÄ·¢²¼ÊÇÏ£ÍûËüÄÜ·¢»Ó×÷ÓÃ£¬µ«²¢Î´¶ÔÆä×÷ÈÎºÎµÄ±£Ö¤
+* ÉõÖÁÃ»ÓĞÒşº¬µÄÊÊÏúĞÔ»òÊÊºÏÌØ¶¨ÓÃÍ¾µÄ±£Ö¤
+* ¸ü¶àÏ¸½ÚÇë²Î¼û GPL
 *
-* æ‚¨åº”è¯¥åœ¨æ”¶åˆ°æœ¬å¼€æºåº“çš„åŒæ—¶æ”¶åˆ°ä¸€ä»½ GPL çš„å‰¯æœ¬
-* å¦‚æœæ²¡æœ‰ï¼Œè¯·å‚é˜…<https://www.gnu.org/licenses/>
+* ÄúÓ¦¸ÃÔÚÊÕµ½±¾¿ªÔ´¿âµÄÍ¬Ê±ÊÕµ½Ò»·İ GPL µÄ¸±±¾
+* Èç¹ûÃ»ÓĞ£¬Çë²ÎÔÄ<https://www.gnu.org/licenses/>
 *
-* é¢å¤–æ³¨æ˜ï¼š
-* æœ¬å¼€æºåº“ä½¿ç”¨ GPL3.0 å¼€æºè®¸å¯è¯åè®® ä»¥ä¸Šè®¸å¯ç”³æ˜ä¸ºè¯‘æ–‡ç‰ˆæœ¬
-* è®¸å¯ç”³æ˜è‹±æ–‡ç‰ˆåœ¨ libraries/doc æ–‡ä»¶å¤¹ä¸‹çš„ GPL3_permission_statement.txt æ–‡ä»¶ä¸­
-* è®¸å¯è¯å‰¯æœ¬åœ¨ libraries æ–‡ä»¶å¤¹ä¸‹ å³è¯¥æ–‡ä»¶å¤¹ä¸‹çš„ LICENSE æ–‡ä»¶
-* æ¬¢è¿å„ä½ä½¿ç”¨å¹¶ä¼ æ’­æœ¬ç¨‹åº ä½†ä¿®æ”¹å†…å®¹æ—¶å¿…é¡»ä¿ç•™é€é£ç§‘æŠ€çš„ç‰ˆæƒå£°æ˜ï¼ˆå³æœ¬å£°æ˜ï¼‰
+* ±¾¹¤³Ì: ¿¨¶¡³µÕû³µ¹Ì¼ş(×ªÏòÎ»ÖÃ»· + Ë«ºóÂÖËÙ¶È»· + SBUS Ò£¿Ø + WiFi ÉÏÎ»»ú + Â·±í»Ø·Å)
 *
-* æ–‡ä»¶åç§°          main_cm7_0
-* å…¬å¸åç§°          æˆéƒ½é€é£ç§‘æŠ€æœ‰é™å…¬å¸
-* ç‰ˆæœ¬ä¿¡æ¯          æŸ¥çœ‹ libraries/doc æ–‡ä»¶å¤¹å†… version æ–‡ä»¶ ç‰ˆæœ¬è¯´æ˜
-* å¼€å‘ç¯å¢ƒ          IAR 9.40.1
-* é€‚ç”¨å¹³å°          CYT4BB
-* åº—é“ºé“¾æ¥          https://seekfree.taobao.com/
+* ---- Ó²¼şÁ¬½Ó ----
+*   ×óºóÂÖ:  PWM -> P09_0 (TCPWM_CH24)    DIR -> P09_1
+*   ÓÒºóÂÖ:  PWM -> P10_2 (TCPWM_CH30)    DIR -> P10_3
+*   ×ªÏò  :  PWM -> P05_0 (TCPWM_CH09)    DIR -> P05_1
+*   ×óºóÂÖ±àÂëÆ÷: PULSE -> P17_3 (TC_CH58 CH1)   DIR -> P17_4 (TC_CH58 CH2)  [Âö³å+·½Ïò]
+*   ÓÒºóÂÖ±àÂëÆ÷: PULSE -> P19_2 (TC_CH27 CH1)   DIR -> P19_3 (TC_CH27 CH2)  [Âö³å+·½Ïò]
+*   ×ªÏò¾ø¶Ô½Ç±àÂëÆ÷: SPI_4(SCB5)  CLK P07_2 / MOSI P07_1 / MISO P07_0 / CS P07_3
+*   WiFi-SPI Ä£¿é : ¼û motor_link.h (SPI_0 + INT P02_4 + RST P23_0)
+*   Ò£¿Ø½ÓÊÕ»ú    : UART_4 = SCB2, RX = P14_0 (½Ó½ÓÊÕ»ú TX), TX = P14_1 (Õ¼Î», Ğü¿Õ)
+*                   SBUS 100 kbps, 6 Í¨µÀ; Ö¡¼ä¸ô¼ÆÊ±Õ¼ TC_TIME2_CH2, ¼û zf_device_uart_receiver.h
+*   ÆÁÄ»          : IPS200 SPI_1, SCL P12_2 / SDA P12_1 / CS P12_3 / RST P22_4 / DC P22_3 / BLK P11_0
+*   °´¼ü          : °åÔØ 4 ¼ü P20_3 / P20_2 / P20_0 / P20_1
 *
-* ä¿®æ”¹è®°å½•
-* æ—¥æœŸ              ä½œè€…                å¤‡æ³¨
-* 2024-1-4       pudding            first version
+* ---- Ì¨¼Ü±ê¶¨(°´Ë³Ğò×ö) ----
+*   1 Ó²¼ş¼«ĞÔ: ³µ¼Ü¿Õ, ¸ø steer_u0 ¿´·½ÏòÅÌÄÜ·ñÍÆ¶¯, ÔÙ¸ø +3 ¶È¿´ÊÇ·ñ³¯Ä¿±ê×ª, ·´Ïò¸Ä minv_s, ºóÂÖÍ¬Àí¸Ä minv_l/minv_r¡£
+*   2 ²âËÙÕı¸º: ÕıÃüÁîĞëµÃ¸Ã²à v ÎªÕı, ·´Ïò¸Ä inv_l / inv_r¡£
+*   3 Ã¿×ª¼ÆÊı: ÇåÁã pos, ÊÖ×ªµç»úÖá 10 È¦, cpr = pos ÔöÁ¿ / 10 (±¾³µ 1024 Ïß x 49/27 = 1858)¡£
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
+
+#include "motor_link.h"
+#include "motor_drv.h"
+#include "spd_enc.h"
+#include "spd_ctrl.h"
+#include "spd_safety.h"
+#include "remote_ctrl.h"
 #include "ins_imu.h"
+#include "ins_odom.h"
 
-// WiFi æ˜¯å¦å·²åˆå§‹åŒ–ï¼ˆæœªåˆå§‹åŒ–æ—¶ï¼Œä¾èµ– WiFi çš„åŠŸèƒ½ä¸å¯ç”¨ï¼‰
-volatile uint8 wifi_spi_inited = 0;
+/* ---- ÆÁÄ»²Ëµ¥ + 12 ¶ÎÅÜ°à ---- */
+#include "flash_map.h"
+#include "app_params.h"
+#include "bench_log.h"
+#include "spd_bench.h"
+#include "ui_core.h"
+#include "ui_menu.h"
+#include "route_app.h"          /* Â·±í(P1): Ó¦ÓÃ²ã */
+#include "route_pb.h"
+#include "proto.h"              /* Ğ­Òé²ã/È¨ÏŞ²ã, Î¨Ò»Ğ´Èë¿Ú */
+#include "head_test.h"            /* º½Ïò²âÊÔ */
 
+static uint32   g_print_ms = 0;        /* ÉÏ´Î´òÓ¡×´Ì¬µÄÊ±¿Ì */
+static uint8    g_zero_last    = 0;   /* Î»×Ë¹éÁãÃüÁîµÄ±ßÑØ¼ÇÒä, 0->1 Ö»´¥·¢Ò»´Î */
+static uint32   g_imu_retry_ms  = 0;   /* IMU µôÏßºóµÄÖØÊÔ½ÚÅÄ, 1 Hz */
 
-int main(void)
+/* ---- Ò£²âÍ¨µÀÌî³ä ---- */
+static void motor_fill_telemetry (void)
 {
-    clock_init(SYSTEM_CLOCK_250M); 	    // æ—¶é’Ÿé…ç½®åŠç³»ç»Ÿåˆå§‹åŒ–<åŠ¡å¿…ä¿ç•™>
-    debug_init();                       // è°ƒè¯•ä¸²å£ä¿¡æ¯åˆå§‹åŒ–
+    uint32 age;
 
-    Peripheral_Init();				    // åˆå§‹åŒ–å¤–è®¾ï¼Œè‡ªè¡Œé…ç½®
-
-    /* ---- IMU å§¿æ€è§£ç®—ï¼ˆIMU963RA / SPI_2ï¼Œæœ¬æ ¸ç‹¬å ï¼‰----
-       ä¼šé˜»å¡ 5 ç§’ï¼ˆ1000 ä¸ª 5ms é‡‡æ ·æ±‚é›¶åï¼‰ï¼Œå¤±è´¥æœ€å¤šé‡è¯• 5 æ¬¡ = 25 ç§’ã€‚
-        åœ¨å…¶ä»–å¤–è®¾åˆå§‹åŒ–å®Œæ¯•åè¿›è¡Œï¼Œæ–¹ä¾¿åœ¨å±å¹•ä¸Šæ˜¾ç¤ºä¸‹æ–¹ä¿¡æ¯
-    */
-    ips200_show_string(8, 120, "IMU GYRO CALIB...");
-    ips200_show_string(8, 136, "PLEASE KEEP STILL");
+    /* Ñ²Ïßµµ route: 22 Í¨µÀ, tel_sel = 0, Ä¬ÈÏµµ; Ğë×ßÔ­×Ó¿ìÕÕ, ÈıµµÍ¨µÀºÅ»¥²»Îª×Ó¼¯, ÌîÍêÖ±½Ó return */
+    if (spd_tel_sel < 0.5f)
     {
-        uint8 imu_ret = ins_imu_init();         // 0 = æˆåŠŸ / 1 = å™¨ä»¶åˆå§‹åŒ–å¤±è´¥ / 2 = é›¶åè¶…é™
-        if (0 == imu_ret) { ips200_show_string(8, 152, "IMU OK              "); }
-        else              { ips200_show_string(8, 152, "IMU FAIL, SEE UART  "); }
+        ins_imu_snap_t  imu;
+        ins_odom_snap_t odom;
+
+        ins_imu_snapshot(&imu);
+        ins_odom_snapshot(&odom);
+
+        /* --- Á½ÌõËÙ¶È»·: Ä¿±ê / Êµ²â / Êä³ö --- */
+        motor_link_ch_set(RCH_U_L,            ctl_l.u * 100.0f);
+        motor_link_ch_set(RCH_V_L,            enc_l.rps);
+        motor_link_ch_set(RCH_TARGET_L,       spd_target_l);
+        motor_link_ch_set(RCH_U_R,            ctl_r.u * 100.0f);
+        motor_link_ch_set(RCH_V_R,            enc_r.rps);
+        motor_link_ch_set(RCH_TARGET_R,       spd_target_r);
+
+        /* --- ×ªÏò: Êµ¼ÊÊ©¼Ó / Êµ²â / Êä³ö --- */
+        motor_link_ch_set(RCH_STEER_TARGET,   steer.applied_delta);
+        motor_link_ch_set(RCH_STEER_DELTA,    steer.meas_delta);
+        motor_link_ch_set(RCH_STEER_U,        (float)steer.output_duty);
+
+        motor_link_ch_set(RCH_K_V,            spd_g.k_v);
+        motor_link_ch_set(RCH_K_Z,            spd_g.k_z);
+
+        /* --- ¹ßµ¼: º½Ïò / ½ÇËÙ¶È / Â·±íºáÏòÎó²î --- */
+        motor_link_ch_set(RCH_INS_YAW,        odom.yaw);
+        motor_link_ch_set(RCH_TAR_YAW,        (0u != head_test_active()) ? head_test_tar_yaw()
+                                            : ((0u != steer.head_enable) ? steer_ctrl_get_target_yaw()
+                                                                         : ins_odom_get_yaw()));
+        motor_link_ch_set(RCH_INS_GZ,         imu.gyro_z_dps);
+        motor_link_ch_set(RCH_PB_ELAT,        route_pb_elat());
+
+        motor_link_ch_set(RCH_RC_ENGAGE,      (float)RC_Engage);
+        motor_link_ch_set(RCH_STEER_EN,       (float)steer.angle_enable);
+        motor_link_ch_set(RCH_STEER_STATUS,
+                          (float)(steer_abs_self_check_ok() | ((uint16)steer_ctrl_fault() << 1)));
+        motor_link_ch_set(RCH_RT_CNT,         (float)route_app_count());
+        motor_link_ch_set(RCH_RT_ST,          (float)route_app_status());
+        motor_link_ch_set(RCH_TICK_MS,        (float)motor_link_now_ms());
+        motor_link_ch_set(RCH_INS_STATIC,
+                          (float)((0u != (ins_imu_flags() & INS_ST_STATIC)) ? 1u : 0u));
+        return;
     }
 
-    // ä½å§¿åŸºå‡†ï¼šæŠŠèµ·ç‚¹è®¾æˆ (0,0)ï¼Œèˆªå‘å–å½“å‰ IMU å€¼ï¼ˆIMU å¤±è´¥æ—¶å°±æ˜¯ 0ï¼‰
-    ins_odom_init();
-
-    pit_ms_init(PIT_CH0, 10);
-    pit_ms_init(PIT_CH1, 5);            // 5msï¼šè½¬å‘ï¼ˆè§’åº¦ç¼–ç å™¨é‡‡é›† + èˆµæœºä½ç½®ç¯ï¼ŒåŒä¸­æ–­ï¼‰
-    pit_ms_init(PIT_CH11, 5);           // 5msï¼šåè½®é€Ÿåº¦ç¯ + IMU å§¿æ€è§£ç®—ï¼ˆè§ pit0_ch11_isrï¼‰
-    pit_ms_init(PIT_CH10, 1);           // 1ms å®šæ—¶ï¼Œå…¨å±€æ¯«ç§’è®¡æ—¶ï¼ˆç¼–ç å™¨é€Ÿåº¦ç§¯åˆ†ç”¨ï¼‰
-
-    while(true)
+    /* ±ê¶¨µµ calib: 18 Í¨µÀ, tel_sel = 1, Ò»Ö¡ 93 ×Ö½Ú, ÊÊºÏ³¤Ê±¼ä¸ßÃÜ¶È²ÉÑù; CT_* ¶ÀÁ¢±àºÅ */
+    if (spd_tel_sel < 1.5f)
     {
-        Menu_Show();
+        age = motor_link_rx_age_ms();
+        if (age > 60000u)
+        {
+            age = 60000u;
+        }
+
+        motor_link_ch_set(CT_TARGET_L,    spd_target_l);
+        motor_link_ch_set(CT_V_L,         enc_l.rps);
+        motor_link_ch_set(CT_U_L,         ctl_l.u * 100.0f);
+        motor_link_ch_set(CT_TARGET_R,    spd_target_r);
+        motor_link_ch_set(CT_V_R,         enc_r.rps);
+        motor_link_ch_set(CT_U_R,         ctl_r.u * 100.0f);
+        /* ·¢Êµ¼ÊÊ©¼ÓµÄÄ¿±ê(ÈíÏŞÎ»¼Ğ½ôÓëĞ±ÆÂÖ®ºó), ²»ÊÇÉÏÎ»»úĞ´µÄÃüÁî */
+        motor_link_ch_set(CT_STEER_TGT,   steer.applied_delta);
+        motor_link_ch_set(CT_STEER_DELTA, steer.meas_delta);
+        motor_link_ch_set(CT_STEER_U,     (float)steer.output_duty);
+        motor_link_ch_set(CT_ONLINE,      (float)motor_link_online());
+        motor_link_ch_set(CT_ENABLE,      (float)motor_link_enable_bits());
+        motor_link_ch_set(CT_SAFETY,      (float)spd_safety_flags());
+        motor_link_ch_set(CT_STEER_EN,    (float)steer.angle_enable);
+        motor_link_ch_set(CT_STEER_ST,
+                          (float)(steer_abs_self_check_ok() | ((uint16)steer_ctrl_fault() << 1)));
+        motor_link_ch_set(CT_OL_EN,       (spd_ol_en > 0.5f) ? 1.0f : 0.0f);
+        motor_link_ch_set(CT_RESV0,       0.0f);
+        /* ÔöÒæ»Ø¶Á: ¿ØÖÆÆ÷±¾ÅÄÕæÕı³ËÉÏÈ¥µÄ k_v / k_z */
+        motor_link_ch_set(CT_K_V,         spd_g.k_v);
+        motor_link_ch_set(CT_K_Z,         spd_g.k_z);
+        return;
+    }
+
+    /* È«Á¿µµ full: 45 Í¨µÀ, tel_sel = 2, Ò»Ö¡ 201 B, 200 Hz ÏÂÔ¼ 40 kB/s; CH_* ¶ÀÁ¢±àºÅ, ÌîÍêÖ±½Ó return */
+    if (spd_tel_sel < 2.5f)
+    {
+        age = motor_link_rx_age_ms();
+        if (age > 60000u)
+        {
+            age = 60000u;                  /* rx_age ÓÃ 0xFFFFFFFF ±íÊ¾´ÓÃ»ÊÕµ½¹ı, ½Øµ½ 60 s */
+        }
+
+        motor_link_ch_set(CH_TARGET_L,    spd_target_l);
+        motor_link_ch_set(CH_V_L,         enc_l.rps);
+        motor_link_ch_set(CH_U_L,         ctl_l.u * 100.0f);
+        motor_link_ch_set(CH_TARGET_R,    spd_target_r);
+        motor_link_ch_set(CH_V_R,         enc_r.rps);
+        motor_link_ch_set(CH_U_R,         ctl_r.u * 100.0f);
+        motor_link_ch_set(CH_UFF_L,       ctl_l.u_ff * 100.0f);
+        motor_link_ch_set(CH_UFF_R,       ctl_r.u_ff * 100.0f);
+        motor_link_ch_set(CH_Z_L,         ctl_l.z);
+        motor_link_ch_set(CH_Z_R,         ctl_r.z);
+        motor_link_ch_set(CH_POS_L,       (float)enc_l.pos);
+        motor_link_ch_set(CH_POS_R,       (float)enc_r.pos);
+        motor_link_ch_set(CH_ONLINE,      (float)motor_link_online());
+        motor_link_ch_set(CH_RX_AGE_MS,   (float)age);
+        motor_link_ch_set(CH_ENABLE_BITS, (float)motor_link_enable_bits());
+        motor_link_ch_set(CH_SAFETY,      (float)spd_safety_flags());
+
+        /* --- ×ªÏò(16~20) --- */
+        motor_link_ch_set(CH_STEER_TARGET, steer.applied_delta);   /* Êµ¼ÊÊ©¼ÓµÄÄ¿±ê */
+        motor_link_ch_set(CH_STEER_DELTA,  steer.meas_delta);
+        motor_link_ch_set(CH_STEER_U,      (float)steer.output_duty);
+        motor_link_ch_set(CH_STEER_EN,     (float)steer.angle_enable);
+        /* bit0 = ¾ø¶Ô±àÂëÆ÷×Ô¼ìÍ¨¹ı   bit1 = 0x02 ·´À¡Ê§Ğ§(Ëø´æ, Êä³ö¶¤ 0, ×Ô¶¯¸´Î»ÏŞ´ÎÊı)
+           bit2 = 0x04 ¶¥ËÀ/ÎŞ½øÕ¹¸æ¾¯(²»¶¤Êä³ö, Õ³ÖÍ 2 s)   bit3 = 0x08 ±¾ÅÄ¶ÁÊı±»·À¶¶¾Üµô(Ë²Ì¬) */
+        motor_link_ch_set(CH_STEER_STATUS,
+                          (float)(steer_abs_self_check_ok() | ((uint16)steer_ctrl_fault() << 1)));
+
+        /* --- Ò£¿Ø(21~24): ½Ó¹Ü×´Ì¬ / Ò¡¸ËÔ­Ê¼Öµ / ½ÓÊÕ»úÖ¡Êı --- */
+        motor_link_ch_set(CH_RC_ENGAGE,    (float)RC_Engage);
+        motor_link_ch_set(CH_RC_CH1,       (float)RC_Raw_Ch1);
+        motor_link_ch_set(CH_RC_CH2,       (float)RC_Raw_Ch2);
+        motor_link_ch_set(CH_RC_FRAMES,    (float)RC_Frames);
+
+        /* --- ÔöÒæ»Ø¶Á(25~26) --- */
+        motor_link_ch_set(CH_K_V,          spd_g.k_v);
+        motor_link_ch_set(CH_K_Z,          spd_g.k_z);
+
+        /* --- ¹ßµ¼(39~44): ±ØĞë×ßÔ­×Ó¿ìÕÕ, Ö±½Ó¶ÁÈ«¾ÖÁ¿»áÄÃµ½ËºÁÑÖµ --- */
+        {
+            ins_imu_snap_t  imu;
+            ins_odom_snap_t odom;
+            uint8           f = 0u;
+
+            ins_imu_snapshot(&imu);
+            ins_odom_snapshot(&odom);
+
+            motor_link_ch_set(CH_INS_YAW,  odom.yaw);
+            motor_link_ch_set(CH_INS_GZ,   imu.gyro_z_dps);
+            motor_link_ch_set(CH_INS_X,    odom.x);
+            motor_link_ch_set(CH_INS_Y,    odom.y);
+            motor_link_ch_set(CH_INS_DIST, odom.dist_abs);
+
+            /* ×´Ì¬Î»Í¼ 8 Î», Ë³Ğò¹Ì¶¨, ÉÏÎ»»ú²à²»¿É¸Ä */
+            if (ins_imu_ready())                 { f |= 0x01u; }   /* IMU ¾ÍĞ÷(ÁãÆ«±ê¶¨Íê)  */
+            if (imu.flags & INS_ST_MAG_CAL_DONE) { f |= 0x02u; }   /* ´ÅÁ¦¼ÆÒÑ±ê¶¨          */
+            if (odom.flags & ODOM_ST_STILL)      { f |= 0x04u; }   /* ÅĞ¶¨¾²Ö¹(ZUPT ´°¿Ú)   */
+            if (odom.flags & ODOM_ST_SLIP)       { f |= 0x08u; }   /* ±¾ÅÄÅĞ´ò»¬(Ö»±¨¾¯)    */
+            if (imu.flags & INS_ST_IMU_LINK_BAD) { f |= 0x40u; }   /* IMU Í¨ĞÅ»µ            */
+            if (imu.flags & INS_ST_WARN)         { f |= 0x80u; }   /* ÆäËü¸æ¾¯              */
+            motor_link_ch_set(CH_INS_FLAGS, (float)f);
+        }
+
+        /* --- Â·±í/»Ø·Å(45~47) --- */
+        motor_link_ch_set(CH_RT_CNT,   (float)route_app_count());
+        motor_link_ch_set(CH_RT_ST,    (float)route_app_status());
+        motor_link_ch_set(CH_PB_ELAT,  route_pb_elat());
+        /* CH36 = º½ÏòÍâ»·µÄÊµ¼ÊÊäÈë, ÓÅÏÈ¼¶: º½Ïò²âÊÔ > º½Ïò»·(PP/Ò£¿Ø) > µ±Ç°º½Ïò */
+        motor_link_ch_set(CH_TAR_YAW, (0u != head_test_active()) ? head_test_tar_yaw()
+                                    : ((0u != steer.head_enable) ? steer_ctrl_get_target_yaw()
+                                                                 : ins_odom_get_yaw()));
+        motor_link_ch_set(CH_HT_SEG,      head_test_seg());              /* 0¹Ø/1..n¶Î/254Íê */
+
+        /* --- Õï¶ÏÈı¼şÌ×(38~40): tick_ms Ê±»ù(60 s Ó¦ÕÇÔ¼ 60000, Æ«Ğ¡ = ÖĞ¶Ï±»¶öËÀ) /
+           ins_frz ZUPT ¶³½áÆÚ¶ªÆúµÄ×ª½Ç(¶È, ÀÛ¼ÆÖ»¶Á) / ins_static IMU ÅĞ¾²Ö¹±êÖ¾ --- */
+        motor_link_ch_set(CH_TICK_MS,    (float)motor_link_now_ms());
+        motor_link_ch_set(CH_INS_FRZ,    ins_imu_zupt_frz_deg());
+        motor_link_ch_set(CH_INS_STATIC, (float)((0u != (ins_imu_flags() & INS_ST_STATIC)) ? 1u : 0u));
+
+        /* --- »Ø·ÅÕï¶Ï(41~43): kref ¹é 0 ¶ø best Õı³£ = ±íÄÚÆ½¶Î, best Ìø±ä = Í¶Ó°´°¿ÚÇĞ»» --- */
+        motor_link_ch_set(CH_PB_BEST, route_pb_get_best());
+        motor_link_ch_set(CH_PB_FI,   route_pb_get_fi());
+        motor_link_ch_set(CH_PB_KREF, route_pb_get_kref());
+        motor_link_ch_set(CH_PB_WHY,  route_pb_get_why_code());
+        return;
+    }
+
+    /* ²É¼¯µµ train: 16 Í¨µÀ, tel_sel = 3¡£¶æ½Ç/¶æ½ÇËÙÂÊ/ÖĞĞÄËÙ¶È/×óÓÒÂÖËÙ/yaw_rate/Ä¿±êÇúÂÊ/Õ¼¿Õ±È,
+       ²»º¬ x/y/dist/yaw; Ò»Ö¡ 85 B, TRCH_* ¶ÀÁ¢±àºÅ, ÌîÍêÖ±½Ó return¡£ */
+    if (spd_tel_sel >= 2.5f)
+    {
+        ins_imu_snap_t imu;
+
+        ins_imu_snapshot(&imu);
+
+        motor_link_ch_set(TRCH_STEER_TARGET,  steer.applied_delta);
+        motor_link_ch_set(TRCH_STEER_DELTA,   steer.meas_delta);
+        motor_link_ch_set(TRCH_STEER_U,       (float)steer.output_duty);
+        motor_link_ch_set(TRCH_STEER_STATUS,
+                          (float)(steer_abs_self_check_ok() | ((uint16)steer_ctrl_fault() << 1)));
+
+        motor_link_ch_set(TRCH_TARGET_L,      spd_target_l);
+        motor_link_ch_set(TRCH_V_L,           enc_l.rps);
+        motor_link_ch_set(TRCH_U_L,           ctl_l.u * 100.0f);
+        motor_link_ch_set(TRCH_TARGET_R,      spd_target_r);
+        motor_link_ch_set(TRCH_V_R,           enc_r.rps);
+        motor_link_ch_set(TRCH_U_R,           ctl_r.u * 100.0f);
+
+        motor_link_ch_set(TRCH_INS_GZ,        imu.gyro_z_dps);
+        motor_link_ch_set(TRCH_INS_STATIC,
+                          (float)((0u != (ins_imu_flags() & INS_ST_STATIC)) ? 1u : 0u));
+
+        motor_link_ch_set(TRCH_ENABLE_BITS,   (float)motor_link_enable_bits());
+        motor_link_ch_set(TRCH_SAFETY,        (float)spd_safety_flags());
+        motor_link_ch_set(TRCH_RC_ENGAGE,     (float)RC_Engage);
+        motor_link_ch_set(TRCH_TICK_MS,       (float)motor_link_now_ms());
+        return;
+    }
+
+}
+
+/* ---- ¶¨µã´òÓ¡: ²»ÓÃ %f, IAR Ä¬ÈÏ¿â²»±£Ö¤¸¡µã¸ñÊ½»¯; pf2 ·µ»ØÕûÊı²¿·Ö, Ğ¡ÊıĞ´½ø *fp ---- */
+static int pf2 (float v, int *fp)
+{
+    int32 t = (int32)(v * 100.0f);
+    int   i;
+    int   f;
+
+    if (t < 0)
+    {
+        i = (int)((-t) / 100);
+        f = (int)((-t) % 100);
+        if (i != 0) { i = -i; }
+        else if (f != 0) { f = -f; }
+    }
+    else
+    {
+        i = (int)(t / 100);
+        f = (int)(t % 100);
+    }
+    *fp = f;
+    return i;
+}
+
+/* ---- Ã¿ 1 Ãë´òÓ¡Ò»´Î×´Ì¬: ÕâĞĞÔÚÌø¼´ËµÃ÷Ö÷Ñ­»·¡¢Ê±ÖÓ¡¢´®¿Ú¶¼»î×Å ---- */
+static void motor_print_status (void)
+{
+    uint32 now;
+    uint32 trip;
+    int    i1, i2, i3, i4;
+    int    f1, f2, f3, f4;
+
+    now = motor_link_now_ms();
+    if ((uint32)(now - g_print_ms) < 1000u)
+    {
+        return;
+    }
+    g_print_ms = now;
+
+    trip = spd_safety_trip_take();
+    if (0 != trip)
+    {
+        printf("[!!] SAFETY EVENT 0x%04X  (0x04=lost 0x08=no heartbeat 0x10=cfg)  output forced 0\r\n",
+               (unsigned)trip);
+    }
+
+    i1 = pf2(spd_target_l, &f1);
+    i2 = pf2(enc_l.rps,    &f2);
+    i3 = pf2(spd_target_r, &f3);
+    i4 = pf2(enc_r.rps,    &f4);
+
+    /* int = INT(P02_4) µçÆ½, 1=¿ÕÏĞ 0=Ã¦(ÕûÖ¡¶ªÆú); tx = ½»¸øÄ£¿éµÄÖ¡Êı(Ó¦ 50/s)¡£
+       int=0 ºã²»±ä = ²é INT Ïß»ò¹©µç; int=1 ¶ø tx ²»ÕÇ = Çı¶¯ mutex ¿¨ BUSY; tx ÕÇ¶øÎŞÊı¾İ = WiFi/Socket¡£
+       dL = ±¾ÅÄ¼ÆÊıÔöÁ¿, Ó¦Ô¼ cpr*v*0.005 (1.4 rps -> 11~12); fL/gL = ÀÛ¼Æ»»Ïò/Ã«´Ì¶ªÆú,
+       fL Ã¿ÃëÕÇ¼¸Ê®ÒÔÉÏ = DIR Ïß¶¶¶¯; gL ÔÚÕÇ = ¿âÄÚ¶Á DIR Óë±¾Ä£¿é²»Ò»ÖÂ¡£ */
+    printf("[%6lu s] err=%u online=%u en=0x%04X rx_age=%lums safe=0x%04X int=%u tx=%lu | "
+           "L tgt=%d.%02d v=%d.%02d | R tgt=%d.%02d v=%d.%02d | cpr=%lu/%lu "
+           "| dL=%d fL=%lu gL=%lu\r\n",
+           (unsigned long)(now / 1000u),
+           (unsigned)motor_link_init_err(),
+           (unsigned)motor_link_online(),
+           (unsigned)motor_link_enable_bits(),
+           (unsigned long)motor_link_rx_age_ms(),
+           (unsigned)spd_safety_flags(),
+           (unsigned)gpio_get_level(WIFI_SPI_INT_PIN),
+           (unsigned long)motor_link_tx_count(),
+           i1, f1, i2, f2,
+           i3, f3, i4, f4,
+           (unsigned long)enc_l.cpr,
+           (unsigned long)enc_r.cpr,
+           (int)enc_l.delta,
+           (unsigned long)enc_l.flip,
+           (unsigned long)enc_l.glitch);
+
+    /* º½Ïò×Ô¼ì: yaw ÎªÀÛ»ıÖµ, ×ªÒ»È¦Ó¦ +360; rej = ±»µ¥ÅÄ×ª½ÇÕ¢ÃÅ¶ªµôµÄÅÄÊı, ·Ç 0 ÏÈ²é SPI_2 Óë¹©µç */
+    printf("[##] IMU yaw=%ld deg  rej=%u\r\n",
+           (long)ins_imu_get_yaw(), (unsigned)ins_imu_yaw_rej());
+
+    /* ×ªÏòÒ»ĞĞ: ×ª½Çµ¥Î»·½ÏòÅÌ¶È; ²»¶¯·½ÏòÅÌÊ± raw Ó¦ÎÈ¶¨, delta Ó¦½ü 0 */
+    {
+        int st_t, st_tf, st_d, st_df, st_e, st_ef;
+
+        st_t  = pf2(steer.target_delta, &st_tf);
+        st_d  = pf2(steer.meas_delta,   &st_df);
+        st_e  = pf2(steer.err,          &st_ef);
+
+        /* raw = »·ÀïÕæÕıÓÃµÄÖµ(·À¶¶ºó)   rl = ±¾ÅÄ SPI Êµ¶ÁÖµ   bad = ÀÛ¼Æ¾ÜÑù   ar = ÀÛ¼Æ×Ô¶¯¸´Î»
+           flt = 0x01 ·´À¡Ê§Ğ§(Ëø´æ, ¶¤Êä³ö) / 0x02 ¶¥ËÀ¸æ¾¯ / 0x04 ±¾ÅÄ¶ªÑù(Ë²Ì¬) */
+        printf("        STEER tgt=%d.%02d delta=%d.%02d err=%d.%02d duty=%d raw=%u rl=%u en=%u "
+               "flt=0x%02X sc=%u bad=%u ar=%lu\r\n",
+               st_t, st_tf,
+               st_d, st_df,
+               st_e, st_ef,
+               (int)steer.output_duty,
+               (unsigned)steer_abs_get_raw(),
+               (unsigned)steer_abs_get_raw_live(),
+               (unsigned)steer.angle_enable,
+               (unsigned)steer_ctrl_fault(),
+               (unsigned)steer_abs_self_check_ok(),
+               (unsigned)steer_abs_bad_cnt(),
+               (unsigned long)steer.recover_cnt);
+    }
+
+    /* Ò£¿ØÒ»ĞĞ, ²»½Ó¹ÜÊ±°´Ğò²é: FRM ²»ÕÇ = ½ÓÊÕ»úÃ»·¢/Ïß´í/²¨ÌØÂÊ·Ç SBUS 100k;
+       CH1/CH2 ²»ÔÚ 992 ¸½½ü = Ò¡¸ËÎ´»ØÖĞ»òÁ¿³Ì²»Í¬; CH5/CH6 ²»ÔÚ 192/1792 = Í¨µÀ½Ó´í»ò¼«ĞÔºê·´;
+       ENG ºã 0 = CH6 Î´ºÏÕ¢»ò rc_arm_en=0; ENG=3 = Ê§¿Ø, ENG=4 = ¼±Í£, ENG=2 ³µ²»¶¯ = ²é SAFE */
+    {
+        int rt, rf, ra, rd, rs, rsf;
+
+        rt = pf2(RC_Throttle * 1000.0f, &rf);
+        ra = pf2(RC_Steer_Deg, &rd);
+        rs = pf2(RC_Scale * 1000.0f, &rsf);
+
+        printf("        RC  eng=%u st=%u arm=%u estop=%u ch5=%u ch6=%u deg=%d.%02d thr=%d scale=%d mid=%u/%u frm=%lu local=%u tel=%u/%ums\r\n",
+               (unsigned)RC_Engage,
+               (unsigned)RC_Online,
+               (unsigned)RC_Arm,
+               (unsigned)RC_Estop,
+               (unsigned)RC_Raw_Ch5,
+               (unsigned)RC_Raw_Ch6,
+               ra, rd,
+               rt, rs,
+               (unsigned)RC_Steer_Mid, (unsigned)RC_Thr_Mid,
+               (unsigned long)RC_Frames,
+               (unsigned)spd_safety_local(),
+               (unsigned)motor_link_ch_count(),
+               (unsigned)motor_link_tx_period_ms());
+
+        /* CH3 Ô­Ê¼Öµ: c3 ²»¶¯ = Í¨µÀÎ´½Ó»òÎ´Ó³Éä; bad Î»Í¼ bit0 CH1 / bit1 CH2 µôÏß */
+        printf("        RC3 c3=%u bad=%u yw=%d\r\n",
+               (unsigned)RC_Raw_Ch3, (unsigned)RC_Stick_Bad,
+               (int)steer_yaw_deg);
+    }
+
+    /* ¹ßµ¼Ò»ĞĞ: imu_init ·Ç 0 = IMU Î´Ê¶±ğ, ²é P15 ½ÓÏßÓëĞÍºÅ; yaw ¾²Ö¹ÈÔ×ß = ¿´ bz; gz ¾²Ö¹³¬
+       0.2 dps = ÁãÆ«Î´ÊÕÁ²»ò ZUPT Î´ÉúĞ§; x/y ·´Ïò = INS_YAW_SIGN Óë inv_*; dist ²î k ±¶ = ins_mpm ´í */
+    {
+        int   yr, yf, gr, gf, xr, xf, dr, df, sr, sf, br, bf;
+        float bx, by, bz;
+
+        ins_diag_get_bias(&bx, &by, &bz);   /* ÔÚÏßÁãÆ«, raw LSB Óò(1 LSB = 0.0699 dps) */
+
+        yr = pf2(ins_imu_get_yaw(),        &yf);
+        gr = pf2(ins_imu_get_gyro_z_dps(), &gf);
+        xr = pf2(ins_odom_get_x(),         &xf);
+        dr = pf2(ins_odom_get_y(),         &df);
+        sr = pf2(ins_odom_get_dist(),      &sf);
+        br = pf2(bz,                       &bf);
+
+        printf("        INS  yaw=%d.%02d gz=%d.%02d x=%d.%02d y=%d.%02d dist=%d.%02d fl=0x%02X st=%u bz=%d.%02d(LSB) en=%u mpm=%u frz=%lu/%lu\r\n",
+               yr, yf, gr, gf, xr, xf, dr, df, sr, sf,
+               (unsigned)ins_odom_flags(),
+               (unsigned)((ins_imu_flags() & INS_ST_STATIC) ? 1u : 0u),
+               br, bf,
+               (unsigned)((ins_odom_enable > 0.5f) ? 1u : 0u),
+               (unsigned)(int)(ins_m_per_rev * 10000.0f),
+               (unsigned long)ins_imu_zupt_frz_ticks(),
+               (unsigned long)(ins_imu_zupt_frz_deg() * 100.0f));
+    }
+}
+
+int main (void)
+{
+    uint8   ret;
+
+    clock_init(SYSTEM_CLOCK_250M);      /* Ê±ÖÓÅäÖÃ¼°ÏµÍ³³õÊ¼»¯, Îñ±Ø±£Áô */
+    debug_init();                       /* µ÷ÊÔ´®¿ÚĞÅÏ¢³õÊ¼»¯ */
+
+    printf("[##] UART OK  steer + dual motor speed loop (WiFi)\r\n");
+
+    motor_drv_init();                   /* Ö´ĞĞÆ÷: ÈıÂ· PWM/DIR(×óºó/ÓÒºó/×ªÏò)ÉÏµç¾ùÊä³ö 0 */
+
+    spd_enc_init();                     /* ±àÂëÆ÷: ×óÓÒºóÂÖÂö³å + ·½Ïò */
+
+    /* ---- ×ªÏò¾ø¶Ô±àÂëÆ÷ + ×ªÏòÎ»ÖÃ»·: Ö±Á÷µç»ú + ¾ø¶Ô±àÂëÆ÷, ¿¿Î»ÖÃ»·±£³Ö½Ç¶È ----
+       steer_abs_init() ÄÚº¬ SPI ×Ô¼ì(×î³¤Ô¼ 100 ms), Ê§°Ü²»×èÈûÖ»ÊÇ½Ç¶È²»¿ÉĞÅ;
+       Ä¬ÈÏÈ«²»Ê¹ÄÜ, ĞèÏÈ±ê¶¨ÔÙ°Ñ×ªÏòÄÚ»·Ê¹ÄÜÖÃ 1¡£ */
+    steer_abs_init();
+    steer_ctrl_init();
+
+    spd_safety_init();                  /* ±£»¤²ã: ÄÚ²¿ÅÜÒ»±éÅäÖÃ×Ô¼ì */
+    spd_ctrl_init();                    /* ËÙ¶È»· */
+
+    /* ---- Ğ­Òé²ã: WiFi / ²Ëµ¥ / Ò£¿Ø ÈıÌõĞ´ÈëÂ·¾¶Í³Ò»µ½ proto_exec(); Ã¿È¦µ÷ proto_tick() Ğø×â ----
+       ĞëÔÚ remote_ctrl_init() Ö®Ç°, ºóÕß»áµ÷ proto_estop()¡£ */
+    proto_init();
+
+    /* ---- ¹ßµ¼: IMU + º½Î»ÍÆËã; ins_imu_init() ×èÈûÔ¼ 5 s(1000 µã x 5 ms ÁãÆ«±ê¶¨) ----
+       ÆÚ¼ä³µĞë¾²Ö¹, ¼«²î³¬ÏŞÖØÀ´, ×î¶à 5 ´Î; ĞëÔÚ pit_ms_init() Ö®Ç°µ÷ÓÃ, ·ñÔòÖĞ¶ÏÀïµÄ
+       ins_imu_update() »áÓÃÎ´±ê¶¨ÁãÆ«»ı·Ö¡£963RA Óë IMU660RA/RC Òı½ÅÏàÍ¬, Æä 0x0F Ó¦Îª 0x6A¡£ */
+    ins_odom_init();
+    ret = ins_imu_init();
+    {
+        uint8 id0f = 0u, id00 = 0u, idv = 0u;
+        ins_imu_dev_id_get(&id0f, &id00, &idv);
+        printf("[##] INS    imu_init=%u id(0F)=0x%02X id(00)=0x%02X (963RA ÆÚÍû 0x6A; 0x00/0xFF=Ã»½ÓÉÏ)\r\n",
+               (unsigned)ret, (unsigned)id0f, (unsigned)id00);
+    }
+    {
+        float m  = ins_m_per_rev;
+        int   mi = (int)m;
+        int   mf = (int)((m - (float)mi) * 10000.0f);
+        printf("[##] INS    mpm=%d.%04d m/rev (¿¨¶¡ cpr=1858 -> Õâ¾ÍÊÇºóÂÖÖÜ³¤; Õ¼Î»Öµ, ÍÆ 2m ±ØÖØ±ê)\r\n",
+               mi, mf);
+    }
+
+    /* ---- Ò£¿Ø½ÓÊÕ»ú UART_4 / P14_0: SBUS 100 kbps, 6 Í¨µÀ ----
+       ĞëÔÚ pit_ms_init(PIT_CH2, 5) Ö®Ç°(ÄÚ²¿ÓÃ TC_TIME2_CH2 ¼ÆÊ±Ö¡¼ä¸ô); ½Ó¹ÜÊ±ÓÉ
+       remote_ctrl_apply() µ÷ spd_safety_set_local(1), Ò£¿Ø²»ÒÀÀµ WiFi¡£ */
+    remote_ctrl_init();
+
+    if (0 != spd_safety_cfg_bad())
+    {
+        printf("[##] CONFIG BAD 0x%02X - motor stays off\r\n", (unsigned)spd_safety_cfg_bad());
+    }
+
+    /* ²ÎÊı³Ö¾Ã»¯: ´Ó Work Flash Ò³ 0 ¶Á»ØÉÏ´Î SAVE µÄ²ÎÊı; ĞëÔÚÄ£¿é init Ö®ºó¡¢¿ª 5 ms ÖĞ¶ÏÖ®Ç°¡£
+       ÃüÁîÓëÎ£ÏÕÁ¿(target / ol_en / ol_duty / steer_en / ins_zero)²»»Ö¸´, ÉÏµçÎª°²È«Öµ¡£ */
+    app_param_init();
+
+    /* Â·±í: ¶Á²ÛË÷Òı -> ²¹¿Õ²ÛÄÚ½¨±í -> ÔØÈë active ²Û; ĞëÔÚ¿ª 5 ms ÖĞ¶ÏÖ®Ç°(×èÈû¶Á Flash),
+       ÄÚ½¨±íÖ»²¹¿Õ²ÛÇÒĞëÔÚ flash_load Ö®Ç°¡£ */
+    route_app_init();
+    route_pb_init();
+
+    spd_bench_init();                   /* 12 ¶ÎÅÜ°à: ³õÊ¼»¯, ¿ª»·Ä¬ÈÏ¹Ø±Õ */
+
+    pit_ms_init(PIT_CH2, 5);            /* 5 ms Ê±»ù: ËÙ¶È»· + Á´Â· */
+    interrupt_global_enable(0);         /* pit0_ch2_isr ÀïÅÜ spd_ctrl_tick() */
+
+    system_delay_ms(500);               /* µÈ WiFi Ä£¿éÉÏµçÎÈ¶¨, ·ñÔò½ô½Ó×ÅµÄ init ÈİÒ×Ê§°Ü */
+
+    /* ---- WiFi-SPI Á´Â·: ×èÈû, WiFi ×î³¤Ô¼ 10 s, Socket ×î³¤ÊıÊ®Ãë ----
+       Ê§°Ü·µ»Ø·Ç 0, Ö÷Ñ­»·ÕÕÅÜ, Ö»ÊÇ±£»¤²ãÓÀÔ¶²»ÔÊĞí³öÁ¦¡£ */
+    ret = motor_link_init();
+    if (0 != ret)
+    {
+        printf("[##] LINK INIT FAIL ret=%u (1=wifi 2=socket)\r\n", (unsigned)ret);
+    }
+    else
+    {
+        printf("[##] LINK OK  ssid:%s  ->%s:%s\r\n", MOTOR_WIFI_SSID, MOTOR_HOST_IP, MOTOR_HOST_PORT);
+    }
+
+    g_print_ms = motor_link_now_ms();
+
+    /* ---- ÆÁÄ» + °´¼ü(²Ëµ¥); Öğ·É IPS200 SPI °æ(Ó²¼ş SPI_1), 6 ½ÅÓÉ zf_device_ips200.h ¶¨ËÀ ----
+       SCL P12_2 / SDA(MOSI) P12_1 / CS P12_3 / RST P22_4 / DC P22_3 / BLK P11_0
+       ÆäËüÄ£¿é²»Õ¼Õâ 6 ½Å: ×ªÏò±àÂëÆ÷ SPI_4(P07_x)¡¢WiFi SPI_0(P02_x)¡¢IMU SPI_2(P15_x)¡£
+       °´¼ü P20_3 / P20_2 / P20_0 / P20_1; ĞëÔÚ motor_link_init() Ö®ºó, key_init(10) Óë
+       motor_link_now_ms() µÄ 10 ms ·ÖÆµÒ»ÖÂ; Ë¢ĞÂºÁÃë¼¶(ÇåÆÁÔ¼ 40 ms), Ö»ÄÜÔÚÖ÷Ñ­»·»­,
+       ui_init() Óë ui_menu_init() È±Ò»¼´ºÚÆÁ¡£ */
+    ui_init();
+    ui_puts_row(0, 0, "Kart10 INS+Route");
+    printf("[##] UI init done: IPS200 SPI_1 (SCL P12_2 / SDA P12_1 / CS P12_3 / DC P22_3 / RST P22_4 / BLK P11_0)\r\n");
+    ui_menu_init();
+
+    while (true)
+    {
+        /* 0) Ò£²âµµ°¸: tel_sel 0=Ñ²Ïß 22 / 1=±ê¶¨ 18 / 2=È«Á¿ 45 / 3=²É¼¯ 16; ÉÏÎ»»úµµ°¸ĞëÍ¬²½ÇĞ */
+        motor_link_set_ch_count((spd_tel_sel < 0.5f) ? MOTOR_CH_COUNT_ROUTE :
+                                ((spd_tel_sel < 1.5f) ? MOTOR_CH_COUNT_CALIB :
+                                 ((spd_tel_sel < 2.5f) ? MOTOR_CH_COUNT_FULL : MOTOR_CH_COUNT_TRAIN)));
+        motor_link_set_tx_period_ms((uint16)spd_tel_period);
+
+        /* 1) Á´Â·ÈÎÎñ: ÊÕÉÏÎ»»úÃüÁî + ·¢Ò£²â¡£Ã¿È¦±Øµ÷, ÇÒ²»¿É·ÅÔÚ¿ÉÄÜÊ§°ÜµÄ·ÖÖ§Àï */
+        motor_link_task();
+
+        /* 2) Ö÷Ñ­»·ĞÄÌø: ³¬¹ı 200 ms ÎŞĞÄÌø, ±£»¤²ã°ÑÁ½Â·Êä³ö¶¤ 0 */
+        spd_safety_heartbeat();
+
+        /* 2b) Ò£¿Ø: ÊÕ¿ìÕÕ -> »»Ëã -> ½Ó¹Ü×´Ì¬»ú -> Ğ´Ä¿±êÓë±¾µØµµÎ»; ÊôÂıËÙ¾ö²ß²ã,
+               5 ms ¿ØÖÆÈÔÔÚ pit0_ch2_isr¡£²»¿É×ö³É×èÈûÒ³Ãæ, ·ñÔòĞÄÌø¶Ï¡¢Êä³ö±»¶¤ 0¡£ */
+        remote_ctrl_update();
+        remote_ctrl_apply();
+
+        /* 2c) Ğ­Òé²ãĞÄÌø: ¼ì²éÇı¶¯ÁîÅÆ×âÆÚ, µ½ÆÚÊÍ·Å; ĞëÔÚ route_pb_poll() Ö®Ç°ÅÜ */
+        proto_tick();
+
+        /* º½Ïò²âÊÔÅÜÔÚ 5 ms ÖĞ¶ÏÀï, ²»¿É´ÓÄÇÀïÅöĞ­Òé²ã; ´Ë´¦ÌæËüĞø SPI Çı¶¯È¨ */
+        if (0u != head_test_active()) { (void)proto_drv_acquire(PROTO_SRC_SPI); }
+
+        /* 2d) ÅÜ°àÊÕÎ² + ÈÕÖ¾ÂäÅÌ + ²Ëµ¥; ·ÅÔÚĞÄÌøÖ®ºó(Ë¢ÆÁ×î²îÔ¼ 40 ms), ÈÕÖ¾Ã¿È¦×î¶àÒ»Ò³ Flash */
+        spd_bench_poll();
+        bench_log_poll();
+        route_app_poll();       /* Â·±í: Â¼ÖÆ²ÉÑù + ´®¿Ú¹à±í + Ã¿È¦Ò»Ò³ÂäÅÌ */
+        route_pb_poll();        /* Â·±í: »Ø·Å×´Ì¬»ú, ²»¸øËÙ¶ÈÊ±Ö»ËãÄ¿±êº½Ïò */
+        ui_menu_task();
+
+        /* 2e) ¹ßµ¼Âı¶¯×÷: Î»×Ë¹éÁã + IMU µôÏßÖØÊÔ(1 Hz)¡£¹éÁãĞëÎ»×ËÓëº½ÏòÒ»Æğ¹é,
+               ·ñÔòÂ·±íÓë»Ø·ÅµÄÏà¶ÔÁ¿ÕûÌå´íÎ»; ÖØÊÔÖ»ÔÚÁ´Â·»µÊ±×ö, ÄÇÊ±ÖĞ¶Ï²»Åö SPI_2¡£ */
+        {
+            uint8 nz = (ins_zero_cmd > 0.5f) ? 1u : 0u;
+
+            if (nz && (!g_zero_last))
+            {
+                ins_odom_reset();
+                ins_imu_zero_yaw();
+                printf("[##] INS    zero (x/y/yaw = 0)\r\n");
+            }
+            g_zero_last = nz;
+
+            if (0 == ins_imu_link_ok())
+            {
+                uint32 tnow = motor_link_now_ms();
+                if ((uint32)(tnow - g_imu_retry_ms) >= 1000u)
+                {
+                    g_imu_retry_ms = tnow;
+                    (void)ins_imu_try_recover();
+                }
+            }
+        }
+
+        /* 3) ×ªÏò»·ÔÚ pit0_ch2_isr(5 ms ÖĞ¶Ï)ÀïÅÜ, ´Ë´¦²»ÔÙµ÷ÓÃ; Á½´¦¶¼µ÷»áÊ¹Ä¿±êĞ±ÆÂ×ßÁ½±¶ËÙ */
+
+        /* 4) ÌîÒ£²â + ´òÓ¡×´Ì¬ */
+        motor_fill_telemetry();
+        motor_print_status();
+
+        system_delay_ms(1);
     }
 }

@@ -1,70 +1,27 @@
 /*********************************************************************************************************************
- * 工程 10（卡丁）惯导 - IMU 姿态与航向实现（IMU963RA + Mahony 九轴）
+ * 卡丁惯导 - IMU 姿态与航向实现（IMU963RA + Mahony 九轴 AHRS）
  *
- * ins_ = INS（Inertial Navigation System，惯导）子系统前缀，本文件属"惯导 + 路表"系列
- *
- * ★★ 本文件由【工程 8（C 车）】的 `ins_imu.c` **整体移植**（2026-10-15），算法一行未改。
- *    移植适配只有三处，都在本文件内部（搜 "工程 10 适配"）：
- *      ① 顶部这份说明
- *      ② `ins_imu_init()` 的**器件自动探测 + WHO_AM_I 打印**（卡丁从没初始化过 IMU，不能赌）
- *      ③ 上电标定的提示语改成卡丁的实操话术
- *    ⚠ 不要"顺手优化"这里的 ZUPT / 在线零偏 —— 它比 Polaris 卡丁那套强，
- *       是 C 车实测过的（开 ZUPT 静止 20 s 残差 0.0000° vs 关 2.098°）。
- *
- * 原设计意图、三处修正、节拍约束见 ins_imu.h
- * 算法谱系: 20.zf_clean/code/IMU_Analysis.c（Mahony 九轴 AHRS，已在 C 车上跑过）
- *           + 工程 1 的"实测 dt / 零偏标定"做法
- *           + 工程 2 的"累积角逐拍增量、不用 atan2"做法
- *
- * ★ 硬件事实（工程 10 已核实）：逐飞 CYT4BB7 主板的 IMU660RA / IMU660RC / **IMU963RA**
- *   三个驱动宏**引脚完全相同** = `SPI_2`：SCK **P15_2** / MOSI **P15_1** / MISO **P15_0** / CS **P15_3**。
- *   工程 9（卡丁）**P15 一根都没占用** ⇒ 不冲突。
+ * 硬件: IMU963RA 走 SPI_2, SCK P15_2 / MOSI P15_1 / MISO P15_0 / CS P15_3
+ *       IMU660RA / IMU660RC / IMU963RA 三个驱动的引脚宏相同, 读到的 ID 才作数
+ * 节拍: ins_imu_update() 在 5 ms PIT 中断内调用(200 Hz), 全工程只有它访问 IMU 的 SPI
+ * 参数、状态位与接口说明见 ins_imu.h
  ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
 #include <math.h>
 #include "ins_imu.h"
-/* ★ 2026-10-28：轮速门控改用 odom 车速判据（与队友一致），故恢复对 ins_odom.h 的依赖。
-   只用两个只读接口：ins_odom_enable / ins_odom_get_v_mps()。 */
 #include "ins_odom.h"
-#include "Motor.h"          /* ENC_LR_DLT / ENC_RR_DLT：odom 未开时的轮速门控兜底判据 */
 
 #define DEG2RAD_F   (0.017453292519943295f)
 #define RAD2DEG_F   (57.29577951308232f)
 
-/*===================================================================================================================
- *  ★★ 临界区：**绝不要用逐飞的 `interrupt_global_disable()` / `interrupt_global_enable(pm)` 配对**
- *
- *  原因（见 libraries/zf_common/zf_common_interrupt.c）—— 那一对不是"保存/恢复 PRIMASK"，
- *  而是一个自增自减的计数器，且 `enable` 只在参数为 0 时才真的开中断：
- *
- *      void interrupt_global_enable (uint32 primask)
- *      {
- *          if(primask == 0) { __enable_irq(); }    // ★ 只有传 0 才开中断
- *          interrupt_global_flag ++;
- *      }
- *      uint32 interrupt_global_disable (void)
- *      {
- *          __disable_irq();
- *          if(interrupt_global_flag > 0) interrupt_global_flag --;
- *          return interrupt_global_flag;           // ★ 返回计数器，不是 PRIMASK
- *      }
- *
- *  ⇒ `clock_init()` 里调过一次 `interrupt_global_enable(0)`，`main()` 里又调一次，
- *    计数器已经 ≥ 2。此后写 `pm = disable(); ...; enable(pm);`，`pm` 拿到的是 1（非 0）
- *    ⇒ **`__enable_irq()` 不会执行 ⇒ 中断被永久关死，且零报错**。
- *    症状：主循环照跑，但 5ms 中断再不进入 ⇒ 速度环/编码器/IMU 全停、`motor_tick_ms` 不涨、
- *    WiFi 一帧不发（`motor_link_task()` 连 if 体都不进）。
- *
- *  ⇒ 正确做法就是下面两行：直接存取 PRIMASK（CMSIS 标准做法，可任意嵌套）。
- *=================================================================================================================*/
+/* 临界区: 直接存取 PRIMASK, 可任意嵌套。逐飞的 interrupt_global_disable()/enable(pm) 是自增自减
+   计数器, enable 仅在参数为 0 时才开中断, 配对使用会永久关中断且无报错。 */
 static uint32 ins_crit_enter (void) { uint32 pm = __get_PRIMASK(); __disable_irq(); return pm; }
 static void   ins_crit_exit  (uint32 pm) { __set_PRIMASK(pm); }
 
-/*===================================================================================================================
- *  内部状态
- *=================================================================================================================*/
-/* 陀螺零偏（raw LSB，去零偏在 LSB 域做，死区也在 LSB 域做） */
+/* ---- 内部状态 ---- */
+/* 陀螺零偏, raw LSB; 去零偏与死区都在 LSB 域做 */
 static float    s_bias_x = 0.0f;
 static float    s_bias_y = 0.0f;
 static float    s_bias_z = 0.0f;
@@ -82,8 +39,8 @@ static float    s_exInt  = 0.0f, s_eyInt = 0.0f, s_ezInt = 0.0f;
 static uint16   s_quick_cnt = 0;
 
 /* 输出 */
-static volatile float s_yaw_acc   = 0.0f;           /* ★ 累积航向（度） */
-static volatile uint16 s_yaw_rej  = 0u;             /* 被单拍合理性闸门丢弃的拍数（诊断） */
+static volatile float s_yaw_acc   = 0.0f;           /* 累积航向（度） */
+static volatile uint16 s_yaw_rej  = 0u;             /* 被单拍合理性闸门丢掉的拍数（诊断）*/
 static volatile float s_yaw_raw   = 0.0f;           /* Mahony 的 -180~180 */
 static volatile float s_roll      = 0.0f;
 static volatile float s_pitch     = 0.0f;
@@ -96,32 +53,17 @@ static volatile uint16 s_seq      = 0;
 /* 最近一次有效磁力计（float，sensor hub 低频更新，拍间复用） */
 static float    s_mag_g[3] = {0.0f, 0.0f, 0.0f};
 
-/*===================================================================================================================
- *  ★★ ZUPT / 在线零偏估计状态（2026-10-11 新增，见 ins_imu.h 一·b）
- *  为什么需要：上电 5 s 标定完零偏就**冻结**了，芯片升温会让零偏走掉 1~2 LSB，
- *  而六轴下 yaw 不可观测 ⇒ 静止时 yaw 匀速单调上升。ZUPT 是唯一能观测到零偏的窗口。
- *=================================================================================================================*/
-static volatile uint8  s_wheel_moving = 0;             /* 本拍后轮是否有计数（ins_imu_update 入参刷新） */
-static volatile uint8  s_is_static   = 1;               /* 上电先判"静止"（MM32 同做法：可立刻开始攒零偏） */
-static uint16   s_zupt_quiet  = INS_ZUPT_ENTER_MS;      /* 静止条件**连续**满足的时长(ms) */
+/* ---- ZUPT / 在线零偏估计状态 ----
+   六轴下 yaw 不可观测, 唯一的零偏观测窗口是车确实静止的时刻。 */
+static volatile uint8  s_is_static   = 1;               /* 上电先判静止, 可立刻开始攒零偏 */
+static uint16   s_zupt_quiet  = INS_ZUPT_ENTER_MS;      /* 静止条件连续满足的时长(ms) */
 static uint16   s_zupt_noisy  = 0;                      /* 不满足的连续时长(ms)           */
 static uint16   s_horiz_run   = 0;                      /* 水平加速度条件连续满足时长(ms) */
 static volatile uint8  s_bias_trk    = 0;               /* 本拍是否在跟踪零偏（诊断）      */
 static volatile float  s_horiz_acc   = 0.0f;            /* 去重力后的水平加速度(g)        */
 
-/*===================================================================================================================
- *  ★★ 冻结计数器（2026-10-12 新增）—— 回答"ZUPT 到底吃掉了多少转角"
- *
- *  背景：实验 B 里"极慢原地转 90° 只读出 8.6°"。机理是 `gz = 0` 把整段低速转动丢掉了，
- *  但**丢掉多少只有实测才知道**。这两个计数器就是那把尺子：
- *      s_frz_ticks —— 本段内有几拍 `s_is_static == 1`（5 ms/拍 ⇒ ×5 = 毫秒）
- *      s_frz_deg   —— 冻结期间被丢弃的 |gyro| 积分（度）= Σ |s_gz_dps| · dt
- *
- *  ★ 判读：
- *      fz 大、fzd ≈ 0   ⇒ 只是"停着不动时被冻"（正确行为，没丢东西）
- *      fzd 明显 > 0     ⇒ 冻结期间**确实在转** ⇒ 这些转角被吃掉了 ⇒ 必须查为什么低速被判静止
- *  起点：`ins_imu_zupt_frz_reset()`；录表开始时由 `ins_route_start()` 自动清零。
- *=================================================================================================================*/
+/* ---- 冻结计数器: 统计 ZUPT 冻结期间被丢弃的转角 ----
+ *   s_frz_ticks = 冻结拍数, s_frz_deg = 冻结期间 |gyro| 积分之和(度); deg 明显大于 0 说明冻结时确实在转 */
 static volatile uint32 s_frz_ticks = 0;                 /* 冻结拍数                        */
 static volatile float  s_frz_deg   = 0.0f;              /* 冻结期间被丢弃的转角（度）      */
 
@@ -129,20 +71,7 @@ static volatile float  s_frz_deg   = 0.0f;              /* 冻结期间被丢弃
 static uint8    s_dwt_ok   = 0;
 static uint32   s_dwt_last = 0;
 
-/* ★★ 迁移时新增（2026-10-19）：主循环正在做**阻塞式**标定。
- *
- *   原工程里 `ins_imu_calib_gyro()` 只在 `ins_imu_init()` 里调用 —— 那时 5ms PIT 还没启动，
- *   所以主循环独占 SPI_2。本工程把这个入口也开放给了调试页（重标零偏），而 PIT 已经在跑：
- *   若不加这道门，`ins_calib_gyro_once()` 会在主循环里连读 1000 次 SPI，期间 ISR 里的
- *   `ins_imu_update()` 会插进来读同一个 SCB9 ⇒ 帧交错、`ClearRxFifo()` 互相踩，
- *   标定采到的是垃圾，姿态也会被带偏。
- *   所以：标定期间把它置 1，ISR 直接返回（只涨 seq 保持"活着"的表象）。
- *   这也正是 ins_imu.h 那条"全工程只有一个函数访问 IMU 的 SPI"纪律的落地方式。 */
-static volatile uint8 s_calib_busy = 0;
-
-/*===================================================================================================================
- *  DWT 周期计数器（Cortex-M7 自带，用于实测 dt）
- *=================================================================================================================*/
+/* ---- DWT 周期计数器(Cortex-M7), 用于实测 dt ---- */
 static void ins_dwt_init (void)
 {
     uint32 a, b;
@@ -161,7 +90,7 @@ static void ins_dwt_init (void)
     s_dwt_ok   = ((b - a) > 100u) ? 1u : 0u;
     if (!s_dwt_ok)
     {
-        s_flags |= INS_ST_DT_NODWT;         /* 如实上报：dt 将用标称周期 */
+        s_flags |= INS_ST_DT_NODWT;         /* 上报: dt 改用标称周期 */
     }
     s_dwt_last = DWT->CYCCNT;
 }
@@ -173,8 +102,7 @@ static float ins_dt_seconds (void)
 
     if (!s_dwt_ok)
     {
-        /* ★ 用 NODWT 而不是 DT_BAD：这只表示"没测到"，不是"测到异常"。
-           5ms 是 PIT 硬周期，标称值本身就是准的 ⇒ 不该每次上电都挂告警。 */
+        /* 用 NODWT 而不是 DT_BAD: 这只表示没测到, 不是测到异常; 5 ms 是 PIT 硬周期, 标称值本身就准 */
         s_flags |= INS_ST_DT_NODWT;
         return INS_T_S;
     }
@@ -184,17 +112,15 @@ static float ins_dt_seconds (void)
         uint32 cyc = now - s_dwt_last;                  /* uint32 差值天然处理回绕 */
         s_dwt_last = now;
 
-        /* dt 用 SystemCoreClock 折算（2026-10-28，与 15.mix_mode_add 一致）：
-           原来硬编码 250 MHz，一旦改时钟树 dt 会静默错。读不到时退回 250 MHz。 */
+        /* 用运行期主频换算, 不写死 250 MHz: 主频一变 dt 就偏大/偏小, 航向会按比例多转/少转 */
         {
             float f_cpu = (float)SystemCoreClock;
 
-            if (f_cpu < 1.0e6f) { f_cpu = 250000000.0f; }
-
+            if (f_cpu < 1.0e6f) { f_cpu = 250000000.0f; }   /* 未初始化则退回标称, 避免除 0 */
             dt = (float)cyc / f_cpu;
         }
 
-        /* 合理区间 [T/2, 4T]；越界说明丢拍/抖动，钳回标称并置位 */
+        /* 合理区间 [T/2, 4T]; 越界说明丢拍/抖动, 钳回标称并置位 */
         if ((dt < (INS_T_S * 0.5f)) || (dt > (INS_T_S * 4.0f)))
         {
             s_flags |= INS_ST_DT_BAD;
@@ -202,9 +128,7 @@ static float ins_dt_seconds (void)
         }
         else
         {
-            /* ★ 不粘滞：恢复正常就把标志清掉。
-               （原来只置位不清，于是"WiFi 建连那几秒把中断拖了一次"这种一次性事件
-                 会让上电后的整个运行期都挂着 DT_BAD —— 那不是"当前状态"，是历史。） */
+            /* 不粘滞: 恢复正常即清标志, 标志表示当前状态而非历史 */
             s_flags &= (uint16)~INS_ST_DT_BAD;
         }
     }
@@ -212,12 +136,7 @@ static float ins_dt_seconds (void)
     return dt;
 }
 
-/*===================================================================================================================
- *  IMU963RA 读取
- *  ⚠ 963RA 与 660RA 的三处差异（**都不报错**，见 ins_imu.h 与方案文档 §3.2）:
- *     ① 不需要哑字节 ② 数据寄存器陀螺在前（0x22）且不连续 ③ 换算 ÷14.3/÷4098/÷3000
- *  这三条逐飞库的 imu963ra_* 已经处理好了 ⇒ **只用库函数，不要自己拼寄存器**。
- *=================================================================================================================*/
+/* ---- IMU963RA 读取: 哑字节/寄存器顺序/换算系数由逐飞 imu963ra_* 库处理, 不要自己拼寄存器 ---- */
 static void ins_read_raw (void)
 {
     imu963ra_get_acc();
@@ -229,11 +148,7 @@ static void ins_read_mag (void)
     imu963ra_get_mag();
 }
 
-/*===================================================================================================================
- *  陀螺零偏标定（上电，要求静止）
- *  带"被碰检测": 采样期内任一轴极差超过门槛就重来（最多 INS_CALIB_MAX_RETRY 次）。
- *  这条是 20.zf_clean 没有、而工程 1 有的 —— 防"标定时有人碰车"这个致命场景。
- *=================================================================================================================*/
+/* 陀螺零偏标定(上电, 要求静止): 任一轴极差超过 INS_CALIB_MAX_SPAN_LSB 判为被碰动, 最多重试 INS_CALIB_MAX_RETRY 次 */
 static uint8 ins_calib_gyro_once (void)
 {
     int32   sum_x = 0, sum_y = 0, sum_z = 0;
@@ -257,14 +172,14 @@ static uint8 ins_calib_gyro_once (void)
         if (gy < min_y) min_y = gy;   if (gy > max_y) max_y = gy;
         if (gz < min_z) min_z = gz;   if (gz > max_z) max_z = gz;
 
-        system_delay_us(5000);                          /* 5ms 一拍，与运行期采样率一致 */
+        system_delay_us(5000);                          /* 5 ms 一拍, 与运行期采样率一致 */
     }
 
     if (((int32)max_x - (int32)min_x > INS_CALIB_MAX_SPAN_LSB) ||
         ((int32)max_y - (int32)min_y > INS_CALIB_MAX_SPAN_LSB) ||
         ((int32)max_z - (int32)min_z > INS_CALIB_MAX_SPAN_LSB))
     {
-        return 1;                                       /* 被碰过，重来 */
+        return 1;                                       /* 车被碰动, 重来 */
     }
 
     primask = ins_crit_enter();
@@ -288,12 +203,9 @@ uint8 ins_imu_calib_gyro (void)
     uint8 try_n;
     uint8 ret = 2;
 
-    s_calib_busy = 1u;                  /* ★ 独占 SPI_2：ISR 里的 ins_imu_update() 立即让开 */
-
     for (try_n = 0; try_n < INS_CALIB_MAX_RETRY; try_n ++)
     {
-        /* ★ 每次尝试都打印一行：标定是阻塞的（每轮 INS_CALIB_SAMPLES×5ms），
-           不打印的话失败重试会让现场看起来像"卡住了/什么都没发生"。 */
+        /* 每轮打印一行: 标定是阻塞的(每轮 INS_CALIB_SAMPLES×5ms), 失败重试时现场能看到进展 */
         printf("[##] IMU gyro calib try %u/%u (%u samples, keep still)...\r\n",
                (unsigned)(try_n + 1), (unsigned)INS_CALIB_MAX_RETRY,
                (unsigned)INS_CALIB_SAMPLES);
@@ -302,7 +214,7 @@ uint8 ins_imu_calib_gyro (void)
 
         if (0 == ret)
         {
-            /* ⚠ 不用 %f：IAR 默认库不一定支持浮点格式化（这个坑本工作区踩过），一律打整数 */
+            /* 不用 %f: IAR 默认库不一定支持浮点格式化, 一律打整数 */
             printf("[##] IMU gyro calib OK  bias=(%d, %d, %d) LSB\r\n",
                    (int)s_bias_x, (int)s_bias_y, (int)s_bias_z);
             break;
@@ -329,14 +241,10 @@ uint8 ins_imu_calib_gyro (void)
         s_flags |= INS_ST_WARN;
     }
 
-    s_calib_busy = 0u;                  /* 让开 SPI_2，ISR 恢复更新 */
-
     return ret;
 }
 
-/*===================================================================================================================
- *  磁力计 Min-Max 标定
- *=================================================================================================================*/
+/* ---- 磁力计 Min-Max 标定 ---- */
 void ins_imu_mag_calib_start (void)
 {
     s_mag_min[0] = s_mag_min[1] = s_mag_min[2] =  32767;
@@ -359,7 +267,7 @@ void ins_imu_mag_calib_stop (void)
     {
         float span = (float)s_mag_max[i] - (float)s_mag_min[i];
 
-        if (span < 100.0f)                              /* 这一轴基本没转动过 -> 不标 */
+        if (span < 100.0f)                              /* 这一轴基本没转动过, 不标 */
         {
             s_mag_cal_state = 0;
             s_flags |=  INS_ST_WARN;
@@ -368,7 +276,7 @@ void ins_imu_mag_calib_stop (void)
         }
 
         s_mag_off[i]   = ((float)s_mag_max[i] + (float)s_mag_min[i]) * 0.5f;
-        s_mag_scale[i] = 2.0f / span;                   /* 归一化到 ±1（只影响尺度，不影响方向） */
+        s_mag_scale[i] = 2.0f / span;                   /* 归一化到 ±1, 只影响尺度不影响方向 */
     }
 
     s_mag_cal_state = 2;
@@ -376,18 +284,10 @@ void ins_imu_mag_calib_stop (void)
     s_flags |=  INS_ST_MAG_CAL_DONE;
 }
 
-/*===================================================================================================================
- *  ZUPT 静止检测（2026-10-11 新增）—— 返回 1 = 本拍判定为静止
- *
- *  三条纪律（全部来自 MM32 的 yaw_filter.c / trail_att.c，别改）：
- *   ① **三轴一起判**（取三轴角速度最大值）。只看 Z 轴会把"绕水平轴晃动"误判成静止。
- *   ② **加计判据用 | |a| − 1g | **（抓线加速度）+ **去重力后的水平加速度**（抓水平加速：
- *      1 m/s² 只让 |a| 变 0.005 g，而噪声就有 0.002 g —— 光靠模长抓不住）。
- *   ③ **enter 150 ms / exit 30 ms**：进得慢（防抖），出得快（保证响应灵敏）。
- *
- *  ⚠ `horiz` 用"把单位化加计投到预测重力法线上取垂足"算，等价于 MM32 的
- *    "把 ac 转到世界系后取 x/y 模长"，但少构造一次旋转矩阵。
- *=================================================================================================================*/
+/* ---- ZUPT 静止检测: 返回 1 = 本拍判定为静止 ----
+ *   判据① 三轴角速度最大值 < INS_ZUPT_GYRO_LIMIT_DPS(只看 Z 会把绕水平轴晃动误判成静止)
+ *   判据② | |a| - 1g | < INS_ZUPT_ACC_TOL_G; 判据③ 去重力后水平加速度 < INS_ZUPT_HORIZ_TOL_G
+ *   进入需连续满足 INS_ZUPT_ENTER_MS, 退出需连续不满足 INS_ZUPT_EXIT_MS */
 static uint8 ins_zupt_step (const float g_dps[3], const float a_g[3], float dt,
                             float vgx, float vgy, float vgz)
 {
@@ -406,7 +306,7 @@ static uint8 ins_zupt_step (const float g_dps[3], const float a_g[3], float dt,
     dt_ms = (uint16)(dt * 1000.0f + 0.5f);
     if (0u == dt_ms) { dt_ms = 1u; }
 
-    /* 去重力后的水平加速度 ||a_hat − (a_hat·v̂)v̂|| = sqrt(1 − cos²) = |sin(夹角)| */
+    /* 去重力后的水平加速度 ||a_hat - (a_hat·v̂)v̂|| = sqrt(1 - cos²) = |sin(夹角)| */
     if (an > 1e-3f)
     {
         dot = (a_g[0] * vgx + a_g[1] * vgy + a_g[2] * vgz) / an;
@@ -416,33 +316,19 @@ static uint8 ins_zupt_step (const float g_dps[3], const float a_g[3], float dt,
     }
     else
     {
-        horiz = 1.0f;                       /* 加计异常 ⇒ 不敢判静止 */
+        horiz = 1.0f;                       /* 加计异常, 不判静止 */
     }
     s_horiz_acc = horiz;
 
     cond = (uint8)((gmax < INS_ZUPT_GYRO_LIMIT_DPS) &&
                    (fabsf(an - 1.0f) < INS_ZUPT_ACC_TOL_G));
 
-#if INS_ZUPT_WHEEL_GATE
-    /* ★ 轮速门控：陀螺 + 加计**判不出"匀速直线"** —— 倒车 0.27 m/s 时 gz≈0.3 dps、|a|≈1 g，
-       条件全满足会被判静止：航向被冻结（实测 3.6 s），真实角速度还会被学进零偏。
-       两条判据按 odom 是否在跑切换（2026-10-28 与队友对齐）：
-         ① odom 在跑 -> |v| > INS_ZUPT_WHEEL_EPS 才算在动
-            阈值高于静止噪声（实测 |v| ≤ 0.027 rps ≈ 0.022 m/s），不会被抖动误否决
-         ② odom 关闭 -> v 恒 0，退回"本拍后轮有计数就否决"（无标定依赖，绝不静默失效）
-       ZUPT 进门要连续 150 ms 满足，偶发一个计数不会把 30 ms 的出门条件顶翻。 */
-    if (fabsf(ins_odom_enable) > 0.5f)
-    {
-        if (fabsf(ins_odom_get_v_mps()) > INS_ZUPT_WHEEL_EPS)
-        {
-            cond = 0u;
-        }
-    }
-    else if (0u != s_wheel_moving)
+    /* 轮速互斥: 惯性判据会把匀速直线低速判成静止(gyro 约 0, |a| 约 1g), 于是 gz 归零、yaw 冻结;
+       轮速是独立信息源, 只要它证明车在动就不判静止。odom 未开时 v 恒 0, 退回纯惯性判据。 */
+    if (fabsf(ins_odom_get_v_mps()) > INS_ZUPT_WHEEL_EPS)
     {
         cond = 0u;
     }
-#endif
 
     if (0u != cond)
     {
@@ -461,16 +347,13 @@ static uint8 ins_zupt_step (const float g_dps[3], const float a_g[3], float dt,
     horiz_ok    = (uint8)(horiz < INS_ZUPT_HORIZ_TOL_G);
     s_horiz_run = horiz_ok ? ((s_horiz_run < 60000u) ? (uint16)(s_horiz_run + dt_ms) : 60000u) : 0u;
 
-    /* ★★ 零偏门控 = 瞬时条件连续满足，**不是**去抖后的 s_is_static（见 ins_imu.h 的警告） */
+    /* 零偏门控用瞬时条件连续满足 INS_BIAS_GATE_MS, 不用 s_is_static: 后者退出有 30 ms 滞后, 会吃掉真实转速 */
     s_bias_trk = (uint8)((s_zupt_quiet >= INS_BIAS_GATE_MS) && (s_horiz_run >= INS_BIAS_GATE_MS));
 
     return s_is_static;
 }
 
-/*===================================================================================================================
- *  Mahony 九轴 AHRS 一次更新
- *  参考 20.zf_clean/IMU_Analysis.c 的 Mahony_AHRS_Update，三处改动见 ins_imu.h
- *=================================================================================================================*/
+/* ---- Mahony 九轴 AHRS 一次更新: 误差 = 加计叉乘预测重力 + 磁力计叉乘参考方向, PI 修正角速度后积分四元数 ---- */
 static void ins_mahony_update (float dt)
 {
     float gx, gy, gz;                                   /* rad/s */
@@ -496,10 +379,7 @@ static void ins_mahony_update (float dt)
     g_raw[0] = imu963ra_gyro_x;  g_raw[1] = imu963ra_gyro_y;  g_raw[2] = imu963ra_gyro_z;
     a_raw[0] = imu963ra_acc_x;   a_raw[1] = imu963ra_acc_y;   a_raw[2] = imu963ra_acc_z;
 
-    /* --- 陀螺: 去零偏(LSB) -> 死区(LSB) -> dps -> rad/s ---
-       ★【改 1】死区从 7 LSB 收到 0.5 LSB。真实角速度只有 0.5~2 dps，大死区会把它吃掉。
-       ⚠ 副作用：大死区当年恰好把"零偏慢漂"一起盖住了 ⇒ 改小之后静止漂移露出来。
-         正确解法是下面补的 ZUPT，**不是把死区改回去**。 */
+    /* --- 陀螺: 去零偏(LSB) -> 死区(LSB) -> dps -> rad/s; 死区只削量化底噪, 不削 0.5~2 dps 的真实角速度 --- */
     {
         gb[0] = (float)g_raw[0] - s_bias_x;
         gb[1] = (float)g_raw[1] - s_bias_y;
@@ -509,7 +389,7 @@ static void ins_mahony_update (float dt)
         if ((gb[1] > -db) && (gb[1] < db)) { gb[1] = 0.0f; }
         if ((gb[2] > -db) && (gb[2] < db)) { gb[2] = 0.0f; }
 
-        /* 饱和检测（±2000dps 量程 16 位，接近满量程判异常） */
+        /* 饱和检测(±2000 dps 量程 16 位, 接近满量程判异常) */
         if ((g_raw[0] > 32000) || (g_raw[0] < -32000) ||
             (g_raw[1] > 32000) || (g_raw[1] < -32000) ||
             (g_raw[2] > 32000) || (g_raw[2] < -32000))
@@ -534,12 +414,12 @@ static void ins_mahony_update (float dt)
     s_acc_norm = sqrtf(acc_sum);
     if (acc_sum < 1e-6f)
     {
-        return;                                         /* 小向量保护（比判 recip 更稳） */
+        return;                                         /* 小向量保护 */
     }
     recip = 1.0f / sqrtf(acc_sum);
     ax *= recip; ay *= recip; az *= recip;
 
-    /* --- 磁力计: Min-Max 校正 + 归一化（**必须用 float 中间量**，int16 会被截断成 0）--- */
+    /* --- 磁力计: Min-Max 校正 + 归一化(必须用 float 中间量, int16 会截断成 0) --- */
     if (2 == s_mag_cal_state)
     {
         mx = ((float)imu963ra_mag_x - s_mag_off[0]) * s_mag_scale[0];
@@ -565,7 +445,7 @@ static void ins_mahony_update (float dt)
 
     q0 = s_q[0]; q1 = s_q[1]; q2 = s_q[2]; q3 = s_q[3];
 
-    /* --- 重力预测方向（四元数第三行） --- */
+    /* --- 重力预测方向(四元数第三行) --- */
     {
         float q0q0 = q0*q0, q0q1 = q0*q1, q0q2 = q0*q2, q0q3 = q0*q3;
         float q1q1 = q1*q1, q1q2 = q1*q2, q1q3 = q1*q3;
@@ -586,15 +466,9 @@ static void ins_mahony_update (float dt)
         wz = 2.0f * bx * (q0q2 + q1q3) + 2.0f * bz * (0.5f - q1q1 - q2q2);
     }
 
-    /*===============================================================================================================
-     *  ★★ ZUPT 静止检测 + 在线零偏估计（2026-10-11 新增）
-     *  位置很讲究：必须在**重力方向 vx/vy/vz 算出来之后**调用（水平加速度判据要用它），
-     *  又必须在**误差/增益之前**（冻结开关要影响本拍的 gz）。
-     *  `is_static` 上电默认 1 ⇒ 上电就能立刻开始攒零偏，一旦数据表明在动，exit 30 ms 就翻过来。
-     *=============================================================================================================*/
+    /* ZUPT 与在线零偏估计: 必须在重力方向 vx/vy/vz 算出之后(水平加速度判据要用它), 且在误差/增益之前(冻结要影响本拍 gz) */
     vgx = vx; vgy = vy; vgz = vz;
-    /* 复用上面已经算好的 rad/s，乘回来就得到 °/s —— **省 3 次浮点除法**（ISR 里值得）。
-       与 imu963ra_gyro_transition(gb[i]) 只差一个 ~1e-7 的浮点往返，对 ZUPT 判据无关。 */
+    /* 复用已算好的 rad/s 乘回 °/s, 少 3 次浮点除法; 与库换算只差约 1e-7, 对 ZUPT 判据无影响 */
     gd_dps[0] = gx * RAD2DEG_F;
     gd_dps[1] = gy * RAD2DEG_F;
     gd_dps[2] = s_gz_dps;
@@ -603,8 +477,7 @@ static void ins_mahony_update (float dt)
 
     if (s_bias_trk)
     {
-        /* 一阶跟踪：k = dt_ms / τ_ms（MM32 的 yaw_bias_track 就是这个式子）。
-           ⚠ 这里在 **raw LSB 域**跟踪（不动 s_bias 的语义）⇒ 去零偏/死区/换算三处都不用改。 */
+        /* 一阶跟踪: k = dt_ms / INS_BIAS_TAU_MS, 在 raw LSB 域跟踪, 不改 s_bias 的语义 */
         float k = ((float)((uint16)(dt * 1000.0f + 0.5f))) / INS_BIAS_TAU_MS;
 
         if (k > 1.0f) { k = 1.0f; }
@@ -622,8 +495,7 @@ static void ins_mahony_update (float dt)
     if (0u != s_is_static) { s_flags |=  INS_ST_STATIC; }
     else                   { s_flags &= (uint16)~INS_ST_STATIC; }
 
-    /* --- 误差: 重力 + （仅在磁力计已标定时）磁 ---
-       未标定时跳过磁修正 —— 否则未校准的磁数据会造成偏航正反馈发散（20.zf_clean 的原始保护）。 */
+    /* --- 误差: 重力 + 磁(仅在磁力计已标定时); 未标定时跳过磁修正, 否则偏航会正反馈发散 --- */
     if (2 == s_mag_cal_state)
     {
         ex = (ay * vz - az * vy) + (my * wz - mz * wy);
@@ -646,11 +518,8 @@ static void ins_mahony_update (float dt)
         s_exInt += ex * ki * dt;
         s_eyInt += ey * ki * dt;
 
-        /* ★★ 六轴下 `ez = ax*vy - ay*vx` 与 yaw **无关** ⇒ 它的积分器没有反馈通道：
-           启动瞬态把它推到某个值之后，即使 ez 回到 0 也**不会衰减**（积分器零输入保持），
-           于是变成一个恒定 yaw 速率 ⇒ 静止恒速漂。
-           MM32 的 `trail_att.c` 用 Ki=0 把这条整个回避掉了；本工程只在**磁力计已标定**
-           （yaw 真有观测）时才累积，否则强制清零。 */
+        /* 六轴下 ez = ax*vy - ay*vx 与 yaw 无关, 积分器无反馈通道, 被推到非零后不衰减, 变成恒定 yaw 速率;
+           仅在磁力计已标定时累积, 否则清零 */
         if (2 == s_mag_cal_state)
         {
             s_ezInt += ez * ki * dt;
@@ -660,7 +529,7 @@ static void ins_mahony_update (float dt)
             s_ezInt = 0.0f;
         }
 
-        /* 积分限幅（20.zf_clean 没做，这里补上：急加速时段积分会攒成静态偏置） */
+        /* 积分限幅: 防急加速时段积分攒成静态偏置 */
         if (s_exInt >  0.5f) { s_exInt =  0.5f; }  if (s_exInt < -0.5f) { s_exInt = -0.5f; }
         if (s_eyInt >  0.5f) { s_eyInt =  0.5f; }  if (s_eyInt < -0.5f) { s_eyInt = -0.5f; }
         if (s_ezInt >  0.5f) { s_ezInt =  0.5f; }  if (s_ezInt < -0.5f) { s_ezInt = -0.5f; }
@@ -673,15 +542,11 @@ static void ins_mahony_update (float dt)
     gx += kp * ex + s_exInt;
     gy += kp * ey + s_eyInt;
 
-    /* --- 航向：冻结时整条 Z 轴分支置 0；否则 陀螺 + 修正 ---
-       MM32 `trail_att.c` 第 6 步原话："静止时把 Z 轴角速度强制为 0 = 冻结航向
-       （剩下的都是零偏残差）；X/Y 轴仍然做重力修正，因为静止窗口正是把 roll/pitch
-       拉平的最好时机。" 本工程一致。 */
+    /* --- 航向: 冻结时整条 Z 轴分支置 0, 否则 陀螺 + 修正; X/Y 仍做重力修正, 静止窗口是把 roll/pitch 拉平的时机 --- */
 #if INS_ZUPT_FREEZE_YAW
     if (0u != s_is_static)
     {
-        /* ★ 冻结计数器：这一拍躺平了，把"本来会转多少"记下来（见 s_frz_* 的注释）。
-           |s_gz_dps| 已经去过零偏、过过死区 ⇒ 纯静止时它 ≈ 0，不会虚增。 */
+        /* 冻结计数器: 记下本拍本来会转多少; |s_gz_dps| 已去零偏过死区, 纯静止时约 0, 不虚增 */
         s_frz_ticks ++;
         s_frz_deg += fabsf(s_gz_dps) * dt;
 
@@ -695,10 +560,8 @@ static void ins_mahony_update (float dt)
     gz += kp * ez + s_ezInt;
 #endif
 
-    /* --- 四元数积分 + 归一化 --- */
+    /* --- 四元数积分 + 归一化: q += 0.5 * q ⊗ ω * dt, 先用旧 q 一次算出 4 个微分再一起加 --- */
     halfT = 0.5f * dt;
-    /* ★ 四个增量必须先算完再一起加：原地自增会让后三式吃到**已更新**的 q0，
-       单拍误差 O(ω·dt²)，高角速度时是系统性偏差（2026-10-28 改，与 15.mix_mode_add 一致）。 */
     {
         float d0 = (-q1 * gx - q2 * gy - q3 * gz) * halfT;
         float d1 = ( q0 * gx + q2 * gz - q3 * gy) * halfT;
@@ -718,41 +581,40 @@ static void ins_mahony_update (float dt)
     recip = 1.0f / sqrtf(mag_sum);
     q0 *= recip; q1 *= recip; q2 *= recip; q3 *= recip;
 
-    /* --- ★【改 3】累积航向：相邻四元数的相对旋转 Z 分量，逐拍累加，永不卷绕 ---
-       rel = conj(q_prev) ⊗ q_new ;
-         rel.w = pw*w + px*x + py*y + pz*z
-         rel.z = pw*z - px*y + py*x - pz*w
-       dyaw  = 2*atan2(rel.z, rel.w)
-       （用 atan2(abs(q0,q3)±...) 那种做法在 ±180° 边界会丢一整圈 —— 工程 2 数值复现过。） */
+    /* --- 累积航向: ZYX 欧拉 yaw = atan2(2*(q1q2 + q0q3), q0² + q1² - q2² - q3²) ---
+       逐拍差分后按 ∞ 范数解绕累加, 永不卷绕; 跨 ±180 时 dyaw 补 ±360 */
     {
-        float pw = s_q[0], px = s_q[1], py = s_q[2], pz = s_q[3];
-        float rel_w = pw * q0 + px * q1 + py * q2 + pz * q3;
-        float rel_z = pw * q3 - px * q2 + py * q1 - pz * q0;
-        float dyaw  = 2.0f * atan2f(rel_z, rel_w) * RAD2DEG_F;
+        /* 用世界 yaw 而非机体 z 轴转角: 车身带 roll/pitch 时两者不等, 平地时逐拍严格相等;
+           与 ins_odom 里 (-sinf, cosf) 的里程分解是同一个定义 */
+        float yaw_w = atan2f(2.0f * (q1 * q2 + q0 * q3),
+                             q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3) * RAD2DEG_F;
+        float dyaw  = yaw_w - s_yaw_raw;
 
-        /* ★ 单拍合理性闸门（2026-10-28，闸门取自 15.mix_mode_add）：
-       单拍航向增量超过 INS_YAW_REJ_DPS × dt 就丢弃并计数，防个别脏拍把累积航向打飞
-       （s_yaw_acc 是"逐拍累加、永不卷绕"，一旦被打飞就永久偏）。 */
-    {
-        float lim = INS_YAW_REJ_DPS * dt;
+        /* 解绕: s_yaw_raw 始终是 -180~180, 跨 ±180 时差分会跳 360° */
+        while (dyaw >  180.0f) { dyaw -= 360.0f; }
+        while (dyaw < -180.0f) { dyaw += 360.0f; }
 
-        if (lim <  10.0f) { lim =  10.0f; }
-        if (lim > 180.0f) { lim = 180.0f; }
-
-        if ((dyaw > lim) || (dyaw < -lim))
+        /* 单拍合理性闸门: 上限按本拍真实 dt 折算(3000 °/s), 再钳到 [10, 180] 度 */
         {
-            s_yaw_rej ++;
+            float lim = 3000.0f * dt;
+
+            if (lim <  10.0f) { lim =  10.0f; }
+            if (lim > 180.0f) { lim = 180.0f; }
+
+            if ((dyaw > lim) || (dyaw < -lim))
+            {
+                s_yaw_rej ++;
+            }
+            else
+            {
+                s_yaw_acc += dyaw;
+            }
         }
-        else
-        {
-            s_yaw_acc += dyaw;
-        }
-    }
     }
 
     s_q[0] = q0; s_q[1] = q1; s_q[2] = q2; s_q[3] = q3;
 
-    /* --- 欧拉角（诊断用） --- */
+    /* --- 欧拉角(诊断用) --- */
     s_yaw_raw = atan2f(2.0f * (q1 * q2 + q0 * q3),
                        q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3) * RAD2DEG_F;
     s_roll    = atan2f(2.0f * (q0 * q1 + q2 * q3),
@@ -765,48 +627,26 @@ static void ins_mahony_update (float dt)
     }
 }
 
-/*===================================================================================================================
- *  5ms 每拍
- *  参数 wheel_moving：本拍后轮编码器**有没有计数**（1 = 有 ⇒ 车在动）。
- *  静止判据必须吃这个信号，理由见 ins_imu.h 的 INS_ZUPT_WHEEL_GATE。
- *=================================================================================================================*/
+/* ---- 5 ms 每拍 ---- */
 void ins_imu_update (void)
 {
     static uint8 mag_div = 0;
     float dt;
 
-    /* ★ 本拍后轮有没有计数（2026-10-28：签名改成 (void)，与 15.mix_mode_add 一致）。
-       odom 在跑时用不上它（门控走 |v| 阈值），只在 ins_odom_enable = 0 时当兜底判据。 */
-    s_wheel_moving = ((0 != ENC_LR_DLT) || (0 != ENC_RR_DLT)) ? 1u : 0u;
-
-    /* ★★ 器件没通就**一步都不碰 SPI**。
-       这是本模块最重要的一条硬约束：`ins_imu_update()` 跑在 5ms 中断里，
-       而 SPI 读寄存器是"发一个字节等接收 FIFO"的忙等（虽然有超时兜底，仍会占时间）。
-       IMU 没接好时如果照读，每一次中断都要白等超时 —— 中断被拖长、主循环被饿死，
-       现象是"编码器/IMU 都读不到"甚至"WiFi 一帧都发不出"，而根因其实只是 IMU 没插好。
-       链接状态由 ins_imu_init()/ins_imu_try_recover() 维护。 */
+    /* 链路坏时一步都不碰 SPI: 本函数在 5 ms 中断里跑, SPI 读是忙等, 照读会让每次中断白等超时 --- */
     if (s_flags & INS_ST_IMU_LINK_BAD)
     {
         s_dt_ms = INS_T_S * 1000.0f;
-        s_acc_norm = 0.0f;                          /* 明确表达"没有有效数据" */
-        s_seq ++;                                   /* 序号照涨 ⇒ 上位机能看出中断还活着 */
+        s_acc_norm = 0.0f;                          /* 明确表示没有有效数据 */
+        s_seq ++;                                   /* 序号照涨, 上位机能看出中断还活着 */
         return;
     }
 
     dt = ins_dt_seconds();
 
-    /* ★ 主循环正在做阻塞标定 ⇒ 本拍不碰 SPI（SPI_2 让给标定函数独占）。
-       与上面"链路坏"分支同理：宁可不更新，也不能和标定抢同一个 SCB 的 FIFO。 */
-    if (0u != s_calib_busy)
-    {
-        s_dt_ms = dt * 1000.0f;
-        s_seq ++;
-        return;
-    }
-
     ins_read_raw();
 
-    if (s_mag_cal_state == 1)                           /* 标定中：只采极值，不跑姿态 */
+    if (s_mag_cal_state == 1)                           /* 标定中: 只采极值, 不跑姿态 */
     {
         if (imu963ra_mag_x < s_mag_min[0]) { s_mag_min[0] = imu963ra_mag_x; }
         if (imu963ra_mag_x > s_mag_max[0]) { s_mag_max[0] = imu963ra_mag_x; }
@@ -816,7 +656,7 @@ void ins_imu_update (void)
         if (imu963ra_mag_z > s_mag_max[2]) { s_mag_max[2] = imu963ra_mag_z; }
     }
 
-    /* 磁力计降频读（sensor hub 是慢变量；省下的时间留给控制环） */
+    /* 磁力计降频读(sensor hub 是慢变量, 省下的时间留给控制环) */
     if (++ mag_div >= INS_MAG_DIV)
     {
         mag_div = 0;
@@ -829,14 +669,8 @@ void ins_imu_update (void)
     s_seq ++;
 }
 
-/*===================================================================================================================
- *  ★ 工程 10 适配②：器件识别（诊断用）
- *
- *  卡丁从没初始化过 IMU，"板上贴的是哪颗"只能靠读 ID 回答。三个候选的 ID 寄存器不是同一个：
- *      963RA(LSM6DSL) WHO_AM_I @0x0F（期望 0x6A）｜660RA CHIP_ID @0x00 ｜660RC CHIP_ID @0x0F
- *  ⇒ 读这两个地址就够分辨。
- *  ⚠ 裸读**必须在 `imu963ra_init()` 之后**：SPI 与 CS 的 gpio 都在它里面初始化。
- * =================================================================================================================*/
+/* ---- 器件识别(诊断用): 963RA WHO_AM_I @0x0F(期望 0x6A), 660RA CHIP_ID @0x00, 660RC CHIP_ID @0x0F;
+   裸读必须在 imu963ra_init() 之后, SPI 与 CS 的 gpio 都在它里面初始化 */
 static uint8 s_id_0f = 0u;          /* 0x0F 读回值 */
 static uint8 s_id_00 = 0u;          /* 0x00 读回值 */
 static uint8 s_id_valid = 0u;       /* 1 = 上面两个值有效 */
@@ -852,9 +686,9 @@ static uint8 ins_imu_raw_reg (uint8 reg)
 
     return v;
 }
-#endif  /* 关掉 IMU 时这个函数没人用 ⇒ 一起收起来，否则 Pe177 未引用告警（本工程要求 0/0） */
+#endif  /* 关掉 IMU 时无人引用, 一起收起来以免 Pe177 未引用告警 */
 
-/* 供 1 Hz 打印用：拿到"读到的两个 ID 字节"。返回时置 valid=1。 */
+/* 供 1 Hz 打印用: 取读到的两个 ID 字节, 返回时置 valid=1 */
 void ins_imu_dev_id_get (uint8 *id_0f, uint8 *id_00, uint8 *valid)
 {
     if (id_0f) { *id_0f = s_id_0f; }
@@ -862,9 +696,7 @@ void ins_imu_dev_id_get (uint8 *id_0f, uint8 *id_00, uint8 *valid)
     if (valid) { *valid = s_id_valid; }
 }
 
-/*===================================================================================================================
- *  初始化
- *=================================================================================================================*/
+/* ---- 初始化 ---- */
 uint8 ins_imu_init (void)
 {
     s_flags    = 0;
@@ -881,8 +713,7 @@ uint8 ins_imu_init (void)
     s_bias_x = s_bias_y = s_bias_z = 0.0f;
     s_mag_g[0] = s_mag_g[1] = s_mag_g[2] = 0.0f;
 
-    /* ZUPT：上电**先判"静止"**（MM32 同做法）⇒ 标定一结束就能立刻开始跟踪零偏；
-       若数据表明车在动，exit（30 ms）会很快把它翻过来。 */
+    /* ZUPT 上电先判静止, 标定一结束就能跟踪零偏; 数据表明在动时 exit(30 ms) 会很快翻转 */
     s_is_static  = 1u;
     s_zupt_quiet = INS_ZUPT_ENTER_MS;
     s_zupt_noisy = 0u;
@@ -896,25 +727,10 @@ uint8 ins_imu_init (void)
 
     ins_dwt_init();
 
-    /* ---- ★★ 工程 10 适配②：器件自动探测 + WHO_AM_I 打印 ----
-     *
-     * 为什么必须探测：卡丁（工程 9）**从来没有初始化过 IMU**，谁也不能打包票板上贴的是哪颗。
-     * 逐飞 CYT4BB7 主板的 IMU660RA / IMU660RC / IMU963RA 三个驱动**宏引脚完全相同**
-     * （`SPI_2`：P15_2/P15_1/P15_0/CS P15_3），所以"插上就能读"，但**读到的 ID 才作数**。
-     *
-     * ⚠ 本工程按用户选型**只支持 IMU963RA**（→ 选它就是因为它带磁力计、且工程 8 已在同款板上跑过）。
-     *   若 963RA 自检不过，**不要把 660RA/RC 硬当 963RA 用** —— 两者的量程换算系数不同，
-     *   硬用会得到"数字在动但量级全错"的假象。这里只**如实报出读到的 ID**，让下一步有依据。
-     *   寄存器地址（三个都读一遍才够定位）：
-     *      963RA(LSM6DSL 系) WHO_AM_I @ 0x0F（期望 0x6A）
-     *      660RA            CHIP_ID  @ 0x00
-     *      660RC            CHIP_ID  @ 0x0F
-     *   ⚠ SPI 与 CS 的 `gpio_init` 都在 `imu963ra_init()` 里做 ⇒ **裸读必须放在它之后**。 */
+    /* ---- 器件自动探测 + WHO_AM_I 打印: 三个驱动引脚宏相同(SPI_2: P15_2/P15_1/P15_0/CS P15_3), 读到的 ID 才作数;
+     * 只按 IMU963RA 解算(660RA/RC 量程换算系数不同); 裸读必须在 imu963ra_init() 之后。 */
 #if (0 == INS_IMU_ENABLE)
-    /* ★★ A/B 实验：**连 imu963ra_init() 都不调** ⇒ SPI_2(SCB9) 一个寄存器都不碰。
-       目的就是回答"转向打死是不是 SPI_2 与 SPI_4 同核冲突造成的"：
-       置 0 后故障消失 ⇒ 冲突坐实；故障照旧 ⇒ 与 SPI_2 无关，去查编码器线路。
-       语义等同于"IMU 没接"（→ update() 走链路坏分支，绝不碰 SPI），所以能长期这么跑。 */
+    /* A/B 实验: 连 imu963ra_init() 都不调 ⇒ SPI_2(SCB9) 一个寄存器都不碰, 语义等同 IMU 没接 */
     s_id_valid = 0u;
     s_flags   |= (INS_ST_WARN | INS_ST_IMU_LINK_BAD);
 
@@ -922,7 +738,7 @@ uint8 ins_imu_init (void)
 
     return 1;
 #else
-    uint8 ret;                          /* 只在启用 IMU 的那一支用得到（否则 Pe177 未引用告警） */
+    uint8 ret;                          /* 只在启用 IMU 的分支用到, 否则 Pe177 未引用告警 */
 
     if (0 != imu963ra_init())
     {
@@ -939,17 +755,14 @@ uint8 ins_imu_init (void)
     /* 上电陀螺零偏标定 */
     ret = ins_imu_calib_gyro();
 
-    /* 姿态复位：累积航向从 0 起（= 车头方向记为"起点朝向"，
-       这正是 Polaris 的"起点位姿记录"纪律 —— 路表只用相对量）。 */
+    /* 姿态复位: 累积航向从 0 起, 车头方向记为起点朝向(路表只用相对量) */
     s_yaw_acc = 0.0f;
 
     return ret;
 #endif                                  /* INS_IMU_ENABLE */
 }
 
-/*===================================================================================================================
- *  查询 / 命令
- *=================================================================================================================*/
+/* ---- 查询 / 命令 ---- */
 uint8  ins_imu_ready (void)         { return (s_flags & INS_ST_READY) ? 1u : 0u; }
 uint16 ins_imu_flags (void)         { return s_flags; }
 
@@ -961,9 +774,7 @@ uint8  ins_imu_link_ok (void)
 uint8  ins_imu_try_recover (void)
 {
 #if (0 == INS_IMU_ENABLE)
-    /* ★★ A/B 实验期间**必须整只堵住这里**：主循环每秒会调一次 try_recover，
-       而它内部会调 imu963ra_init() ⇒ 一旦走到这里，SPI_2/SCB9 还是会被初始化，
-       A/B 就白做了（"禁用 IMU"必须严格等于"SPI_2 一个寄存器都不碰"）。 */
+    /* 禁用 IMU 期间必须整只堵住: 内部会调 imu963ra_init(), 等于又把 SPI_2 初始化了 */
     return 0u;
 #else
     uint32 primask;
@@ -973,10 +784,10 @@ uint8  ins_imu_try_recover (void)
         return 0u;
     }
 
-    /* 只在链路坏时走到这里 ⇒ 中断里的 ins_imu_update() 不碰 SPI_2 ⇒ 此处重入安全 */
+    /* 只在链路坏时走到这里, 中断里的 ins_imu_update() 不碰 SPI_2, 此处重入安全 */
     if (0 != imu963ra_init())
     {
-        /* 工程 10：仍不通 ⇒ 顺手把 ID 再读一次，1 Hz 行里能看到"是不是板子上压根没这颗芯片" */
+        /* 仍不通: 再读一次 ID, 便于判断板上是否根本没有这颗芯片 */
         s_id_0f    = ins_imu_raw_reg(0x0F);
         s_id_00    = ins_imu_raw_reg(0x00);
         s_id_valid = 1u;
@@ -1002,9 +813,7 @@ float  ins_imu_get_roll (void)      { return s_roll; }
 float  ins_imu_get_pitch (void)     { return s_pitch; }
 float  ins_imu_get_gyro_z_dps (void){ return s_gz_dps; }
 
-/* ---- 冻结计数器（见 s_frz_* 的注释）------------------------------------------------
-   取走即清（和 ins_diag_*_take 一个风格）：1 Hz 行打印的是"这一个窗口内"的冻结量。
-   `deg` 是**被丢弃的转角**：判据就是它 —— 接近 0 说明只是停着，明显 > 0 说明真在转被冻了。 */
+/* ---- 冻结计数器: 取走即清, 1 Hz 行统计一个窗口; ticks × 5 ms = 冻结时长, deg = 被丢弃的转角 ---- */
 void ins_imu_zupt_frz_get (uint32 *ticks, float *deg)
 {
     uint32 primask = ins_crit_enter();
@@ -1017,7 +826,7 @@ void ins_imu_zupt_frz_get (uint32 *ticks, float *deg)
     ins_crit_exit(primask);
 }
 
-/* 只读、不清（录表期间想反复看同一次累计值时用） */
+/* 只读、不清 */
 uint32 ins_imu_zupt_frz_ticks (void) { return s_frz_ticks; }
 float  ins_imu_zupt_frz_deg   (void) { return s_frz_deg;   }
 
@@ -1041,28 +850,18 @@ void ins_imu_set_yaw (float deg)
     s_yaw_acc = deg / INS_YAW_SIGN;
 }
 
-/*===================================================================================================================
- *  诊断（专治"读不到"）
- *=================================================================================================================*/
+/* ---- 诊断 ---- */
 volatile uint32 ins_diag_isr_ticks = 0;
 
-/* ★ 2026-10-09 新增：**5ms 中断实际间隔**的 min/max（DWT 实测，单位 µs）。
- *
- *  为什么需要它：编码器测速是 `Δcnt / (cpr × 5ms)` —— **它假设每拍真的是 5.00 ms**。
- *  一旦中断被拖（例如某拍花了 6.5 ms），这一拍的 Δ 会偏大、下一拍偏小，
- *  测速就会"假跌"，速度环立刻补一脚 ⇒ 表现成**周期性的占空比尖峰 + 电机一卡一卡**。
- *  所以先量这个数，再谈是"算法问题"还是"电气/机械问题"：
- *      dtmax 稳定在 ≈5000 µs  ⇒ 中断没抖 ⇒ 测速跌是**真的掉速**（电源/机械/保护）
- *      dtmax 偶发 6000~9000  ⇒ 中断被拖住 ⇒ 测速是**假的**，去查 ISR 里谁在等（SPI 超时？）
- *  （本函数放在 ins_diag_isr_enter() 里，ISR 第一句就调用，量的是"进中断的时刻"间隔。） */
+/* 5 ms 中断实际间隔的 min/max(DWT 实测, µs)。编码器测速按 Δcnt/(cpr × 5 ms) 计算, 间隔被拖长时测速会假跌;
+   稳定约 5000 µs = 未抖, 偶发 6000~9000 = 中断被拖住。在 ISR 第一句调用。 */
 volatile uint32 ins_diag_tick_us_max = 0;
 volatile uint32 ins_diag_tick_us_min = 0xFFFFFFFFu;
-volatile uint32 ins_diag_tick_long_cnt = 0;   /* 间隔 > 1.5×标称(7.5ms) 的拍数 —— ISR 被拖过的直接证据 */
+volatile uint32 ins_diag_tick_long_cnt = 0;   /* 间隔 > 1.5×标称(7.5 ms) 的拍数, 累计只增不清 */
 static   uint32 ins_diag_tick_last_cyc = 0;
 static   uint8  ins_diag_tick_first    = 1;
 
-/* 主循环每秒取一次（取走即清，所以它统计的是"这一个 1 秒窗口"内的极值）。
-   `long_cnt` 是**累计**（只增不清），它涨得快就说明中断在被反复拖过。 */
+/* 主循环每秒取一次, 取走即清, 统计的是这一个 1 秒窗口内的极值 */
 void ins_diag_tick_take (uint32 *min_us, uint32 *max_us)
 {
     if (min_us) { *min_us = ins_diag_tick_us_min; }
@@ -1071,18 +870,8 @@ void ins_diag_tick_take (uint32 *min_us, uint32 *max_us)
     ins_diag_tick_us_max = 0;
 }
 
-/* ★ 2026-10-09 再新增：**5ms 中断"体"耗时**的 min/max（µs，DWT 实测）。
- *
- *  为什么还要量这个：上面量的是"**进中断的时刻**间隔"（= 周期是否准），
- *  这里量的是"**这一次中断本身跑了多久**"（= 体有多重）。
- *  两者合起来才能回答"原工程（MM20.zf_clean）为什么没有尖峰"：
- *      · MM32 那边 5ms ISR **只有 `speed_ctrl_update()`**（纯计算），IMU 的 SPI 读在主循环；
- *      · 本工程 ISR 里多了 舵机 + **IMU 的 2~3 次 SPI 事务**（acc+gyro，每 4 拍再 +mag）。
- *  判据：
- *      isr 耗时常态 ≈150~250 µs  ⇒ 轻，只是周期偶尔不准（看 tick 那组）
- *      isr 耗时偶发 > 1000 µs    ⇒ **ISR 里有阻塞**（SPI 忙等超时 `SPI_BUSY_TIMEOUT`？）
- *                                  它同时会把"这一拍变长"直接坐实
- *  ⚠ 只统计中断体的耗时，不含"被更高优先级中断抢占"的时间。 */
+/* 5 ms 中断体耗时的 min/max(µs, DWT 实测): 常态约 150~250 µs, 偶发 > 1000 µs 说明 ISR 里有阻塞;
+   只统计中断体耗时, 不含被更高优先级中断抢占的时间 */
 volatile uint32 ins_diag_isr_us_max = 0;
 volatile uint32 ins_diag_isr_us_min = 0xFFFFFFFFu;
 static   uint32 ins_diag_isr_t0_cyc = 0;
@@ -1118,7 +907,7 @@ void ins_diag_isr_enter (void)
         if (0 == ins_diag_tick_first)
         {
             uint32 d = c - ins_diag_tick_last_cyc;
-            /* 250 MHz ⇒ 1 µs = 250 个周期。用 64 位中间量避免溢出。 */
+            /* 250 MHz ⇒ 1 µs = 250 个周期, 用 64 位中间量避免溢出 */
             uint32 us = (uint32)(((uint64_t)d * 1000000ull) / 250000000ull);
 
             if (us > ins_diag_tick_us_max) { ins_diag_tick_us_max = us; }
@@ -1128,7 +917,7 @@ void ins_diag_isr_enter (void)
         ins_diag_tick_last_cyc = c;
         ins_diag_tick_first    = 0;
 
-        ins_diag_isr_t0_cyc = c;            /* ★ 中断体计时的起点 */
+        ins_diag_isr_t0_cyc = c;            /* 中断体计时起点 */
     }
 }
 
@@ -1147,7 +936,7 @@ void ins_diag_get_imu_raw (int16 *ax, int16 *ay, int16 *az,
 
 void ins_diag_get_bias (float *bx, float *by, float *bz)
 {
-    uint32 primask = ins_crit_enter();     /* ★ 零偏现在**每拍都会被在线估计改写** ⇒ 必须原子取 */
+    uint32 primask = ins_crit_enter();     /* 零偏每拍都被在线估计改写, 必须原子取 */
 
     if (bx) { *bx = s_bias_x; }
     if (by) { *by = s_bias_y; }

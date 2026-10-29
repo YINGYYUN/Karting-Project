@@ -1116,31 +1116,25 @@
     <group>
         <name>code</name>
         <file>
-            <name>$PROJ_DIR$\..\..\code\common_menu.c</name>
+            <name>$PROJ_DIR$\..\..\code\app_params.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\common_menu.h</name>
+            <name>$PROJ_DIR$\..\..\code\app_params.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Debug.c</name>
+            <name>$PROJ_DIR$\..\..\code\bench_log.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Debug.h</name>
+            <name>$PROJ_DIR$\..\..\code\bench_log.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\flash_map.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Head_Ctrl.c</name>
+            <name>$PROJ_DIR$\..\..\code\head_test.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Head_Ctrl.h</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\Host_Ctrl.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\Host_Ctrl.h</name>
+            <name>$PROJ_DIR$\..\..\code\head_test.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\ins_imu.c</name>
@@ -1161,40 +1155,28 @@
             <name>$PROJ_DIR$\..\..\code\ins_route.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\route_pb.c</name>
+            <name>$PROJ_DIR$\..\..\code\ins_route_builtin.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\route_pb.h</name>
+            <name>$PROJ_DIR$\..\..\code\motor_drv.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Menu.c</name>
+            <name>$PROJ_DIR$\..\..\code\motor_drv.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Menu.h</name>
+            <name>$PROJ_DIR$\..\..\code\motor_link.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Motor.c</name>
+            <name>$PROJ_DIR$\..\..\code\motor_link.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Motor.h</name>
+            <name>$PROJ_DIR$\..\..\code\param_table.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Motor_Ctrl.c</name>
+            <name>$PROJ_DIR$\..\..\code\proto.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Motor_Ctrl.h</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\Param_Page.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\Param_Page.h</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\Param_Storage.c</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\..\..\code\Param_Storage.h</name>
+            <name>$PROJ_DIR$\..\..\code\proto.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\Remote_Ctrl.c</name>
@@ -1203,10 +1185,10 @@
             <name>$PROJ_DIR$\..\..\code\Remote_Ctrl.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Route_Ctrl.c</name>
+            <name>$PROJ_DIR$\..\..\code\route_app.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Route_Ctrl.h</name>
+            <name>$PROJ_DIR$\..\..\code\route_app.h</name>
         </file>
         <file>
             <name>$PROJ_DIR$\..\..\code\route_link.c</name>
@@ -1215,13 +1197,64 @@
             <name>$PROJ_DIR$\..\..\code\route_link.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Servo_Ctrl.c</name>
+            <name>$PROJ_DIR$\..\..\code\route_pb.c</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\Servo_Ctrl.h</name>
+            <name>$PROJ_DIR$\..\..\code\route_pb.h</name>
         </file>
         <file>
-            <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>
+            <name>$PROJ_DIR$\..\..\code\spd_bench.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\spd_bench.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\spd_ctrl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\spd_ctrl.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\spd_enc.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\spd_enc.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\spd_safety.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\spd_safety.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\steer_abs.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\steer_abs.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\steer_ctrl.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\steer_ctrl.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\steer_pid.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\steer_pid.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ui_core.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ui_core.h</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ui_menu.c</name>
+        </file>
+        <file>
+            <name>$PROJ_DIR$\..\..\code\ui_menu.h</name>
         </file>
     </group>
     <group>

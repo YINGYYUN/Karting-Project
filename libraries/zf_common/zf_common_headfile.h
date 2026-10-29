@@ -112,31 +112,9 @@
 
 
 //=====================================================自建代码层=====================================================
-#include "Menu.h"
-#include "Motor.h"
-#include "Motor_Ctrl.h"
-#include "Servo_Ctrl.h"
-#include "Remote_Ctrl.h"
-#include "Head_Ctrl.h"
-#include "ins_odom.h"
-#include "flash_map.h"
-#include "ins_route.h"
-#include "route_pb.h"
-#include "route_link.h"         // 串口灌表（UART_0 / 调试虚拟串口）
-#include "Route_Ctrl.h"
-#include "Host_Ctrl.h"
-#include "Debug.h"
-#include "Param_Storage.h"
-#include "Param_Page.h"
-extern uint16 Time_Count1;
-extern uint16 Time_Count2;
-
-// 跨文件使用的全局量：定义在各自的 .c 里，这里统一对外声明，
-// 避免每个用到的文件各自写一份 extern（漏写就是 "identifier is undefined"）
-extern volatile uint8  wifi_spi_inited;     // WiFi-SPI 是否已初始化（定义在 main_cm7_0.c）
-extern volatile uint32 Sys_Tick_Ms;         // 1ms 全局计时（定义在 cm7_0_isr.c）
-// ★ 2026-10-19：`Yaw_Receive` 已删除 —— 它是双核共享内存时代的定点中转量。
-//   现在 yaw 由本核的 ins_imu 提供，消费者直接调 ins_imu_get_yaw()。
+// 2026-10-29 重置为队友 16.hs_ctrl：本文件不再统一 include 各模块头，
+// 每个 .c 自己 include 需要的头（队友工程的约定），避免全局依赖与循环包含。
+// 唯一保留的跨文件全局量见下（若队友代码不需要，可整段删除）。
 //=====================================================自建代码层=====================================================
 
 #endif

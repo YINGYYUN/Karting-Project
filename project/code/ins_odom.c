@@ -1,26 +1,26 @@
 /*********************************************************************************************************************
- * 航位推算实现。坐标约定与比例尺说明见 ins_odom.h
- *
- * ins_ = INS（Inertial Navigation System，惯导）子系统前缀，本文件属"惯导 + 路表"系列
+ * 航位推算实现: IMU 累积航向 × 编码器里程 -> 米制位姿
+ * 坐标约定、比例尺与状态位说明见 ins_odom.h
  ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
 #include <math.h>
 #include "ins_odom.h"
 #include "ins_imu.h"
-#include "Motor.h"
+#include "spd_enc.h"
 
 #define DEG2RAD_F   (0.017453292519943295f)
 
-/* 临界区：直接存取 PRIMASK。
-   ⚠ 不要用逐飞的 interrupt_global_disable()/interrupt_global_enable(pm) —— 那是自增计数器，
-     pm 非 0 时 enable 不会真的开中断，会把中断永久关死且零报错。 */
+/* 临界区: 直接存取 PRIMASK。逐飞的 interrupt_global_disable()/enable(pm) 是自增自减计数器, 配对使用会永久关中断 */
 static uint32 ins_crit_enter (void) { uint32 pm = __get_PRIMASK(); __disable_irq(); return pm; }
 static void   ins_crit_exit  (uint32 pm) { __set_PRIMASK(pm); }
 
-volatile float ins_m_per_rev   = INS_ODOM_MPM_DEFAULT;
-volatile float ins_odom_enable = 1.0f;
-volatile float ins_slip_pct    = 30.0f;
+volatile float  ins_m_per_rev   = INS_MPM_DEFAULT;  /* 米/转, 比例尺参数, 见 ins_odom.h */
+volatile float  ins_odom_enable = 1.0f;             /* 航位推算使能, 0 = 冻结积分 */
+volatile float  ins_slip_pct    = 30.0f;            /* 打滑判据: 左右计数差比例上限, % */
+
+/* 位姿归零命令(参数表 ID 37): 0->1 边沿触发一次, 位姿与航向必须一起归, 只归一个会使相对量整体错位 */
+volatile float  ins_zero_cmd    = 0.0f;
 
 static volatile float s_x        = 0.0f;
 static volatile float s_y        = 0.0f;
@@ -29,87 +29,91 @@ static volatile float s_dist_abs = 0.0f;
 static volatile float s_v_mps    = 0.0f;
 static volatile uint8 s_flags    = 0;
 
-static uint16 s_still_cnt = 0;
+/* 静止计数（连续多少拍两轮都没计数） */
+static uint16   s_still_cnt = 0;
+#define ODOM_STILL_TICKS    (10)                /* 10 拍 = 50ms 没动才算静止 */
 
-//--------------------------------------
-// 函数简介     初始化（位姿清零）
-//--------------------------------------
 void ins_odom_init (void)
 {
-    s_x         = 0.0f;
-    s_y         = 0.0f;
-    s_yaw       = ins_imu_get_yaw();
-    s_dist_abs  = 0.0f;
-    s_v_mps     = 0.0f;
-    s_flags     = ODOM_ST_ACTIVE;
+    s_x = 0.0f;
+    s_y = 0.0f;
+    s_yaw = 0.0f;
+    s_dist_abs = 0.0f;
+    s_flags = ODOM_ST_ACTIVE;
     s_still_cnt = 0;
+
+    /* 编码器累计计数归零, 使 pos 与积分基准对齐 */
+    spd_enc_reset_pos(&enc_l);
+    spd_enc_reset_pos(&enc_r);
 }
 
-//--------------------------------------
-// 函数简介     位置与里程清零（航向不动）
-// 备注信息     编码器用单拍增量积分，没有累计基准要清；窗口里残留的几拍会在下一拍补进来（<1 cm）
-//--------------------------------------
 void ins_odom_reset (void)
 {
-    uint32 pm = ins_crit_enter();
+    s_x = 0.0f;
+    s_y = 0.0f;
+    s_dist_abs = 0.0f;
+    s_flags &= (uint8)~ODOM_ST_SLIP;
+    s_flags |=  ODOM_ST_ACTIVE;
 
-    s_x         = 0.0f;
-    s_y         = 0.0f;
-    s_dist_abs  = 0.0f;
-    s_v_mps     = 0.0f;
-    s_flags     = ODOM_ST_ACTIVE;
-    s_still_cnt = 0;
-
-    ins_crit_exit(pm);
+    /* 位置清零时同步清编码器累计计数, 避免下次更新把清零前攒下的计数一次性吃进来 */
+    spd_enc_reset_pos(&enc_l);
+    spd_enc_reset_pos(&enc_r);
 }
 
-//--------------------------------------
-// 函数简介     把当前点设成指定位姿
-//--------------------------------------
 void ins_odom_set_origin (float x, float y, float yaw_deg)
 {
-    uint32 pm = ins_crit_enter();
+    uint32 primask = ins_crit_enter();
 
     s_x   = x;
     s_y   = y;
     s_yaw = yaw_deg;
 
-    ins_crit_exit(pm);
+    ins_crit_exit(primask);
+
+    spd_enc_reset_pos(&enc_l);
+    spd_enc_reset_pos(&enc_r);
 }
 
-//--------------------------------------
-// 函数简介     5ms 每拍：吃本拍编码器增量 + yaw → (x, y)
-// 备注信息     必须在 ENC_LR/RR_Update 与 ins_imu_update 之后调用
-//              用 ENC_*_DLT（单拍原始增量），不用滑动平均后的 _CNT_F
-//--------------------------------------
+/* ---- 5 ms 每拍: 必须在 spd_ctrl_tick() 之后调用, 那里的 spd_enc_update() 才是本拍的 Δcnt ---- */
 void ins_odom_update (void)
 {
-    float yaw_deg = ins_imu_get_yaw();
-    int16 dl      = ENC_LR_DLT;                 // 本拍原始增量（已含方向与极性，未经滑动平均）
-    int16 dr      = ENC_RR_DLT;
-    float dl_m    = ((float)dl / MOTOR_CTRL_CPR) * ins_m_per_rev;
-    float dr_m    = ((float)dr / MOTOR_CTRL_CPR) * ins_m_per_rev;
-    float ds      = (dl_m + dr_m) * 0.5f;       // 取两后轮中部
-    uint8 flags   = 0;
+    float dl_m, dr_m, ds;
+    float yaw_deg;
+    int16 dl, dr;
+    uint8 flags;
 
-    // 静止判据：只打状态位，不冻结积分（编码器里程不像纯惯导那样漂）
+    /* --- 航向: 用累积角, -180~180 的那个在跨边界会跳 --- */
+    yaw_deg = ins_imu_get_yaw();
+
+    /* --- 里程: 左右各自换算成米, 再取车体中心(左右 cpr 可不同) --- */
+    dl = enc_l.delta;
+    dr = enc_r.delta;
+
+    dl_m = ((float)dl / ((enc_l.cpr > 1.0f) ? enc_l.cpr : 1.0f)) * ins_m_per_rev;
+    dr_m = ((float)dr / ((enc_r.cpr > 1.0f) ? enc_r.cpr : 1.0f)) * ins_m_per_rev;
+
+    ds = (dl_m + dr_m) * 0.5f;
+
+    flags = 0;
+
+    /* --- 静止判据: 只打状态位, 不冻结积分(编码器里程不像纯惯导那样漂) --- */
     if ((0 == dl) && (0 == dr))
     {
-        if (s_still_cnt < INS_ODOM_STILL_TICKS) { s_still_cnt ++; }
+        if (s_still_cnt < 0xFFFFu) { s_still_cnt ++; }
     }
     else
     {
         s_still_cnt = 0;
     }
-    if (s_still_cnt >= INS_ODOM_STILL_TICKS) { flags |= ODOM_ST_STILL; }
+    if (s_still_cnt >= ODOM_STILL_TICKS) { flags |= ODOM_ST_STILL; }
 
-    // 打滑判据：左右计数差很大、航向却几乎没变 ⇒ 大概率一侧打滑。只报警
+    /* --- 打滑判据: 左右计数差超过 ins_slip_pct 且航向几乎没变, 判为一侧打滑; 只报警 --- */
     {
         int32 al = (dl < 0) ? -(int32)dl : (int32)dl;
         int32 ar = (dr < 0) ? -(int32)dr : (int32)dr;
         int32 mx = (al > ar) ? al : ar;
 
-        if (mx > 5)                             // 计数太小不算，避免噪声
+        if (mx > 5)                                     /* 计数太小不算, 避免噪声 */
         {
             float diff_pct = (float)((al > ar) ? (al - ar) : (ar - al)) * 100.0f / (float)mx;
             float dyaw     = fabsf(yaw_deg - s_yaw);
@@ -123,46 +127,52 @@ void ins_odom_update (void)
         }
     }
 
-    // 积分：ds 带符号（倒车为负），总路程另算
+    /* --- 积分: x += -sin(yaw) * ds, y += cos(yaw) * ds, ds 带符号(前进正、后退负) --- */
     if (ins_odom_enable > 0.5f)
     {
         float rad = yaw_deg * DEG2RAD_F;
 
         s_x += -sinf(rad) * ds;
         s_y +=  cosf(rad) * ds;
-        s_dist_abs += fabsf(ds);
+
+        s_dist_abs += fabsf(ds);                        /* 总路程单独累加, 与位置积分分开 */
     }
 
     s_yaw   = yaw_deg;
-    s_v_mps = ds / INS_ODOM_T_S;
+    s_v_mps = ds / 0.005f;                          /* 本拍车速(带符号), m/s */
     s_flags = (uint8)(flags | ODOM_ST_ACTIVE);
 }
 
-//--------------------------------------
-// 函数简介     查询
-//--------------------------------------
-float ins_odom_get_x     (void) { return s_x; }
-float ins_odom_get_y     (void) { return s_y; }
-float ins_odom_get_yaw   (void) { return s_yaw; }
-float ins_odom_get_dist  (void) { return s_dist_abs; }
-float ins_odom_get_v_mps (void) { return s_v_mps; }
-uint8 ins_odom_flags     (void) { return s_flags; }
+/* ---- 查询 ---- */
+float ins_odom_get_x    (void) { return s_x; }
+float ins_odom_get_y    (void) { return s_y; }
+float ins_odom_get_yaw  (void) { return s_yaw; }
+float ins_odom_get_dist (void) { return s_dist_abs; }
+float ins_odom_get_v_mps(void) { return s_v_mps; }
+uint8 ins_odom_flags    (void) { return s_flags; }
 
-//--------------------------------------
-// 函数简介     原子取位姿快照
-//--------------------------------------
+float ins_odom_get_km (void)
+{
+    /* 诊断用: 当前生效的米/计数(左右 cpr 取平均) */
+    float cpr_avg = (enc_l.cpr + enc_r.cpr) * 0.5f;
+
+    if (cpr_avg < 1.0f) { cpr_avg = 1.0f; }
+    return ins_m_per_rev / cpr_avg;
+}
+
 void ins_odom_snapshot (ins_odom_snap_t *out)
 {
-    uint32 pm;
+    uint32 primask;
 
     if (NULL == out) { return; }
 
-    pm = ins_crit_enter();
+    /* x/y/yaw/dist 必须一次性复制, 否则会被 5 ms 中断插到半路, 拿到旧 x + 新 yaw 的撕裂值 */
+    primask = ins_crit_enter();
     out->x        = s_x;
     out->y        = s_y;
     out->yaw      = s_yaw;
     out->dist_abs = s_dist_abs;
     out->v_mps    = s_v_mps;
     out->flags    = s_flags;
-    ins_crit_exit(pm);
+    ins_crit_exit(primask);
 }
